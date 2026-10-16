@@ -2,8 +2,9 @@ import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useCallback, useEffect, useState } from "react";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
-import { confirmAction, confirmDestructive } from "../../confirmAction";
+import { confirmDestructive } from "../../confirmAction";
 import type {
+  ThunderModelInfo,
   ThunderModelsConfig,
   ThunderModelsProvider
 } from "@agent-resume/core";
@@ -11,8 +12,16 @@ import type { ThunderDraft } from "./model";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
 
-type DaemonStatus = Awaited<ReturnType<ReturnType<typeof desktopApi>["thunderGetStatus"]>>;
-
+export interface ThunderDaemonStatus {
+  available: boolean;
+  repoPath: string | null;
+  daemonPath: string | null;
+  tuiPath?: string | null;
+  models: ThunderModelInfo[];
+  source?: string;
+  candidates?: string[];
+  error?: string;
+}
 /**
  * Settings → Thunder: where the external Thunder daemon lives and whether the app
  * can actually run it. Discovery itself lives in `main/thunder/daemonResolver.ts`;
@@ -24,7 +33,7 @@ export function ThunderPane({ draft, setDraft, commit, t }: {
   commit: (value: ThunderDraft) => void;
   t: Translate;
 }) {
-  const [status, setStatus] = useState<DaemonStatus | null>(null);
+  const [status, setStatus] = useState<ThunderDaemonStatus | null>(null);
   const [checking, setChecking] = useState(false);
   const [message, setMessage] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
 
@@ -74,26 +83,113 @@ export function ThunderPane({ draft, setDraft, commit, t }: {
 
   return <>
     <section className="settings-group">
+      <h3 className="settings-group-title">{t("desktop.settings.thunderStatusTitle")}</h3>
+      <div className="settings-group-body">
+        <div className="settings-thunder-hero">
+          <div className="settings-thunder-hero-left">
+            <span className={`settings-thunder-status-dot ${available ? "online" : "offline"}`} />
+            <div>
+              <div className="settings-thunder-hero-title">
+                <span>{state}</span>
+                {source ? <span className="settings-thunder-source-badge">{source}</span> : null}
+              </div>
+              <span className="settings-footnote muted">
+                {source ? t("desktop.settings.thunderSource", source) : t("desktop.settings.thunderSourceUnknown")}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="tool-btn"
+            aria-label={t("desktop.settings.thunderCheck")}
+            disabled={checking}
+            onClick={() => void check()}
+          >
+            <ThemeIcon name="refresh" size={ICON_SIZE.default} />
+            {t("desktop.settings.thunderCheck")}
+          </button>
+        </div>
+
+        <div className="settings-agent-status-grid">
+          {daemonPath ? (
+            <div className="settings-agent-status-stat-card">
+              <span className="settings-agent-status-stat-label">{t("desktop.settings.thunderResolvedDaemon")}</span>
+              <span className="settings-agent-status-stat-value settings-path-display" style={{ fontSize: "11px" }}>
+                {daemonPath}
+              </span>
+            </div>
+          ) : null}
+
+          {status?.tuiPath ? (
+            <div className="settings-agent-status-stat-card">
+              <span className="settings-agent-status-stat-label">{t("desktop.settings.thunderResolvedTui")}</span>
+              <span className="settings-agent-status-stat-value settings-path-display" style={{ fontSize: "11px" }}>
+                {status.tuiPath}
+              </span>
+            </div>
+          ) : null}
+
+          {status?.repoPath ? (
+            <div className="settings-agent-status-stat-card">
+              <span className="settings-agent-status-stat-label">{t("desktop.settings.thunderResolvedRepo")}</span>
+              <span className="settings-agent-status-stat-value settings-path-display" style={{ fontSize: "11px" }}>
+                {status.repoPath}
+              </span>
+            </div>
+          ) : null}
+
+          {models.length ? (
+            <div className="settings-agent-status-stat-card" style={{ gridColumn: "1 / -1" }}>
+              <span className="settings-agent-status-stat-label">{t("desktop.settings.thunderModels")} ({models.length})</span>
+              <span className="settings-agent-status-stat-value" style={{ fontSize: "12px", fontWeight: 400, flexWrap: "wrap" }}>
+                {models.map((model) => model.selection_id || model.id).join(" · ")}
+              </span>
+            </div>
+          ) : null}
+        </div>
+
+        {status?.error ? <Status kind="error">{status.error}</Status> : null}
+        {message.text ? <Status kind={message.kind}>{message.text}</Status> : null}
+
+        {!daemonPath && status?.candidates?.length ? (
+          <details style={{ marginTop: "var(--space-2)" }}>
+            <summary className="settings-footnote" style={{ cursor: "pointer", fontWeight: 500 }}>
+              {t("desktop.settings.thunderCandidates", status.candidates.length)}
+            </summary>
+            <ul className="settings-footnote" style={{ marginTop: "var(--space-1)" }}>
+              {status.candidates.map((candidate) => <li key={candidate}><code>{candidate}</code></li>)}
+            </ul>
+          </details>
+        ) : null}
+      </div>
+    </section>
+
+    <section className="settings-group">
       <h3 className="settings-group-title">{t("desktop.settings.thunderLocation")}</h3>
       <div className="settings-group-body">
-        <p className="settings-callout">{t("desktop.settings.thunderLocationDesc")}</p>
+        <p className="settings-footnote">{t("desktop.settings.thunderLocationDesc")}</p>
         <label className="settings-field">
           <span className="settings-field-label">{t("desktop.settings.thunderRepoPath")}</span>
-          <input
-            value={draft.repoPath}
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
-            placeholder={t("desktop.settings.thunderRepoPathPlaceholder")}
-            onChange={(event) => update({ repoPath: event.target.value }, { commit: false })}
-            onBlur={() => commit(draft)}
-          />
+          <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
+            <input
+              style={{ flex: "1 1 auto" }}
+              value={draft.repoPath}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              placeholder={t("desktop.settings.thunderRepoPathPlaceholder")}
+              onChange={(event) => update({ repoPath: event.target.value }, { commit: false })}
+              onBlur={() => commit(draft)}
+            />
+            <button type="button" className="tool-btn" onClick={() => void browseRepo()}>
+              <ThemeIcon name="folder-open" size={ICON_SIZE.dense} aria-hidden="true" />
+              {t("desktop.settings.thunderBrowse")}
+            </button>
+          </div>
+          <span className="settings-field-hint muted">{t("desktop.settings.thunderRepoPathDesc")}</span>
         </label>
-        <div className="settings-path-row">
-          <button type="button" className="tool-btn" onClick={() => void browseRepo()}>{t("desktop.settings.thunderBrowse")}</button>
-        </div>
-        <p className="settings-footnote">{t("desktop.settings.thunderRepoPathDesc")}</p>
-        <label className="settings-field">
+
+        <label className="settings-field" style={{ marginTop: "var(--space-2)" }}>
           <span className="settings-field-label">{t("desktop.settings.thunderDaemonPath")}</span>
           <input
             value={draft.daemonPath}
@@ -104,9 +200,10 @@ export function ThunderPane({ draft, setDraft, commit, t }: {
             onChange={(event) => update({ daemonPath: event.target.value }, { commit: false })}
             onBlur={() => commit(draft)}
           />
+          <span className="settings-field-hint muted">{t("desktop.settings.thunderDaemonPathDesc")}</span>
         </label>
-        <p className="settings-footnote">{t("desktop.settings.thunderDaemonPathDesc")}</p>
-        <label className="settings-field">
+
+        <label className="settings-field" style={{ marginTop: "var(--space-2)" }}>
           <span className="settings-field-label">{t("desktop.settings.thunderTuiPath")}</span>
           <input
             value={draft.tuiPath || ""}
@@ -117,79 +214,8 @@ export function ThunderPane({ draft, setDraft, commit, t }: {
             onChange={(event) => update({ tuiPath: event.target.value }, { commit: false })}
             onBlur={() => commit(draft)}
           />
+          <span className="settings-field-hint muted">{t("desktop.settings.thunderTuiPathDesc")}</span>
         </label>
-        <p className="settings-footnote">{t("desktop.settings.thunderTuiPathDesc")}</p>
-      </div>
-    </section>
-
-    <section className="settings-group">
-      <h3 className="settings-group-title">{t("desktop.settings.thunderStatusTitle")}</h3>
-      <div className="settings-group-body settings-group-body-rows">
-        <div className="settings-row">
-          <span className="settings-row-label">
-            <span className="settings-row-title">
-              <span className={`tb-status-dot${available ? " online" : " offline"}`} /> {state}
-            </span>
-            <span className="settings-row-desc">
-              {source ? t("desktop.settings.thunderSource", source) : t("desktop.settings.thunderSourceUnknown")}
-            </span>
-          </span>
-          <span className="settings-row-control">
-            <button type="button" className="tool-btn" aria-label={t("desktop.settings.thunderCheck")} disabled={checking} onClick={() => void check()}>
-              <ThemeIcon name="refresh" size={ICON_SIZE.default} />{t("desktop.settings.thunderCheck")}
-            </button>
-          </span>
-        </div>
-
-        {daemonPath ? (
-          <div className="settings-row">
-            <span className="settings-row-label">
-              <span className="settings-row-title">{t("desktop.settings.thunderResolvedDaemon")}</span>
-              <span className="settings-row-desc">{daemonPath}</span>
-            </span>
-          </div>
-        ) : null}
-
-        {status?.tuiPath ? (
-          <div className="settings-row">
-            <span className="settings-row-label">
-              <span className="settings-row-title">{t("desktop.settings.thunderResolvedTui")}</span>
-              <span className="settings-row-desc">{status.tuiPath}</span>
-            </span>
-          </div>
-        ) : null}
-
-        {status?.repoPath ? (
-          <div className="settings-row">
-            <span className="settings-row-label">
-              <span className="settings-row-title">{t("desktop.settings.thunderResolvedRepo")}</span>
-              <span className="settings-row-desc">{status.repoPath}</span>
-            </span>
-          </div>
-        ) : null}
-
-        {models.length ? (
-          <div className="settings-row">
-            <span className="settings-row-label">
-              <span className="settings-row-title">{t("desktop.settings.thunderModels")}</span>
-              <span className="settings-row-desc">{models.map((model) => model.selection_id || model.id).join(" · ")}</span>
-            </span>
-          </div>
-        ) : null}
-
-        {status?.error ? <Status kind="error">{status.error}</Status> : null}
-        {message.text ? <Status kind={message.kind}>{message.text}</Status> : null}
-
-        {!daemonPath && status?.candidates?.length ? (
-          <details>
-            <summary>{t("desktop.settings.thunderCandidates", status.candidates.length)}</summary>
-            <ul className="settings-footnote">
-              {status.candidates.map((candidate) => <li key={candidate}><code>{candidate}</code></li>)}
-            </ul>
-          </details>
-        ) : null}
-
-        <p className="settings-footnote">{t("desktop.settings.thunderModelsFootnote")}</p>
       </div>
     </section>
 
@@ -203,7 +229,7 @@ function ModelsSection({ t }: { t: Translate }) {
   const [config, setConfig] = useState<ThunderModelsConfig | null>(null);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
   const [busy, setBusy] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     try {
@@ -239,7 +265,7 @@ function ModelsSection({ t }: { t: Translate }) {
     setConfig((prev) =>
       prev ? { ...prev, providers: { ...prev.providers, [id]: { name: id, api: "openai-completions" } } } : prev
     );
-    setExpanded(id);
+    setExpanded((prev) => ({ ...prev, [id]: true }));
   };
 
   const removeProvider = async (id: string) => {
@@ -284,80 +310,117 @@ function ModelsSection({ t }: { t: Translate }) {
 
   return (
     <section className="settings-group">
-      <h3 className="settings-group-title">{t("desktop.settings.thunderModelsTitle")}</h3>
+      <div className="settings-group-header">
+        <h3 className="settings-group-title">{t("desktop.settings.thunderModelsTitle")}</h3>
+        <div style={{ display: "flex", gap: "var(--space-2)" }}>
+          <button type="button" className="ghost-btn" onClick={addProvider} disabled={config === null}>
+            + {t("desktop.settings.thunderModelsAddProvider")}
+          </button>
+          <button type="button" className="tool-btn" onClick={() => void save()} disabled={busy || config === null}>
+            <ThemeIcon name="save" size={ICON_SIZE.dense} aria-hidden="true" />
+            {t("desktop.settings.thunderModelsSave")}
+          </button>
+        </div>
+      </div>
       <div className="settings-group-body">
-        <p className="settings-callout">{t("desktop.settings.thunderModelsDesc")}</p>
+        <p className="settings-footnote">{t("desktop.settings.thunderModelsDesc")}</p>
 
         {config === null ? (
           <p className="settings-footnote">…</p>
         ) : Object.keys(config.providers).length === 0 ? (
-          <p className="settings-footnote">{t("desktop.settings.thunderModelsEmpty")}</p>
+          <p className="settings-footnote muted">{t("desktop.settings.thunderModelsEmpty")}</p>
         ) : (
           <div className="settings-roles-list">
             {Object.entries(config.providers).map(([pid, provider]) => {
               const models = provider.models ?? [];
-              const isOpen = expanded === pid;
+              const isOpen = expanded[pid] ?? true;
               return (
-                <div key={pid} className="tb-role-card">
-                  <div className="tb-role-card-head">
-                    <span className="tb-role-badge">{pid}</span>
-                    <input
-                      value={String(provider.name ?? "")}
-                      placeholder={t("desktop.settings.thunderModelsProviderName")}
-                      onChange={(event) => patchProvider(pid, { name: event.target.value })}
-                    />
-                    <input
-                      value={String(provider.api ?? "")}
-                      placeholder="api"
-                      onChange={(event) => patchProvider(pid, { api: event.target.value })}
-                    />
-                    <input
-                      value={String(provider.baseUrl ?? "")}
-                      placeholder="baseUrl"
-                      onChange={(event) => patchProvider(pid, { baseUrl: event.target.value })}
-                    />
-                    <input
-                      type="password"
-                      value={String(provider.apiKey ?? "")}
-                      placeholder="apiKey"
-                      autoComplete="off"
-                      onChange={(event) => patchProvider(pid, { apiKey: event.target.value })}
-                    />
-                    <span className="settings-footnote">{t("desktop.settings.thunderModelsCount", models.length)}</span>
-                    <button type="button" className="tool-btn" onClick={() => setExpanded(isOpen ? null : pid)}>
-                      {isOpen ? t("desktop.settings.thunderCollapse") : t("desktop.settings.thunderExpand")}
-                    </button>
-                    <button type="button" className="tool-btn" onClick={() => void removeProvider(pid)}>
-                      {t("desktop.common.remove")}
-                    </button>
+                <div key={pid} className="settings-thunder-provider-card tb-role-card">
+                  <div className="settings-thunder-provider-header tb-role-card-head">
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                      <span className="tb-role-badge">{pid}</span>
+                      <strong style={{ fontSize: "13px" }}>{String(provider.name || pid)}</strong>
+                      <span className="settings-footnote muted">{t("desktop.settings.thunderModelsCount", models.length)}</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1-5)" }}>
+                      <button
+                        type="button"
+                        className="tool-btn"
+                        onClick={() => setExpanded((prev) => ({ ...prev, [pid]: !isOpen }))}
+                      >
+                        {isOpen ? t("desktop.settings.thunderCollapse") : t("desktop.settings.thunderExpand")}
+                      </button>
+                      <button
+                        type="button"
+                        className="tool-btn"
+                        onClick={() => void removeProvider(pid)}
+                        title={t("desktop.common.remove")}
+                      >
+                        <ThemeIcon name="trash" size={ICON_SIZE.dense} aria-hidden="true" />
+                        {t("desktop.common.remove")}
+                      </button>
+                    </div>
                   </div>
 
-                  {isOpen ? (
-                    <div className="tb-role-card-body">
-                      {models.length === 0 ? (
-                        <p className="settings-footnote">{t("desktop.settings.thunderModelsNoModels")}</p>
-                      ) : (
-                        <table className="tb-models-table">
-                          <thead>
-                            <tr>
-                              <th>{t("desktop.settings.thunderModelsModel")}</th>
-                              <th>{t("desktop.settings.thunderModelsContext")}</th>
-                              <th>{t("desktop.settings.thunderModelsReasoning")}</th>
-                              <th>{t("desktop.settings.thunderModelsDefaultThinking")}</th>
+                  <div className="settings-thunder-provider-grid">
+                    <label className="settings-field">
+                      <span className="settings-field-label">{t("desktop.settings.thunderModelsProviderName")}</span>
+                      <input
+                        value={String(provider.name ?? "")}
+                        placeholder={t("desktop.settings.thunderModelsProviderName")}
+                        onChange={(event) => patchProvider(pid, { name: event.target.value })}
+                      />
+                    </label>
+                    <label className="settings-field">
+                      <span className="settings-field-label">API Protocol</span>
+                      <input
+                        value={String(provider.api ?? "")}
+                        placeholder="api"
+                        onChange={(event) => patchProvider(pid, { api: event.target.value })}
+                      />
+                    </label>
+                    <label className="settings-field">
+                      <span className="settings-field-label">{t("desktop.settings.baseUrl")}</span>
+                      <input
+                        value={String(provider.baseUrl ?? "")}
+                        placeholder="baseUrl"
+                        onChange={(event) => patchProvider(pid, { baseUrl: event.target.value })}
+                      />
+                    </label>
+                    <label className="settings-field">
+                      <span className="settings-field-label">{t("desktop.settings.apiKey")}</span>
+                      <input
+                        type="password"
+                        value={String(provider.apiKey ?? "")}
+                        placeholder="apiKey"
+                        autoComplete="off"
+                        onChange={(event) => patchProvider(pid, { apiKey: event.target.value })}
+                      />
+                    </label>
+                  </div>
+
+                  {isOpen && models.length > 0 ? (
+                    <div className="tb-role-card-body" style={{ padding: "0 var(--space-3) var(--space-3)" }}>
+                      <table className="tb-models-table">
+                        <thead>
+                          <tr>
+                            <th>{t("desktop.settings.thunderModelsModel")}</th>
+                            <th>{t("desktop.settings.thunderModelsContext")}</th>
+                            <th>{t("desktop.settings.thunderModelsReasoning")}</th>
+                            <th>{t("desktop.settings.thunderModelsDefaultThinking")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {models.map((model, index) => (
+                            <tr key={`${pid}-${String(model?.id ?? index)}`}>
+                              <td title={String(model?.id ?? "")}><strong>{String(model?.name ?? model?.id ?? "")}</strong></td>
+                              <td>{typeof model?.contextWindow === "number" ? model.contextWindow.toLocaleString() : "—"}</td>
+                              <td>{model?.reasoning ? "✓" : "—"}</td>
+                              <td>{String(model?.defaultThinkingLevel ?? "—")}</td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {models.map((model, index) => (
-                              <tr key={`${pid}-${String(model?.id ?? index)}`}>
-                                <td title={String(model?.id ?? "")}>{String(model?.name ?? model?.id ?? "")}</td>
-                                <td>{typeof model?.contextWindow === "number" ? model.contextWindow.toLocaleString() : "—"}</td>
-                                <td>{model?.reasoning ? "✓" : "—"}</td>
-                                <td>{String(model?.defaultThinkingLevel ?? "—")}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   ) : null}
                 </div>
@@ -367,7 +430,7 @@ function ModelsSection({ t }: { t: Translate }) {
         )}
 
         {config && utilityOptions.length > 0 ? (
-          <label className="settings-field">
+          <label className="settings-field" style={{ marginTop: "var(--space-3)" }}>
             <span className="settings-field-label">{t("desktop.settings.thunderModelsUtility")}</span>
             <select
               value={config.utilityModel ?? ""}
@@ -383,16 +446,12 @@ function ModelsSection({ t }: { t: Translate }) {
           </label>
         ) : null}
 
-        <div className="settings-path-row">
-          <button type="button" className="tool-btn" onClick={addProvider} disabled={config === null}>
-            {t("desktop.settings.thunderModelsAddProvider")}
-          </button>
-          <button type="button" className="tool-btn" onClick={() => void save()} disabled={busy || config === null}>
-            {t("desktop.settings.thunderModelsSave")}
-          </button>
-        </div>
-        {status.text ? <Status kind={status.kind}>{status.text}</Status> : null}
-        <p className="settings-footnote">{t("desktop.settings.thunderModelsEditorFootnote")}</p>
+        {status.text ? (
+          <div style={{ marginTop: "var(--space-2)" }}>
+            <Status kind={status.kind}>{status.text}</Status>
+          </div>
+        ) : null}
+        <p className="settings-footnote muted" style={{ marginTop: "var(--space-2)" }}>{t("desktop.settings.thunderModelsEditorFootnote")}</p>
       </div>
     </section>
   );

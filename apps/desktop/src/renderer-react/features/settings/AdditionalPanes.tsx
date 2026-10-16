@@ -120,13 +120,40 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.composerSlashGroup")}</h3><div className="settings-group-body">
       <p className="settings-footnote">{t("desktop.settings.composerSlashDesc")}</p>
-      {slashPhrases.length === 0 ? <p className="settings-footnote">{t("desktop.settings.composerSlashEmpty")}</p> : null}
+      <div className="settings-slash-presets-row">
+        <span className="settings-footnote muted" style={{ marginRight: "var(--space-1)" }}>Quick presets:</span>
+        {[
+          { trigger: "commit", description: "Draft commit message", phrase: "Review the current git changes and draft a concise conventional commit message." },
+          { trigger: "review", description: "Code review", phrase: "Review the current diff for potential bugs, performance regressions, and security issues." },
+          { trigger: "test", description: "Run tests", phrase: "Run the test suite, analyze any failures, and recommend targeted fixes." },
+          { trigger: "explain", description: "Architecture overview", phrase: "Explain the architecture, design decisions, and core workflows of this module." }
+        ].map((preset) => {
+          const exists = slashPhrases.some((p) => p.trigger.toLowerCase() === preset.trigger);
+          return (
+            <button
+              key={preset.trigger}
+              type="button"
+              className="settings-slash-preset-btn"
+              disabled={exists}
+              onClick={() => {
+                if (exists) return;
+                const next = [...slashPhrases, preset];
+                update("composerSlashPhrases", next);
+              }}
+              title={exists ? "Already added" : `Add /${preset.trigger} preset`}
+            >
+              +{`/${preset.trigger}`}
+            </button>
+          );
+        })}
+      </div>
+      {slashPhrases.length === 0 ? <p className="settings-footnote muted">{t("desktop.settings.composerSlashEmpty")}</p> : null}
       {slashPhrases.map((item, index) => (
-        <div className="settings-item" key={`slash-${index}`}>
-          <div className="settings-item-row">
-            <span className="settings-item-prefix" aria-hidden="true">/</span>
+        <div className="settings-item settings-slash-card" key={`slash-${index}`}>
+          <div className="settings-item-row settings-slash-header">
+            <span className="settings-item-prefix settings-slash-prefix" aria-hidden="true">/</span>
             <input
-              className="settings-item-name"
+              className="settings-item-name settings-slash-trigger-input"
               value={item.trigger}
               spellCheck={false}
               autoCapitalize="off"
@@ -134,13 +161,13 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
               aria-label={t("desktop.settings.composerSlashTrigger")}
               placeholder={t("desktop.settings.composerSlashTriggerPlaceholder")}
               onChange={(event) => {
-                const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, trigger: event.target.value } : phrase);
+                const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, trigger: event.target.value.replace(/^\/+/, "") } : phrase);
                 update("composerSlashPhrases", next, { commit: false });
               }}
               onBlur={() => commit(draft)}
             />
             <input
-              className="settings-item-note"
+              className="settings-item-note settings-slash-desc-input"
               value={item.description ?? ""}
               spellCheck={false}
               aria-label={t("desktop.settings.composerSlashDescription")}
@@ -159,23 +186,34 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
               onClick={() => update("composerSlashPhrases", slashPhrases.filter((_, phraseIndex) => phraseIndex !== index))}
             ><ThemeIcon name="trash" size={ICON_SIZE.dense} aria-hidden="true" /></button>
           </div>
-          <textarea
-            className="settings-item-body"
-            rows={2}
-            maxLength={4000}
-            spellCheck={false}
-            value={item.phrase}
-            aria-label={t("desktop.settings.composerSlashPhrase")}
-            placeholder={t("desktop.settings.composerSlashPhrasePlaceholder")}
-            onChange={(event) => {
-              const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, phrase: event.target.value } : phrase);
-              update("composerSlashPhrases", next, { commit: false });
-            }}
-            onBlur={() => commit(draft)}
-          />
+          <div className="settings-slash-body-wrap">
+            <textarea
+              className="settings-item-body settings-slash-textarea"
+              rows={3}
+              maxLength={4000}
+              spellCheck={false}
+              value={item.phrase}
+              aria-label={t("desktop.settings.composerSlashPhrase")}
+              placeholder={t("desktop.settings.composerSlashPhrasePlaceholder")}
+              onChange={(event) => {
+                const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, phrase: event.target.value } : phrase);
+                update("composerSlashPhrases", next, { commit: false });
+              }}
+              onBlur={() => commit(draft)}
+            />
+            <div className="settings-slash-footer">
+              <span className="settings-slash-preview-tag">
+                Composer preview: <code className="settings-slash-preview-code">/{item.trigger || "trigger"}</code>
+                {item.description ? ` (${item.description})` : ""}
+              </span>
+              <span className="settings-footnote muted" style={{ fontSize: "11px" }}>
+                {item.phrase.length} / 4000
+              </span>
+            </div>
+          </div>
         </div>
       ))}
-      <div className="settings-action-row">
+      <div className="settings-action-row" style={{ marginTop: "var(--space-1)" }}>
         <button
           type="button"
           className="tool-btn"

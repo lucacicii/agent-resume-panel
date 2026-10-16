@@ -130,177 +130,261 @@ export function AgentStatusPane({ t }: { t: Translate }) {
   }, [daemon?.launchAgentInstalled, refresh, t]);
 
   return (
-    <div className="settings-agent-status">
-      <section>
-        <h3>{t("desktop.settings.agentStatus.daemonTitle")}</h3>
-        <p className="muted">{t("desktop.settings.agentStatus.daemonDesc")}</p>
-        <div className="settings-agent-status-row">
-          <span className={`settings-agent-status-dot${daemon?.running ? " is-on" : ""}`} aria-hidden="true" />
-          <span>
-            {daemon?.running
-              ? t("desktop.settings.agentStatus.daemonRunning", daemon.pid ?? 0, daemon.apiVersion ?? 0)
-              : t("desktop.settings.agentStatus.daemonStopped")}
-          </span>
-          <button type="button" className="btn" disabled={busy === "daemon"} onClick={() => void toggleDaemon()}>
-            {daemon?.running ? t("desktop.settings.agentStatus.stopDaemon") : t("desktop.settings.agentStatus.startDaemon")}
-          </button>
-        </div>
-        {daemon ? (
-          <dl className="settings-agent-status-facts">
-            <div>
-              <dt>{t("desktop.settings.agentStatus.factPanels")}</dt>
-              <dd>{daemon.paneCount ?? 0}</dd>
-            </div>
-            <div>
-              <dt>{t("desktop.settings.agentStatus.factSubscribers")}</dt>
-              <dd>{daemon.subscriberCount ?? 0}</dd>
-            </div>
-            <div>
-              <dt>{t("desktop.settings.agentStatus.factLoginAgent")}</dt>
-              <dd>
-                <span>
-                  {daemon.launchAgentInstalled
-                    ? t("desktop.settings.agentStatus.loginAgentOn")
-                    : t("desktop.settings.agentStatus.loginAgentOff")}
-                </span>
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={busy === "loginAgent"}
-                  onClick={() => void toggleLoginAgent()}
-                >
-                  {daemon.launchAgentInstalled
-                    ? t("desktop.settings.agentStatus.loginAgentRemove")
-                    : t("desktop.settings.agentStatus.loginAgentAdd")}
-                </button>
-              </dd>
-            </div>
-            <div>
-              <dt>{t("desktop.settings.agentStatus.factSocket")}</dt>
-              <dd className="settings-agent-status-path">{daemon.socketPath}</dd>
-            </div>
-            <div>
-              <dt>{t("desktop.settings.agentStatus.factManifests")}</dt>
-              <dd>
-                {(daemon.manifests ?? [])
-                  .map((manifest) => `${manifest.id}@${manifest.version} (${manifest.rules})`)
-                  .join(", ") || "—"}
-              </dd>
-            </div>
-          </dl>
-        ) : null}
-      </section>
+    <>
+      <section className="settings-group">
+        <h3 className="settings-group-title">{t("desktop.settings.agentStatus.daemonTitle")}</h3>
+        <div className="settings-group-body">
+          <p className="settings-footnote">{t("desktop.settings.agentStatus.daemonDesc")}</p>
 
-      <section>
-        <h3>{t("desktop.settings.agentStatus.hooksTitle")}</h3>
-        <p className="muted">{t("desktop.settings.agentStatus.hooksDesc")}</p>
-        <ul className="settings-agent-status-list">
-          {integrations.map((integration) => (
-            <li key={integration.id}>
+          <div className="settings-agent-status-hero">
+            <div className="settings-agent-status-hero-left">
+              <span className={`settings-agent-status-dot${daemon?.running ? " is-on" : ""}`} aria-hidden="true" />
               <div>
-                <strong>{integration.label}</strong>
-                <span className="muted">
-                  {integration.installed
-                    ? t("desktop.settings.agentStatus.hookInstalled")
-                    : integration.detected
-                      ? t("desktop.settings.agentStatus.hookAvailable")
-                      : t("desktop.settings.agentStatus.hookMissing")}
-                </span>
-                <span className="settings-agent-status-detail muted">{integration.detail}</span>
+                <div className="settings-agent-status-title">
+                  {daemon?.running
+                    ? t("desktop.settings.agentStatus.daemonRunning", daemon.pid ?? 0, daemon.apiVersion ?? 0)
+                    : t("desktop.settings.agentStatus.daemonStopped")}
+                </div>
               </div>
-              <button
-                type="button"
-                className="btn"
-                disabled={busy === integration.id || (!integration.detected && !integration.installed)}
-                onClick={() => void toggle(integration)}
-              >
-                {integration.installed
-                  ? t("desktop.settings.agentStatus.uninstall")
-                  : t("desktop.settings.agentStatus.install")}
-              </button>
-            </li>
-          ))}
-        </ul>
+            </div>
+            <button
+              type="button"
+              className="tool-btn"
+              disabled={busy === "daemon"}
+              onClick={() => void toggleDaemon()}
+            >
+              {daemon?.running ? (
+                <>
+                  <ThemeIcon name="square" size={ICON_SIZE.dense} aria-hidden="true" />
+                  {t("desktop.settings.agentStatus.stopDaemon")}
+                </>
+              ) : (
+                <>
+                  <ThemeIcon name="play" size={ICON_SIZE.dense} aria-hidden="true" />
+                  {t("desktop.settings.agentStatus.startDaemon")}
+                </>
+              )}
+            </button>
+          </div>
+
+          {daemon ? (
+            <div className="settings-agent-status-grid">
+              <div className="settings-agent-status-stat-card">
+                <span className="settings-agent-status-stat-label">{t("desktop.settings.agentStatus.factPanels")}</span>
+                <span className="settings-agent-status-stat-value">{daemon.paneCount ?? 0}</span>
+              </div>
+              <div className="settings-agent-status-stat-card">
+                <span className="settings-agent-status-stat-label">{t("desktop.settings.agentStatus.factSubscribers")}</span>
+                <span className="settings-agent-status-stat-value">{daemon.subscriberCount ?? 0}</span>
+              </div>
+              <div className="settings-agent-status-stat-card">
+                <span className="settings-agent-status-stat-label">{t("desktop.settings.agentStatus.factLoginAgent")}</span>
+                <span className="settings-agent-status-stat-value">
+                  <span>
+                    {daemon.launchAgentInstalled
+                      ? t("desktop.settings.agentStatus.loginAgentOn")
+                      : t("desktop.settings.agentStatus.loginAgentOff")}
+                  </span>
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    style={{ fontSize: "11px", padding: "2px 8px" }}
+                    disabled={busy === "loginAgent"}
+                    onClick={() => void toggleLoginAgent()}
+                  >
+                    {daemon.launchAgentInstalled
+                      ? t("desktop.settings.agentStatus.loginAgentRemove")
+                      : t("desktop.settings.agentStatus.loginAgentAdd")}
+                  </button>
+                </span>
+              </div>
+              <div className="settings-agent-status-stat-card">
+                <span className="settings-agent-status-stat-label">{t("desktop.settings.agentStatus.factSocket")}</span>
+                <span className="settings-agent-status-stat-value settings-path-display" style={{ fontSize: "11px" }}>
+                  {daemon.socketPath}
+                </span>
+              </div>
+              <div className="settings-agent-status-stat-card" style={{ gridColumn: "1 / -1" }}>
+                <span className="settings-agent-status-stat-label">{t("desktop.settings.agentStatus.factManifests")}</span>
+                <span className="settings-agent-status-stat-value" style={{ fontSize: "12px", fontWeight: 400 }}>
+                  {(daemon.manifests ?? [])
+                    .map((manifest) => `${manifest.id}@${manifest.version} (${manifest.rules})`)
+                    .join(", ") || "—"}
+                </span>
+              </div>
+            </div>
+          ) : null}
+        </div>
       </section>
 
-      <section>
-        <h3>{t("desktop.settings.agentStatus.panesTitle")}</h3>
-        <p className="muted">{t("desktop.settings.agentStatus.panesDesc")}</p>
-        {panes.length === 0 ? (
-          <p className="muted">{t("desktop.settings.agentStatus.panesEmpty")}</p>
-        ) : (
-          <ul className="settings-agent-status-list">
-            {panes.map((pane) => (
-              <li key={pane.paneId}>
-                <div>
-                  <strong>
-                    <ThemeIcon name="terminal" size={ICON_SIZE.inline} /> {t("desktop.settings.agentStatus.paneLabel", pane.paneId)}
-                  </strong>
-                  <span className="muted">
-                    {pane.agent} · {pane.state} · {pane.source}
-                    {pane.matchedRule ? ` · ${pane.matchedRule.id}` : ""}
+      <section className="settings-group">
+        <h3 className="settings-group-title">{t("desktop.settings.agentStatus.hooksTitle")}</h3>
+        <div className="settings-group-body settings-group-body-rows">
+          <p className="settings-footnote" style={{ paddingBottom: "var(--space-2)" }}>{t("desktop.settings.agentStatus.hooksDesc")}</p>
+          {integrations.map((integration) => {
+            const badgeClass = integration.installed
+              ? "installed"
+              : integration.detected
+                ? "available"
+                : "missing";
+            const badgeLabel = integration.installed
+              ? t("desktop.settings.agentStatus.hookInstalled")
+              : integration.detected
+                ? t("desktop.settings.agentStatus.hookAvailable")
+                : t("desktop.settings.agentStatus.hookMissing");
+
+            return (
+              <div className="settings-row" key={integration.id}>
+                <div className="settings-row-label">
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                    <span className="settings-row-title">{integration.label}</span>
+                    <span className={`settings-agent-status-badge ${badgeClass}`}>{badgeLabel}</span>
+                  </div>
+                  <span className="settings-row-desc settings-path-display" style={{ marginTop: "2px" }}>
+                    {integration.detail}
                   </span>
                 </div>
-                <button type="button" className="btn" onClick={() => void inspect(pane.paneId)}>
-                  {t("desktop.settings.agentStatus.inspect")}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {selected !== null ? (
-          <div className="settings-agent-status-inspector">
-            <h4>{t("desktop.settings.agentStatus.inspectorTitle", selected)}</h4>
-            {explain ? (
-              <p className="muted">
-                {explain.state} · {explain.source} · {explain.authority}
-                {explain.reason ? ` — ${explain.reason}` : ""}
-              </p>
-            ) : (
-              <p className="muted">{t("desktop.settings.agentStatus.inspectorEmpty")}</p>
-            )}
-            {explain?.manifests?.length ? (
-              <p className="settings-agent-status-path">
-                {t("desktop.settings.agentStatus.inspectorLayers")}:{" "}
-                {explain.manifests.map((layer) => `${layer.id}@${layer.version} (${layer.source})`).join(" → ")}
-              </p>
-            ) : null}
-            {explain?.screenSkipped ? (
-              <p className="muted">{t("desktop.settings.agentStatus.inspectorSkipped", explain.screenSkipped)}</p>
-            ) : null}
-            {explain?.evaluated?.length ? (
-              <table className="settings-agent-status-rules">
-                <thead>
-                  <tr>
-                    <th>{t("desktop.settings.agentStatus.ruleColumn")}</th>
-                    <th>{t("desktop.settings.agentStatus.ruleManifest")}</th>
-                    <th>{t("desktop.settings.agentStatus.ruleState")}</th>
-                    <th>{t("desktop.settings.agentStatus.ruleReason")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {explain.evaluated.map((row) => (
-                    <tr key={`${row.manifest}:${row.id}`} className={row.matched ? "is-match" : ""}>
-                      <td>{row.id}</td>
-                      <td>{row.manifest}</td>
-                      <td>{row.state}</td>
-                      <td>{row.reason}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : null}
-            {screen?.screenText ? (
-              <details>
-                <summary>{t("desktop.settings.agentStatus.inspectorScreen")}</summary>
-                <pre className="settings-agent-status-screen">{screen.screenText}</pre>
-              </details>
-            ) : null}
-          </div>
-        ) : null}
+                <div className="settings-row-control">
+                  <button
+                    type="button"
+                    className="tool-btn"
+                    disabled={busy === integration.id || (!integration.detected && !integration.installed)}
+                    onClick={() => void toggle(integration)}
+                  >
+                    {integration.installed ? (
+                      <>
+                        <ThemeIcon name="trash" size={ICON_SIZE.dense} aria-hidden="true" />
+                        {t("desktop.settings.agentStatus.uninstall")}
+                      </>
+                    ) : (
+                      <>
+                        <ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />
+                        {t("desktop.settings.agentStatus.install")}
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </section>
 
-      <Status kind={status.kind}>{status.text}</Status>
-    </div>
+      <section className="settings-group">
+        <h3 className="settings-group-title">{t("desktop.settings.agentStatus.panesTitle")}</h3>
+        <div className="settings-group-body">
+          <p className="settings-footnote">{t("desktop.settings.agentStatus.panesDesc")}</p>
+          {panes.length === 0 ? (
+            <p className="settings-footnote muted">{t("desktop.settings.agentStatus.panesEmpty")}</p>
+          ) : (
+            <div className="settings-agent-status-panes-list">
+              {panes.map((pane) => (
+                <div
+                  className={`settings-agent-status-pane-row${selected === pane.paneId ? " active" : ""}`}
+                  key={pane.paneId}
+                >
+                  <div className="settings-agent-status-pane-info">
+                    <span className="settings-agent-status-pane-title">
+                      <ThemeIcon name="terminal" size={ICON_SIZE.dense} />
+                      {t("desktop.settings.agentStatus.paneLabel", pane.paneId)}
+                    </span>
+                    <span className="settings-agent-status-pane-meta">
+                      <strong>{pane.agent}</strong> · <span className="settings-state-pill">{pane.state}</span> · {pane.source}
+                      {pane.matchedRule ? ` · ${pane.matchedRule.id}` : ""}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`tool-btn${selected === pane.paneId ? " active" : ""}`}
+                    onClick={() => void inspect(pane.paneId)}
+                  >
+                    <ThemeIcon name="search" size={ICON_SIZE.dense} />
+                    {t("desktop.settings.agentStatus.inspect")}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {selected !== null ? (
+            <div className="settings-agent-status-inspector">
+              <div className="settings-agent-status-inspector-head">
+                <h4 style={{ margin: 0, fontSize: "var(--font-size-headline)" }}>
+                  {t("desktop.settings.agentStatus.inspectorTitle", selected)}
+                </h4>
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  style={{ fontSize: "11px", padding: "2px 8px" }}
+                  onClick={() => setSelected(null)}
+                >
+                  <ThemeIcon name="close" size={ICON_SIZE.dense} />
+                </button>
+              </div>
+
+              {explain ? (
+                <p className="settings-footnote">
+                  <strong>{explain.state}</strong> · {explain.source} · {explain.authority}
+                  {explain.reason ? ` — ${explain.reason}` : ""}
+                </p>
+              ) : (
+                <p className="settings-footnote muted">{t("desktop.settings.agentStatus.inspectorEmpty")}</p>
+              )}
+
+              {explain?.manifests?.length ? (
+                <p className="settings-footnote settings-path-display">
+                  {t("desktop.settings.agentStatus.inspectorLayers")}:{" "}
+                  {explain.manifests.map((layer) => `${layer.id}@${layer.version} (${layer.source})`).join(" → ")}
+                </p>
+              ) : null}
+
+              {explain?.screenSkipped ? (
+                <p className="settings-footnote muted">{t("desktop.settings.agentStatus.inspectorSkipped", explain.screenSkipped)}</p>
+              ) : null}
+
+              {explain?.evaluated?.length ? (
+                <div style={{ overflowX: "auto" }}>
+                  <table className="settings-agent-status-rule-table">
+                    <thead>
+                      <tr>
+                        <th>{t("desktop.settings.agentStatus.ruleColumn")}</th>
+                        <th>{t("desktop.settings.agentStatus.ruleManifest")}</th>
+                        <th>{t("desktop.settings.agentStatus.ruleState")}</th>
+                        <th>{t("desktop.settings.agentStatus.ruleReason")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {explain.evaluated.map((row) => (
+                        <tr key={`${row.manifest}:${row.id}`} className={row.matched ? "is-match" : ""}>
+                          <td><code>{row.id}</code></td>
+                          <td>{row.manifest}</td>
+                          <td><span className="settings-state-pill">{row.state}</span></td>
+                          <td>{row.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+
+              {screen?.screenText ? (
+                <details style={{ marginTop: "var(--space-2-5)" }}>
+                  <summary className="settings-footnote" style={{ cursor: "pointer", fontWeight: 500 }}>
+                    {t("desktop.settings.agentStatus.inspectorScreen")}
+                  </summary>
+                  <pre className="settings-agent-status-screen-box">{screen.screenText}</pre>
+                </details>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      {status.text ? (
+        <div style={{ padding: "var(--space-2) 0" }}>
+          <Status kind={status.kind}>{status.text}</Status>
+        </div>
+      ) : null}
+    </>
   );
 }
