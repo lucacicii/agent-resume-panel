@@ -50,7 +50,7 @@ export async function previewGrokSession(
   }
 
   if (!messages.length) {
-    throw new Error("Grok transcript is empty for this session.");
+    return finalizePreviewMessages(session.title, [], undefined, options);
   }
 
   return finalizePreviewMessages(session.title, messages, undefined, options);
