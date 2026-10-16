@@ -42,6 +42,8 @@ export function TurnDots({
     .map((turn, index) => ({ turn, index }))
     .filter((entry) => entry.turn.status !== "running");
 
+  const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
+
   // A long run walks off the end of the row; keep the newest dot in view.
   useEffect(() => {
     const track = trackRef.current;
@@ -51,22 +53,18 @@ export function TurnDots({
 
   if (finished.length === 0) return null;
 
+  const showSteps = openIndex !== null || (userExpanded ?? (finished.length <= 3));
+
   const totalTurns = finished.length;
   const totalTools = finished.reduce((sum, f) => sum + f.turn.toolCount, 0);
   const totalDurationMs = finished.reduce((sum, f) => sum + (f.turn.durationMs || 0), 0);
   const errorCount = finished.filter((f) => f.turn.status === "error").length;
 
-  const [showSteps, setShowSteps] = useState(finished.length <= 3);
-
-  useEffect(() => {
-    if (openIndex !== null) setShowSteps(true);
-  }, [openIndex]);
-
   return (
     <div className="tb-turn-dots" role="tablist" aria-label={t("desktop.chat.turns.label")}>
       <div
         className="tb-turn-process-bar"
-        onClick={() => setShowSteps((prev) => !prev)}
+        onClick={() => setUserExpanded((prev) => !(prev ?? (finished.length <= 3)))}
         role="button"
         tabIndex={0}
         style={{ cursor: "pointer" }}
