@@ -142,6 +142,10 @@ export function ChatMessageItem({
               isAnimating={isStreaming && isLast}
               className="tb-markdown-view markdown-body"
               hardBreaks
+              // Live segments ride on assistant rows (the user row carries no
+              // segments); still, a bare pasted path is quoted text, never an
+              // attachment, so promotion stays off wherever the row is the user's.
+              imageOptions={isUser ? { promoteBarePaths: false } : undefined}
             />
           </div>
         );
@@ -193,6 +197,10 @@ export function ChatMessageItem({
               isAnimating={isStreaming}
               className="tb-markdown-view markdown-body"
               hardBreaks
+              // A user row's real attachments arrive as `parts` (painted above);
+              // a bare path in its text is quoted terminal output. Promoting it
+              // would paint a phantom image for a file the daemon never saw.
+              imageOptions={isUser ? { promoteBarePaths: false } : undefined}
             />
           ) : isStreaming ? (
             <div className="tb-streaming-placeholder">

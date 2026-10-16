@@ -830,6 +830,48 @@ describe("useThunderChat ui_request host", () => {
  * the segments that turn produced. The feed renders `liveSegments`, which is the
  * running turn alone — that split is what these cases pin down.
  */
+describe("useThunderChat session switching", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("drops a late conversation load when the user has moved on", async () => {
+    installHarness();
+    const conversations: Record<string, { id: string; messages: { role: string; content: string }[] }> = {
+      sess_a: { id: "sess_a", messages: [{ role: "user", content: "aaa" }] },
+      sess_b: { id: "sess_b", messages: [{ role: "user", content: "bbb" }] }
+    };
+    let releaseA: ((value: unknown) => void) | undefined;
+    (window.agentResume.thunderChatGetConversation as any).mockImplementation(({ sessionId }: { sessionId: string }) => {
+      if (sessionId === "sess_a") {
+        return new Promise((resolve) => {
+          releaseA = resolve as (value: unknown) => void;
+        });
+      }
+      return Promise.resolve(conversations[sessionId] ?? null);
+    });
+    const { result } = renderHook(() => useThunderChat());
+
+    // Start on A but hold its load; switch to B, whose load resolves first.
+    let selectA: Promise<void> | undefined;
+    act(() => {
+      selectA = result.current.selectSession("sess_a");
+    });
+    await act(async () => {
+      await result.current.selectSession("sess_b");
+    });
+    expect(result.current.messages.map((m) => m.content)).toEqual(["bbb"]);
+
+    // A's load lands late: it must not repaint B's feed.
+    await act(async () => {
+      releaseA?.(conversations.sess_a);
+      await selectA;
+    });
+    expect(result.current.activeSessionId).toBe("sess_b");
+    expect(result.current.messages.map((m) => m.content)).toEqual(["bbb"]);
+  });
+});
+
 describe("useThunderChat turn splitting", () => {
   afterEach(() => {
     vi.clearAllMocks();

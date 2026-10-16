@@ -919,6 +919,9 @@ export function useThunderChat() {
           console.warn("[thunder-chat] could not read the session's mode:", err);
         });
       const conv = await desktopApi().thunderChatGetConversation({ sessionId });
+      // A fast switch to another session must not have this land on it: loads
+      // resolve in arrival order, not call order.
+      if (activeSessionIdRef.current !== sessionId) return;
       if (conv) {
         if (conv.model) {
           setSelectedModel(conv.model);
@@ -939,6 +942,9 @@ export function useThunderChat() {
               provider: "chat",
               sessionId
             });
+            // Same race as the conversation load above: the lookup resolved
+            // after the user moved on, so its binding belongs nowhere on screen.
+            if (activeSessionIdRef.current !== sessionId) return;
             if (linkedNoteId) {
               setTaskNoteId(linkedNoteId);
               setWorkspaceSource("gtd");
@@ -1050,6 +1056,9 @@ export function useThunderChat() {
         snapshot = await desktopApi()
           .thunderChatGetActiveStream({ sessionId })
           .catch(() => null);
+        // The buffered stream belongs to the session it was fetched for, not
+        // to whatever session is on screen now.
+        if (activeSessionIdRef.current !== sessionId) return;
         if (snapshot && !snapshot.isRunning) snapshot = null;
         if (snapshot) {
           const textTok = estimateTokenCount(snapshot.streamingText);
@@ -1119,6 +1128,9 @@ export function useThunderChat() {
 
       // Load persistent trace for this conversation and populate run metrics
       const trace = await loadTrace(sessionId);
+      // The trace and its metrics describe the fetched session; a switch that
+      // landed while it loaded ends this load, like the guards above.
+      if (activeSessionIdRef.current !== sessionId) return;
       if (trace?.metrics) {
         const m = trace.metrics;
         setLastRunMetrics({
