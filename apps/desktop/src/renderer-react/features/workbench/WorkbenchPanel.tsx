@@ -1902,11 +1902,27 @@ export function WorkbenchPanel(): ReactPortal | null {
       .sort((a, b) => b.updated_at_ms - a.updated_at_ms);
   }, [thunderConversations, sessionQuery, sessionFilter, taskScope, taskSessionsKnown, selectedProject, scopeProjects, taskSessionKeys]);
 
-  const visibleSessionRows = useMemo<WorkbenchSessionRow[]>(() => [
-    ...visiblePendingSessions.map((pending) => ({ kind: "pending" as const, pending })),
-    ...visibleSessions.map((session) => ({ kind: "session" as const, session })),
-    ...visibleThunderConversations.map((conversation) => ({ kind: "thunder" as const, conversation }))
-  ], [visiblePendingSessions, visibleSessions, visibleThunderConversations]);
+  /**
+   * Catalog rows and Thunder's own rows share one timeline: both stamp ms
+   * (`updatedAt` / `updated_at_ms`), so a conversation touched a minute ago
+   * sorts above a session from last week. Appending Thunder after the catalog
+   * is what pinned every conversation — however fresh — below every session,
+   * however old. Pending rows stay on top instead: a session that has not
+   * reached the catalog yet is a live terminal, not a point on the timeline.
+   */
+  const visibleSessionRows = useMemo<WorkbenchSessionRow[]>(() => {
+    const recency = (row: WorkbenchSessionRow) => row.kind === "pending"
+      ? row.pending.createdAt
+      : row.kind === "thunder" ? row.conversation.updated_at_ms : row.session.updatedAt;
+    const timeline = [
+      ...visibleSessions.map((session) => ({ kind: "session" as const, session })),
+      ...visibleThunderConversations.map((conversation) => ({ kind: "thunder" as const, conversation }))
+    ].sort((a, b) => recency(b) - recency(a));
+    return [
+      ...visiblePendingSessions.map((pending) => ({ kind: "pending" as const, pending })),
+      ...timeline
+    ];
+  }, [visiblePendingSessions, visibleSessions, visibleThunderConversations]);
   /** Left-panel note list: the task's note tree when filtered, else every note. */
   const visibleNotes = useMemo(() => {
     const q = noteQuery.trim().toLowerCase();
