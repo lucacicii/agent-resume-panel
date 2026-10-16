@@ -99,6 +99,7 @@ When the agent needs an answer — a plan to approve, an `ask`-mode permission p
 4. Closing a terminal/editor tab focuses the most recently used panel.  
 5. Terminal features depend on a healthy PTY host; other Desktop tabs still work if the terminal subsystem fails to load.  
 6. **Jump to top / bottom** controls appear in embedded terminals: for streaming CLIs (Codex) they scroll the terminal history, and for full-screen TUIs (Claude Code, Prime Agent, …) they scroll the agent's own viewport.
+7. When a change touches any referenced repository (one or more): create a new worktree on a new branch per affected repo — never commit straight to the shared branches. Repos that require PRs go through PR review and merge the PR(s) when the task is done; repos that allow direct push (e.g. a private GitLab, a personal GitHub repo) push the branch and merge it when the task is done, no PR required.
 
 ### Related
 
@@ -201,6 +202,7 @@ agent 需要你回答时——批准计划、`ask` 档位的授权、插件的�
 4. 关闭终端 / 编辑器标签后会激活最近使用的面板。  
 5. 终端依赖 PTY；若终端子系统加载失败，其它页签仍可使用。  
 6. 内嵌终端支持**跳到顶部 / 回到底部**：流式 CLI（Codex）直接滚动终端历史；全屏 TUI（Claude Code、Prime Agent 等）会滚动 Agent 自身的视图。
+7. 当改动涉及任一引用仓库（一个或多个）时：每个受影响仓库新建 worktree + 新分支 —— 不要直接提交到共享分支。要求 PR 的仓库走 PR 评审，任务完成时合并 PR；允许直推的仓库（如私有 GitLab、个人 GitHub 仓库）推分支、任务完成时合并即可，不强制开 PR。
 
 ### 相关文档
 
