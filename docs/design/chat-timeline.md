@@ -69,8 +69,8 @@ The rail therefore shows where the conversation is dense — a 40-step answer
 spreads out, a short exchange collapses to one point.
 
 **Overlap handling.** Anchors whose projected gap is below `DEFAULT_MIN_GAP`
-(12px, which is also the hit-box height in CSS) merge into the earlier dot,
-which gains a `count` and is drawn as a 2×10 bar instead of a 6px point. The
+(14px, which is also the hit-box height in CSS) merge into the earlier dot,
+which gains a `count` and is drawn as a 3×12 bar instead of an 8px point. The
 merged dot's `y` is the **average** of its members, so it sits where the group
 is rather than drifting to its first or last element. Clicking a merged dot
 jumps to its first member; the preview says how many it stands for.

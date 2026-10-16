@@ -19191,7 +19191,8 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   /* The composer follows in flow, so the feed reserves no bottom clearance. */
   min-height: 0;
   overflow-y: auto;
-  padding: 24px;
+  /* 40px right padding reserves clearance for the floating timeline rail (16px right + 20px width). */
+  padding: 24px 40px 24px 24px;
   display: flex;
   flex-direction: column;
 }
@@ -19223,9 +19224,8 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 .tb-chat-timeline {
   position: absolute;
   top: var(--space-3);
-  /* The feed keeps 24px of right padding; the rail's 20px sit inside it, so the
-     message column's right edge stays clear even in a narrow pane. */
-  right: var(--space-0-5);
+  /* Clearance from right edge: 16px puts it comfortably away from the window edge while sitting inside the feed's 40px padding. */
+  right: var(--space-4);
   bottom: var(--space-3);
   width: 20px;
   display: flex;
@@ -19295,7 +19295,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   position: absolute;
   left: 50%;
   width: 20px;
-  height: 12px;
+  height: 14px;
   margin: 0;
   padding: 0;
   transform: translate(-50%, -50%);
@@ -19309,8 +19309,8 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 .tb-timeline-dot-mark {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--color-label-tertiary);
   transition: transform var(--duration-fast) var(--ease-glide), background-color var(--duration-fast) linear;
@@ -19332,9 +19332,9 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 /* A collapsed dot stands for several messages: a bar instead of a point, so the
    rail reads as "dense here" rather than "one message here". */
 .tb-timeline-dot.is-grouped .tb-timeline-dot-mark {
-  width: 2px;
-  height: 10px;
-  border-radius: 1px;
+  width: 3px;
+  height: 12px;
+  border-radius: 1.5px;
 }
 
 .tb-timeline-dot.is-active .tb-timeline-dot-mark {
