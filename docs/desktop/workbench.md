@@ -61,7 +61,7 @@ Thunder is a separate Rust agent runtime with its own terminal client and a visu
 - **Thunder (TUI)** (`cli:thunder`): launches the native `thunder-tui` client in an embedded terminal, rooted at the task's directory. It keeps its conversations under `~/.thunder/conversations`, so it is not indexed into the panel session catalog.
 - **Thunder (Visual)** (`thunder:visual`): opens a visual chat pane backed by the Thunder daemon, the same backend as the board **Chat** view. The pane is linked to the open task and streams tools, file changes and `ask_user_question` requests like the ACP chat.
 
-Existing Thunder conversations are also listed in the Workbench session list (scoped to the task when one is open). Click a row to open it as a visual chat pane; right-click for **Open as visual chat** or **Resume in Thunder TUI**.
+Existing Thunder conversations are also listed in the Workbench session list (scoped to the task when one is open), carrying the same GTD status badge as catalog sessions. Click a row to open it as a visual chat pane; right-click for the same overlay menu the catalog sessions get — **Open as visual chat** and **Resume in Thunder TUI** on top, then floating note, mount note, auto rename, move to task and the GTD status tags, and finally **Delete Thunder conversation**. The delete asks for confirmation, removes the conversation from the Thunder store and closes its visual pane; a TUI terminal resuming it is left running. There is no transcript **Preview** (the visual chat already shows it) and no **Remove from panel** — Thunder has no catalog entry to hide.
 
 The binary is discovered automatically (a sibling checkout, the bundled copy under `Contents/Resources/thunder/bin`, `THUNDER_PATH`), and can be overridden in **Settings → Thunder** with the `thunder-daemon` / `thunder-tui` paths.
 
@@ -163,7 +163,7 @@ Thunder 是独立的 Rust Agent 运行时，自带终端客户端与可视化聊
 - **Thunder (TUI)**（`cli:thunder`）：在内嵌终端中以任务目录启动原生 `thunder-tui` 客户端。它使用自己的 `~/.thunder/conversations` 会话库，因此不会进入面板的会话索引。
 - **Thunder (可视化)**（`thunder:visual`）：打开可视化聊天 pane，与看板 **Chat** 视图共用同一套 Thunder daemon 后端；pane 会关联当前任务，并像 ACP 聊天一样流式展示工具、文件与 `ask_user_question` 反问。
 
-已有的 Thunder 会话也会出现在 Workbench 会话列表中（打开任务时按任务过滤）。点击行即作为可视化聊天打开；右键可选择 **以可视化聊天打开** 或 **在 Thunder TUI 中恢复**。
+已有的 Thunder 会话也会出现在 Workbench 会话列表中（打开任务时按任务过滤），并与其他会话一样显示 GTD 状态标记。点击行即作为可视化聊天打开；右键弹出的浮层菜单与 catalog 会话一致 —— 最上面是 **以可视化聊天打开** 与 **在 Thunder TUI 中恢复**，其后是浮动便签、挂载笔记、自动重命名、移动到 task 与 GTD 状态标签，最后是 **删除 Thunder 会话**（danger）。删除会二次确认，从 Thunder 会话库中移除该会话并关闭其可视化 pane；正在恢复它的 TUI 终端保持运行。菜单里没有 **预览**（可视化聊天本身即转录）与 **从面板移除** —— Thunder 不走 catalog，没有可隐藏的条目。
 
 二进制会自动探测（同级 checkout、`Contents/Resources/thunder/bin` 打包副本或 `THUNDER_PATH`），也可在 **设置 → Thunder** 中通过 `thunder-daemon` / `thunder-tui` 路径覆盖。
 

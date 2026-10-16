@@ -1192,13 +1192,175 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-thunder")).toBeTruthy());
 
     // The row context menu can resume the same conversation in the native TUI.
-    chooseContextMenuItem("Resume in Thunder TUI");
     fireEvent.contextMenu(document.querySelector(".wb-list-item") as HTMLElement);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Resume in Thunder TUI" }));
     await waitFor(() => expect(window.agentResume.workbenchNewSession).toHaveBeenCalledWith(expect.objectContaining({
       cwd: "/work/app",
       provider: "thunder",
       resumeSessionId: "sess_external"
     })));
+  });
+
+  const thunderConversation = (overrides: Record<string, unknown> = {}) => ({
+    id: "sess_external",
+    title: "Earlier Thunder chat",
+    workspace: "/work/app",
+    status: "active",
+    message_count: 2,
+    turn_count: 1,
+    total_tokens: 5,
+    created_at_ms: Date.now() - 1000,
+    updated_at_ms: Date.now() - 500,
+    ...overrides
+  });
+
+  /** Thunder rows need the full visual-chat stub set, even when a test never opens one. */
+  const thunderWorkbenchApi = (overrides: Record<string, unknown> = {}) => ({
+    getI18nBundle: async () => ({ locale: "en", messages: {
+      "desktop.workbench.newSession": "New session",
+      "desktop.workbench.thunderChat": "Thunder Chat",
+      "desktop.workbench.openThunderChat": "Open as visual chat",
+      "desktop.workbench.resumeThunderTui": "Resume in Thunder TUI",
+      "desktop.workbench.preview": "Preview",
+      "desktop.workbench.mountNote": "Mount note",
+      "desktop.workbench.addFloatingNote": "Add floating note",
+      "desktop.workbench.openFloatingNote": "Open floating note",
+      "desktop.workbench.autoRename": "Auto rename",
+      "desktop.workbench.moveToTask": "Move to task",
+      "desktop.workbench.removeFromPanel": "Remove from panel",
+      "desktop.workbench.setGtdStatus": "Set GTD status",
+      "desktop.workbench.clearGtdStatus": "Clear GTD status",
+      "desktop.workbench.gtdStatusLabel": "GTD status: {0}",
+      "desktop.workbench.gtdStatusSaveFailed": "Save failed: {0}",
+      "desktop.workbench.gtdStatus.inbox": "To do",
+      "desktop.workbench.gtdStatus.next": "In progress",
+      "desktop.workbench.gtdStatus.waiting": "Waiting",
+      "desktop.workbench.gtdStatus.done": "Done",
+      "desktop.workbench.deleteThunderConversation": "Delete Thunder conversation",
+      "desktop.workbench.deleteThunderConversationConfirm": "Delete Thunder conversation \"{0}\"?",
+      "desktop.workbench.selectSessionHint": "Select a session",
+      "desktop.workbench.selectProjectHint": "Select a project",
+      "desktop.gtd.unmarked": "Unmarked",
+      "desktop.gtd.unmarkedHint": "No GTD status",
+      "desktop.common.delete": "Delete",
+      "desktop.common.loading": "Loading…"
+    } }),
+    onLocaleChanged: () => () => undefined,
+    onWorkbenchCmdT: () => () => undefined,
+    onWorkbenchCmdW: () => () => undefined,
+    onTerminalData: () => () => undefined,
+    onTerminalExit: () => () => undefined,
+    onTerminalRespawned: () => () => undefined,
+    listProjectAliases: async () => ({}),
+    getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+    listSessions: async () => [],
+    workbenchGetProjectEditor: async () => ({ selected: "auto", available: false, editor: null }),
+    contextMenuShow,
+    workbenchNewSession: vi.fn(async () => ({ mode: "external-system", cwd: "/work/app", external: true })),
+    thunderGetStatus: async () => ({ available: true, repoPath: "/thunder", daemonPath: "/thunder/daemon", tuiPath: "/thunder/tui", models: [] }),
+    thunderChatListConversations: async () => [thunderConversation()],
+    thunderChatGetConversation: async () => ({ ...thunderConversation(), messages: [] }),
+    thunderChatGetActiveStream: async () => null,
+    thunderChatGetTrace: async () => null,
+    onThunderChatEvent: () => () => undefined,
+    onThunderModelsChanged: () => () => undefined,
+    onThunderModeChanged: () => () => undefined,
+    onThunderUiRequest: () => () => undefined,
+    thunderChatGetPermissionState: async () => ({ mode: "yolo" }),
+    thunderChatSetMode: async () => ({ mode: "yolo" }),
+    thunderChatAnswerUi: async () => true,
+    notesRead: async () => ({ record: { work: { projects: [] } }, content: "" }),
+    notesListTasks: async () => [],
+    ...overrides
+  } as unknown as typeof window.agentResume);
+
+  it("gives a Thunder row the overlay session menu plus its two Thunder actions", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    window.agentResume = thunderWorkbenchApi();
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateTaskDirectory("/work/app");
+
+    const row = await screen.findByRole("button", { name: /Earlier Thunder chat/ });
+    fireEvent.contextMenu(row);
+
+    // The catalog sessions' menu, rendered as the same overlay (not a native NSMenu).
+    const openAsChat = await screen.findByRole("menuitem", { name: "Open as visual chat" });
+    expect(openAsChat.closest(".wb-session-context-menu")).toBeTruthy();
+    for (const label of ["Resume in Thunder TUI", "Add floating note", "Mount note", "Auto rename", "Move to task", "Delete Thunder conversation"]) {
+      expect(screen.getByRole("menuitem", { name: label })).toBeTruthy();
+    }
+    expect(screen.getByRole("menuitemradio", { name: "Waiting" })).toBeTruthy();
+    // Neither has a Thunder equivalent: no transcript preview, and no catalog hide.
+    expect(screen.queryByRole("menuitem", { name: "Preview" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Remove from panel" })).toBeNull();
+  });
+
+  it("shows and sets a Thunder row's GTD status", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const setSessionGtdStatus = vi.fn(async () => ({ ok: true }));
+    window.agentResume = thunderWorkbenchApi({
+      listSessionGtdStatuses: async () => ({ "thunder:sess_external": "next" }),
+      setSessionGtdStatus
+    });
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateTaskDirectory("/work/app");
+
+    const row = await screen.findByRole("button", { name: /Earlier Thunder chat/ });
+    await waitFor(() => expect(row.querySelector(".wb-gtd-status-badge")?.textContent).toBe("In progress"));
+
+    fireEvent.contextMenu(row);
+    const waitingTag = await screen.findByRole("menuitemradio", { name: "Waiting" });
+    expect(waitingTag.classList.contains("wb-gtd-context-tag")).toBe(true);
+    fireEvent.click(waitingTag);
+    await waitFor(() => expect(setSessionGtdStatus).toHaveBeenCalledWith({ provider: "thunder", id: "sess_external", status: "waiting" }));
+    expect(row.querySelector(".wb-gtd-status-badge")?.textContent).toBe("Waiting");
+  });
+
+  it("deletes a Thunder conversation from the row menu, closing its visual pane", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const conversations = [thunderConversation()];
+    // A fresh array per call: the panel stores the list as state, and reusing the
+    // reference would let React bail out of the re-render after the delete.
+    const thunderChatListConversations = vi.fn(async () => [...conversations]);
+    const thunderChatDeleteConversation = vi.fn(async () => {
+      conversations.length = 0;
+      return true;
+    });
+    window.agentResume = thunderWorkbenchApi({
+      thunderChatListConversations,
+      thunderChatDeleteConversation
+    });
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateTaskDirectory("/work/app");
+
+    const row = await screen.findByRole("button", { name: /Earlier Thunder chat/ });
+    fireEvent.click(row);
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-thunder")).toBeTruthy());
+    const listCallsBeforeDelete = thunderChatListConversations.mock.calls.length;
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete Thunder conversation" }));
+
+    await waitFor(() => expect(thunderChatDeleteConversation).toHaveBeenCalledWith({ sessionId: "sess_external" }));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Earlier Thunder chat"));
+    // The pane and the row both go: neither may point at a conversation that is gone.
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-thunder")).toBeNull());
+    expect(thunderChatListConversations.mock.calls.length).toBeGreaterThan(listCallsBeforeDelete);
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Earlier Thunder chat/ })).toBeNull());
+    confirm.mockRestore();
   });
 
   it("binds a Thunder TUI pane to its conversation, resuming by id and discovering a fresh one", async () => {
@@ -1266,8 +1428,8 @@ describe("WorkbenchPanel", () => {
     await screen.findByText("Earlier Thunder chat");
 
     // Resuming from the row's context menu knows the conversation up front.
-    chooseContextMenuItem("Resume in Thunder TUI");
     fireEvent.contextMenu(document.querySelector(".wb-list-item") as HTMLElement);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Resume in Thunder TUI" }));
     await waitFor(() => expect(previewSession).toHaveBeenCalledWith({ provider: "thunder", id: "sess_external" }));
 
     // A fresh TUI mints its conversation in-process: the pane starts fullscreen
