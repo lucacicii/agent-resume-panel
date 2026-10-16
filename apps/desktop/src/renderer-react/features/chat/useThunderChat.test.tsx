@@ -727,6 +727,102 @@ describe("useThunderChat ui_request host", () => {
       cancelled: true
     });
   });
+
+  it("leaves an approval receipt with the plan folded in, so the dialog's closing is not a disappearance", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+    act(() =>
+      harness.emitUi({ ...reviewRequest, content: "# Plan\n\n1. Do the thing" })
+    );
+
+    await act(async () => {
+      await result.current.answerUiRequest({ value: "Yes, but ask before each edit" });
+    });
+
+    const rows = result.current.messages;
+    const receipt = rows[rows.length - 1];
+    expect(receipt.role).toBe("user");
+    expect(receipt.content).toContain("✅ 已批准计划：Yes, but ask before each edit");
+    expect(receipt.content).toContain("Do the thing");
+    expect(receipt.content).toContain("<details>");
+  });
+
+  it("leaves a waiting receipt for keep-planning, then pastes the follow-up feedback verbatim", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+    act(() => harness.emitUi(reviewRequest));
+
+    await act(async () => {
+      await result.current.answerUiRequest({ value: "No, keep planning" });
+    });
+
+    let rows = result.current.messages;
+    expect(rows[rows.length - 1].content).toContain("📝 已选择继续规划");
+
+    // The second half of the two-step flow: the follow-up input's own receipt.
+    act(() =>
+      harness.emitUi({
+        requestId: "ui_2",
+        sessionId: "sess_a",
+        taskId: "task_1",
+        source: "host",
+        ui: "input",
+        title: "What should change in the plan?"
+      })
+    );
+    await act(async () => {
+      await result.current.answerUiRequest({ value: "start with the parser" });
+    });
+
+    rows = result.current.messages;
+    expect(rows[rows.length - 1].content).toContain("💬 补充意见已提交");
+    expect(rows[rows.length - 1].content).toContain("start with the parser");
+  });
+
+  it("leaves a dismissal receipt so closing reads as a decision, not silence", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+    act(() => harness.emitUi(reviewRequest));
+
+    await act(async () => {
+      await result.current.answerUiRequest({ cancelled: true });
+    });
+
+    const rows = result.current.messages;
+    expect(rows[rows.length - 1].content).toContain("🚫 已关闭");
+    expect(rows[rows.length - 1].content).toContain("Approve this plan?");
+  });
+
+  it("leaves the receipt exactly once when answering a parked dialog after switching to it", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+    // Parked for another session while sess_a is on screen: no card, no answer.
+    act(() => harness.emitUi({ ...reviewRequest, requestId: "ui_2", sessionId: "sess_b" }));
+    expect(result.current.pendingUiRequest).toBeNull();
+    await act(async () => {
+      await result.current.selectSession("sess_b");
+    });
+    const before = result.current.messages.length;
+    await act(async () => {
+      await result.current.answerUiRequest({ value: "Yes, but ask before each edit" });
+    });
+    // The receipt belongs to sess_b (now on screen, so it lands there) —
+    // exactly once, not once per session visited.
+    expect(result.current.messages.length).toBe(before + 1);
+    expect(result.current.messages[before].content).toContain("✅ 已批准计划");
+  });
 });
 
 /**

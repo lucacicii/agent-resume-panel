@@ -622,6 +622,63 @@ function turnFromMessage(message: ThunderChatMessage, positionInRun: number): Li
   };
 }
 
+/**
+ * The `review` answers that count as approving the plan under review. The
+ * daemon matches the answer against the label it sent, so the check is on the
+ * exact option strings (see ChatUiRequestCard: the clicked label travels back
+ * verbatim). Anything else on a `review` is "keep planning" or unknown.
+ */
+const REVIEW_APPROVE_OPTIONS: ReadonlySet<string> = new Set([
+  "Yes, and auto-accept edits",
+  "Yes, but ask before each edit",
+  "Yes, fully autonomous"
+]);
+
+/**
+ * Build the local receipt left behind when the user answers a blocking
+ * `ui_request` dialog. Returns the receipt text, or null when there is nothing
+ * worth saying (an unknown value that should not be dressed up as a decision).
+ */
+function buildUiAnswerReceipt(
+  pending: Pick<ThunderUiRequest, "ui" | "title" | "path" | "content">,
+  answer: { value?: string; confirmed?: boolean; cancelled?: boolean }
+): string | null {
+  if (answer.cancelled) {
+    return `🚫 已关闭“${pending.title}”（视为拒绝，agent 将失败关闭继续）`;
+  }
+  switch (pending.ui) {
+    case "review": {
+      if (answer.value === "No, keep planning") {
+        // First half of the two-step flow: the follow-up `input` leaves its
+        // own receipt when it arrives.
+        return "📝 已选择继续规划，等待补充意见…";
+      }
+      if (answer.value && REVIEW_APPROVE_OPTIONS.has(answer.value)) {
+        const head = `✅ 已批准计划：${answer.value}`;
+        if (!(pending.content ?? "").trim()) return head;
+        return (
+          `${head}\n` +
+          `<details><summary>查看已批准的计划书（${pending.path ?? ""}）</summary>\n\n${pending.content}\n\n</details>`
+        );
+      }
+      return null;
+    }
+    case "input":
+    case "editor":
+      // The follow-up half: title is usually "What should change in the plan?".
+      // Paste the feedback verbatim so the record holds what was actually sent.
+      return answer.value ? `💬 补充意见已提交：\n\n${answer.value}` : null;
+    case "confirm":
+      if (answer.confirmed === true) return "✅ 已允许";
+      if (answer.confirmed === false) return "⛔ 已拒绝";
+      return null;
+    case "select":
+      return answer.value ? `✅ 已选择：${answer.value}` : null;
+    default:
+      return null;
+  }
+}
+
 export function useThunderChat() {
   const [conversations, setConversations] = useState<ThunderConversationSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -1220,8 +1277,33 @@ export function useThunderChat() {
     async (answer: { value?: string; confirmed?: boolean; cancelled?: boolean }) => {
       const pending = pendingUiRequest;
       if (!pending) return;
+      // Snapshot before clearing: the card is gone the moment this returns, and
+      // the receipt below is built from the snapshot, not from live state.
+      const snapshot = {
+        sessionId: pending.sessionId,
+        ui: pending.ui,
+        title: pending.title,
+        path: pending.path,
+        content: pending.content
+      };
       pendingUiRequestsRef.current.delete(pending.sessionId ?? "");
       setPendingUiRequest(null);
+      // A parked dialog answered from another session leaves no receipt there:
+      // the receipt belongs to the conversation that raised it.
+      if (!snapshot.sessionId || snapshot.sessionId === activeSessionIdRef.current) {
+        const receipt = buildUiAnswerReceipt(snapshot, answer);
+        if (receipt) {
+          // Local receipt only: it is appended to the feed so the answered
+          // dialog leaves a trace, but it is NOT written back to the daemon —
+          // the daemon has no mid-run append entry, and a reopened session
+          // reads back only what the daemon persisted. The durable record of
+          // the decision is the daemon's tool result (a separate change).
+          // `buildConversationRows` passes `user` rows through untouched, so a
+          // plain {role, content} receipt is all the feed needs — no new role.
+          const receiptMsg: ThunderChatMessage = { role: "user", content: receipt };
+          setMessages((prev) => [...prev, receiptMsg]);
+        }
+      }
       try {
         await desktopApi().thunderChatAnswerUi({
           requestId: pending.requestId,

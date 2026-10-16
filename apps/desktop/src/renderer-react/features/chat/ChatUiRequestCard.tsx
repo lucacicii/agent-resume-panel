@@ -23,6 +23,18 @@ import { StreamdownRenderer } from "../../components/StreamdownRenderer";
  * state, and the daemon raises one dialog at a time, so a new dialog is a new
  * card rather than the previous one's draft.
  */
+/**
+ * A collapsed peek at a plan under review: at most the first 6 lines or 300
+ * characters. The full plan is rendered expanded in the feed's
+ * `ChatPlanReviewBlock` while this dialog is pending, so the docked card
+ * stays compact.
+ */
+function summarizeReviewContent(content?: string | null): string {
+  if (!content) return "";
+  const firstLines = content.split("\n").slice(0, 6).join("\n");
+  return firstLines.length > 300 ? `${firstLines.slice(0, 300)}…` : firstLines;
+}
+
 export function ChatUiRequestCard({
   request,
   onAnswer
@@ -63,11 +75,15 @@ export function ChatUiRequestCard({
       {request.ui === "review" ? (
         <>
           {request.path ? <div className="tb-ui-request-path">{request.path}</div> : null}
-          {/* The document *is* the thing being approved, so it gets the body
-              rather than a summary line above the buttons. */}
-          <div className="tb-ui-request-document">
-            <StreamdownRenderer content={request.content ?? ""} />
-          </div>
+          {/*
+           * Collapsed peek only: the full plan is rendered expanded in the
+           * feed's `ChatPlanReviewBlock` while this dialog is pending. Kept
+           * as <details> (closed by default) so the docked card stays small.
+           */}
+          <details className="tb-ui-request-document is-summary">
+            <summary className="tb-ui-request-summary">计划书摘要</summary>
+            <StreamdownRenderer content={summarizeReviewContent(request.content)} />
+          </details>
         </>
       ) : null}
 

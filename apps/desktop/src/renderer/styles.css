@@ -20574,6 +20574,87 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   white-space: pre-wrap;
 }
 
+/*
+ * The plan under review, pending edition: a full-width block in the
+ * transcript feed, expanded by default so the whole plan is readable in
+ * place. Its docked sibling (`ChatUiRequestCard`) keeps only a collapsed
+ * peek. Answering unmounts the dialog, which unmounts this block — the
+ * durable record is A's collapsed local receipt, not this block.
+ */
+.tb-plan-review-block {
+  max-width: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border-radius: var(--radius-lg);
+  background: var(--chat-compose-bg, var(--panel));
+}
+
+.tb-plan-review-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12.5px;
+  color: var(--color-label-primary, var(--text));
+}
+
+.tb-plan-review-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  color: var(--color-label-secondary, var(--muted));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tb-plan-review-badge {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  color: color-mix(in srgb, var(--color-accent) 80%, var(--color-label-primary, var(--text)));
+}
+
+.tb-plan-review-body {
+  min-width: 0;
+}
+
+.tb-plan-review-summary {
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tb-plan-review-document {
+  max-height: 48vh;
+  overflow: auto;
+  margin-top: var(--space-1-5);
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-label-primary, var(--text)) 3%, transparent);
+  font-size: 12.5px;
+}
+
+/* The docked card keeps only a collapsed peek at the plan. */
+.tb-ui-request-document.is-summary {
+  max-height: none;
+}
+
+.tb-ui-request-summary {
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .tb-ui-request-options {
   display: flex;
   flex-wrap: wrap;

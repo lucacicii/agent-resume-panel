@@ -8,6 +8,7 @@ import { buildTimelineItems, scrollTopForAnchor } from "./timelineModel";
 import { ChatComposer } from "./ChatComposer";
 import { ChatQuestionBubble } from "./ChatQuestionBubble";
 import { ChatUiRequestCard } from "./ChatUiRequestCard";
+import { ChatPlanReviewBlock } from "./ChatPlanReviewBlock";
 import { ChatEmptyState } from "./ChatEmptyState";
 import { AgentStatusChip } from "./AgentStatusChip";
 import { TurnDetailOverlay, TurnDots } from "./TurnDots";
@@ -650,6 +651,22 @@ export function ChatMain({
                   turnDots={pileOf("live")}
                 />
               )}
+
+              {/*
+               * The plan under review, pending edition: expanded and in the
+               * transcript flow so it stays readable and reviewable after the
+               * run scrolled past it. Answering unmounts the dialog, which
+               * unmounts this block with it — A's local receipt
+               * (`buildUiAnswerReceipt`) leaves the collapsed record behind,
+               * so this block never has to survive its own answer.
+               */}
+              {pendingUiRequest?.ui === "review" ? (
+                <ChatPlanReviewBlock
+                  path={pendingUiRequest.path}
+                  content={pendingUiRequest.content}
+                  title={pendingUiRequest.title}
+                />
+              ) : null}
 
               <div className="tb-scroll-anchor" />
             </div>
