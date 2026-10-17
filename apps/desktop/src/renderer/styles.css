@@ -7103,6 +7103,205 @@ body.is-pane-resizing-v * {
   white-space: nowrap;
 }
 
+/* ---------------------------------------------------------------- worktrees */
+/* A checkout control: the repository's main working tree, or one of its
+   worktrees. It shares the native-menu trigger with the repository and branch
+   pickers so the three read as one family of controls. */
+
+.wb-worktree-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Unlike the git repository picker this sits beside a pane title, so it takes
+   only the room its label needs and yields when the head is crowded. */
+.wb-worktree-select {
+  flex: 0 1 auto;
+  max-width: 220px;
+  gap: var(--space-1);
+  justify-content: flex-start;
+}
+
+.wb-worktree-select.is-pinned {
+  color: var(--color-warning);
+  border-color: color-mix(in srgb, var(--color-warning) 55%, transparent);
+}
+
+.wb-worktree-pin {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-label-tertiary);
+}
+
+.wb-worktree-pin:hover {
+  background: var(--color-fill-secondary);
+  color: var(--color-label-secondary);
+}
+
+.wb-worktree-pin[aria-pressed="true"] {
+  color: var(--color-warning);
+  background: var(--color-warning-subtle);
+}
+
+/* The header says which checkout it is naming; the path alone would read as a
+   folder unrelated to the repository the task references. */
+.wb-detail-project-path-worktree,
+.wb-terminal-status-worktree {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-micro);
+  color: var(--color-label-secondary);
+}
+
+.wb-detail-project-path-worktree {
+  padding: 1px var(--space-1-5);
+  border-radius: 999px;
+  background: var(--color-fill-secondary);
+}
+
+/* The task card's badge: which worktree this workbench is looking at. */
+.wb-task-worktree {
+  appearance: none;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  padding: 1px var(--space-1-5);
+  border: 1px solid var(--color-separator);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-label-secondary);
+  font-family: inherit;
+  font-size: 10px;
+}
+
+.wb-task-worktree:hover {
+  color: var(--text);
+  background: var(--color-fill-secondary);
+}
+
+/* ---- the task settings dialog ---- */
+
+.wb-task-settings-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.wb-task-settings-title {
+  font-size: var(--font-size-title);
+  font-weight: 600;
+}
+
+.wb-task-settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.wb-task-settings-row,
+.wb-worktree-settings-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-sm);
+}
+
+.wb-task-settings-name {
+  flex: 0 0 auto;
+  font-weight: 500;
+}
+
+.wb-task-settings-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-label-tertiary);
+  font-size: var(--font-size-micro);
+}
+
+/* A path long enough to be cut is read better from its end, but bidi tricks for
+   that reorder a leading slash: the full value stays in the tooltip instead. */
+.wb-task-settings-path.is-root {
+  flex: 1 1 100%;
+  text-align: right;
+}
+
+.wb-task-settings-empty {
+  margin: 0;
+  font-size: var(--font-size-micro);
+}
+
+.wb-worktree-reminder {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin: 0;
+  color: var(--color-warning);
+}
+
+.wb-worktree-settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.wb-worktree-settings-repo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.wb-worktree-settings-repo-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.wb-worktree-settings-branch {
+  flex: 0 0 auto;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-micro);
+}
+
+.wb-worktree-state {
+  flex: 0 0 auto;
+  padding: 1px var(--space-1-5);
+  border-radius: 999px;
+  background: var(--color-fill-secondary);
+  color: var(--color-label-secondary);
+  font-size: 10px;
+}
+
+.wb-worktree-state.is-ok { color: var(--color-success); }
+.wb-worktree-state.is-warning { color: var(--color-warning); }
+.wb-worktree-state.is-missing { color: var(--color-label-tertiary); text-decoration: line-through; }
+
 /* The label inside a native-menu select trigger; the chevron stays put. */
 .native-menu-select-label {
   min-width: 0;

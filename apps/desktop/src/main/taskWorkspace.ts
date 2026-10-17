@@ -53,6 +53,19 @@ export function taskWorkspaceDir(panelHome: string, noteId: string): string {
 }
 
 /**
+ * Where a task's worktrees live: one directory inside its own workspace, so the
+ * location is derived from the note id and therefore survives a task rename, and
+ * every checkout the panel knows about sits under one path prefix it can match.
+ *
+ * The workspace itself is never a repository; `.worktrees/` holds checkouts of
+ * the repositories the task *references*, which live wherever the user keeps
+ * them.
+ */
+export function taskWorktreeRoot(panelHome: string, noteId: string): string {
+  return path.join(taskWorkspaceDir(panelHome, noteId), ".worktrees");
+}
+
+/**
  * True for directories the panel owns itself (`<panelHome>/.desktop`: task
  * workspaces, scratch sessions, stores). They are implementation details of the
  * app, never repositories a task references, so they must not leak into a

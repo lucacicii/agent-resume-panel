@@ -226,7 +226,13 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   /** Search scope target: the folder itself, or the parent folder for files. */
   onFindInFolder?: (directoryPath: string) => void | Promise<void>;
   onError: (message: string) => void;
-}>(function WorkbenchFileExplorer({ roots, activePath = "", onOpenFile, onOpenPreview, onShowGitHistory, onFindInFolder, onError }, ref) {
+  /**
+   * A control for the pane head, after the title. The explorer owns its head but
+   * not what belongs in it: which checkout the tree is showing is the panel's
+   * business, and passing it in keeps this component a pure view of `roots`.
+   */
+  headExtra?: React.ReactNode;
+}>(function WorkbenchFileExplorer({ roots, activePath = "", onOpenFile, onOpenPreview, onShowGitHistory, onFindInFolder, onError, headExtra }, ref) {
   const { t } = useI18n();
   const [directories, setDirectories] = useState<Record<string, DirectoryEntry[]>>({});
   const [openDirectories, setOpenDirectories] = useState<Set<string>>(new Set());
@@ -623,6 +629,7 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   return <>
     <div className="wb-side-pane-head">
       <span className="wb-side-pane-title">{t("desktop.workbench.sidePanelExplorer")}</span>
+      {headExtra}
       {roots.length ? <button type="button" className="wb-git-action-btn" disabled={refreshing} onClick={() => void refreshManually()} aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")}><ThemeIcon name="refresh" size={ICON_SIZE.default} className={refreshing ? "spin" : undefined} /></button> : null}
     </div>
     <div className="wb-file-tree wb-explorer-file-tree" role="tree" tabIndex={0} onKeyDown={handleTreeKeyDown}>

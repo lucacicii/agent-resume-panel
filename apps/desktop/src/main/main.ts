@@ -135,6 +135,7 @@ import {
   setWorkbenchWatcherActive
 } from "./workbenchWatcher";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
+import { registerWorktreeIpc } from "./worktreeGit";
 import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
 import {
   closeAllTaskWindows,
@@ -4039,6 +4040,7 @@ app.whenReady().then(async () => {
   registerWorkbenchFsIpc();
   registerWorkbenchWatcherIpc(() => mainWindow, (sender) => isTaskWindowSender(sender));
   registerWorkbenchGitIpc(() => app.getLocale());
+  registerWorktreeIpc();
   registerWorkbenchScriptsIpc();
   registerBrowserIpc({
     getMainWindow: () => mainWindow,

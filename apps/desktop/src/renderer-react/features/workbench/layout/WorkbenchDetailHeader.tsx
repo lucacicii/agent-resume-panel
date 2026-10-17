@@ -16,7 +16,9 @@ export function WorkbenchDetailHeader({
   onOpenBranchMenu,
   onToggleSide,
   centerContent,
-  gitDirtyCount = 0
+  gitDirtyCount = 0,
+  directoryWorktree = null,
+  branchStatusWorktree = null
 }: {
   /** What the header names: the task, or a bare project selection. */
   title: string;
@@ -36,6 +38,13 @@ export function WorkbenchDetailHeader({
   centerContent?: React.ReactNode;
   /** Total staged + unstaged changes in the active git repository. */
   gitDirtyCount?: number;
+  /**
+   * The branch of the worktree `directory` points at, when it is one. The path
+   * alone would read as an unrelated folder, so the header names the checkout.
+   */
+  directoryWorktree?: { branch: string; path: string } | null;
+  /** The branch of the worktree the active terminal runs in, when it is one. */
+  branchStatusWorktree?: string | null;
 }): React.JSX.Element {
   const { t } = useI18n();
   // Accelerators are surfaced in tooltips so the keyboard path is discoverable
@@ -54,6 +63,9 @@ export function WorkbenchDetailHeader({
         {imageUrl ? <img className="wb-detail-task-image" src={imageUrl} alt="" aria-hidden="true" /> : null}
         <span className="wb-detail-project-label-text">{title}</span>
         {directory ? <span className="wb-detail-project-path">{directory}</span> : null}
+        {directoryWorktree ? (
+          <span className="wb-detail-project-path-worktree" title={directoryWorktree.path}>⌥ {directoryWorktree.branch}</span>
+        ) : null}
         {directory && onRevealDirectory ? (
           <button
             type="button"
@@ -79,6 +91,9 @@ export function WorkbenchDetailHeader({
               <ThemeIcon name="git-branch" size={ICON_SIZE.inline} aria-hidden="true" />
               <span className="wb-terminal-status-branch-label">{branchStatusLabel}</span>
             </button>
+            {branchStatusWorktree ? (
+              <span className="wb-terminal-status-worktree" title={branchStatusWorktree}>⌥ {branchStatusWorktree}</span>
+            ) : null}
           </div>
         ) : null}
         <div className="wb-detail-tools">
