@@ -836,6 +836,12 @@ export class ThunderClient {
       backgroundMd: string;
       projects: string[];
       noteAbsPath?: string;
+      /**
+       * How this task wants its work checked out, from the same address table the
+       * managed block is written from. Absent means the task has no worktree
+       * convention, and the plain bilingual rule below stands in for it.
+       */
+      worktreeLines?: string[];
     };
     model?: string;
     sessionId?: string;
@@ -883,7 +889,11 @@ export class ThunderClient {
               `# Active GTD Task: ${ctx.title || "Untitled Task"} (Status: ${ctx.status || "inbox"})`,
               options.workspaceDir ? `Workspace Directory: ${options.workspaceDir}` : undefined,
               ctx.projects && ctx.projects.length > 0
-                ? `Shared Repositories / 共享目录:\n${ctx.projects.map((p) => `- ${p}`).join("\n")}\nWhen a change touches any referenced repository (one or more): create a new worktree on a new branch per affected repo — never commit straight to the shared branches. Repos that require PRs go through PR review and merge the PR(s) when the task is done; repos that allow direct push (e.g. a private GitLab, a personal GitHub repo) push the branch and merge it when the task is done, no PR required. / 当改动涉及任一引用仓库（一个或多个）时：每个受影响仓库新建 worktree + 新分支 —— 不要直接提交到共享分支。要求 PR 的仓库走 PR 评审，任务完成时合并 PR；允许直推的仓库（如私有 GitLab、个人 GitHub 仓库）推分支、任务完成时合并即可，不强制开 PR。`
+                ? `Shared Repositories / 共享目录:\n${ctx.projects.map((p) => `- ${p}`).join("\n")}\n${
+                  ctx.worktreeLines?.length
+                    ? ctx.worktreeLines.join("\n")
+                    : "When a change touches any referenced repository (one or more): create a new worktree on a new branch per affected repo — never commit straight to the shared branches. Repos that require PRs go through PR review and merge the PR(s) when the task is done; repos that allow direct push (e.g. a private GitLab, a personal GitHub repo) push the branch and merge it when the task is done, no PR required. / 当改动涉及任一引用仓库（一个或多个）时：每个受影响仓库新建 worktree + 新分支 —— 不要直接提交到共享分支。要求 PR 的仓库走 PR 评审，任务完成时合并 PR；允许直推的仓库（如私有 GitLab、个人 GitHub 仓库）推分支、任务完成时合并即可，不强制开 PR。"
+                }`
                 : undefined,
               ctx.backgroundMd?.trim()
                 ? `## GTD Task Background Knowledge / 背景知识:\n${ctx.backgroundMd.trim()}`

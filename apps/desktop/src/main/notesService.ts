@@ -33,8 +33,10 @@ import {
   sessionContextFile,
   taskKnowledgeText,
   taskWorkspaceDir,
+  worktreePolicyLines,
   type TaskAddress
 } from "./taskWorkspace";
+import { worktreeContextForTask, type TaskWorktreeContext } from "./worktreeGit";
 
 let notesStore: NotesStore | null = null;
 let notesStoreKey = "";
@@ -116,8 +118,16 @@ function projectLabel(projectPath: string): string {
 /**
  * Allocate (idempotently) the task's neutral workspace and refresh the
  * address table in its `AGENTS.md` / `CLAUDE.md`.
+ *
+ * The address it built is returned alongside, because every other place that
+ * needs to describe the task to an agent — the Thunder preamble, the sandbox's
+ * extra roots — must describe it the same way.
  */
-export async function notesEnsureTaskWorkspace(noteId: string): Promise<{ dir: string }> {
+export async function notesEnsureTaskWorkspace(noteId: string): Promise<{
+  dir: string;
+  address: TaskAddress;
+  worktrees: TaskWorktreeContext;
+}> {
   const settings = await loadSettings();
   const panelHome = effectivePanelHome(settings);
   const paths = await loadPanelDbPaths(settings);
@@ -133,6 +143,15 @@ export async function notesEnsureTaskWorkspace(noteId: string): Promise<{ dir: s
     sessionProjects: fromSessions[noteId] ?? []
   });
 
+  const worktrees = await worktreeContextForTask({
+    panelHome,
+    desktopDb: paths.desktopDb,
+    noteId,
+    // Keyed by the path the task declares, which is what the note and the panel
+    // both spell a repository with — not the git root it resolves to.
+    repos: projects.map((projectPath) => ({ repoRoot: projectPath, label: projectLabel(projectPath) }))
+  });
+
   const address: TaskAddress = {
     noteId,
     title: record.title || extractTitle(doc.body) || record.filename || noteId,
@@ -140,10 +159,15 @@ export async function notesEnsureTaskWorkspace(noteId: string): Promise<{ dir: s
     next: doc.frontmatter.next,
     decision: doc.frontmatter.decision,
     noteAbsPath: absFromRelMdPath(panelHome, record.relMdPath),
+    // The worktree convention is opt-in per task, so the block only gains a
+    // location while the switch is on; its absence is what keeps the text
+    // byte-identical for every task that never turned it on.
+    ...(worktrees.enabled ? { worktreeRoot: worktrees.root } : {}),
     projects: await Promise.all(projects.map(async (projectPath) => ({
       path: projectPath,
       label: projectLabel(projectPath),
-      exists: await fs.stat(projectPath).then(() => true).catch(() => false)
+      exists: await fs.stat(projectPath).then(() => true).catch(() => false),
+      ...(worktrees.enabled && worktrees.worktrees[projectPath] ? { worktrees: worktrees.worktrees[projectPath] } : {})
     })))
   };
 
@@ -155,12 +179,16 @@ export async function notesEnsureTaskWorkspace(noteId: string): Promise<{ dir: s
     // workspace has the task's context without opening the note.
     knowledge: taskKnowledgeText(doc.body)
   });
-  return { dir };
+  return { dir, address, worktrees };
 }
 
 /**
  * Retrieve a GTD task's complete execution context for AI chat / external agents:
  * neutral workspace directory, background markdown, referenced shared projects, and note path.
+ *
+ * The worktree lines and directories come from the same address the managed block
+ * is written from, so an agent told about the task by chat and an agent reading
+ * `AGENTS.md` are told the same thing.
  */
 export async function notesGetTaskWorkspaceContext(noteId: string): Promise<{
   dir: string;
@@ -169,31 +197,26 @@ export async function notesGetTaskWorkspaceContext(noteId: string): Promise<{
   backgroundMd: string;
   projects: string[];
   noteAbsPath: string;
+  /** Where this task's checkouts belong, or the plain convention when unset. */
+  worktreeLines: string[];
+  /** Existing checkout directories, for a sandbox's extra roots. */
+  worktreeDirs: string[];
 }> {
-  const settings = await loadSettings();
-  const panelHome = effectivePanelHome(settings);
-  const store = await getDesktopNotesStore();
-  const { dir } = await notesEnsureTaskWorkspace(noteId);
-  const { record, content } = await notesRead(noteId);
+  const { dir, address, worktrees } = await notesEnsureTaskWorkspace(noteId);
+  const { content } = await notesRead(noteId);
   const doc = parseNoteDocument(content);
-
-  const declared = (doc.frontmatter.projects ?? []).map((entry) => entry.trim()).filter(Boolean);
-  const fromSessions = await store.listTaskSessionProjects();
-  const projects = mergeTaskProjects({
-    panelHome,
-    declared,
-    sessionProjects: fromSessions[noteId] ?? []
-  });
 
   const backgroundMd = taskKnowledgeText(doc.body) || doc.body.trim();
 
   return {
     dir,
-    title: record.title || extractTitle(doc.body) || record.filename || noteId,
-    status: record.gtdStatus ?? "inbox",
+    title: address.title,
+    status: address.status ?? "inbox",
     backgroundMd,
-    projects,
-    noteAbsPath: absFromRelMdPath(panelHome, record.relMdPath)
+    projects: address.projects.map((project) => project.path),
+    noteAbsPath: address.noteAbsPath,
+    worktreeLines: worktreePolicyLines(address),
+    worktreeDirs: worktrees.dirs
   };
 }
 

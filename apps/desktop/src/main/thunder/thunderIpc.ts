@@ -226,6 +226,7 @@ export function registerThunderIpc(): void {
             backgroundMd: string;
             projects: string[];
             noteAbsPath?: string;
+            worktreeLines?: string[];
           }
         | undefined;
 
@@ -237,7 +238,8 @@ export function registerThunderIpc(): void {
             status: taskCtx.status,
             backgroundMd: taskCtx.backgroundMd,
             projects: taskCtx.projects,
-            noteAbsPath: taskCtx.noteAbsPath
+            noteAbsPath: taskCtx.noteAbsPath,
+            worktreeLines: taskCtx.worktreeLines
           };
           if (!effectiveWorkspaceDir) {
             effectiveWorkspaceDir = taskCtx.dir;
@@ -246,8 +248,10 @@ export function registerThunderIpc(): void {
           // read/write standing as the neutral workspace, so read_file /
           // write_file / shell targets inside them stop tripping the path
           // traversal guard. Only directories that actually exist on this
-          // machine are passed (synced-from-elsewhere paths are skipped).
-          extraWorkspaceDirs = (taskCtx.projects ?? []).filter((projectDir) => {
+          // machine are passed (synced-from-elsewhere paths are skipped). The
+          // task's worktrees belong here for the same reason — an agent working
+          // in one has to be able to write to it.
+          extraWorkspaceDirs = [...taskCtx.projects, ...taskCtx.worktreeDirs].filter((projectDir) => {
             try {
               return fs.statSync(projectDir).isDirectory();
             } catch {

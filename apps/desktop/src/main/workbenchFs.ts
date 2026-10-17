@@ -54,7 +54,7 @@ export { parseLeftRightCount } from "./gitTracking";
 
 const execFileAsync = promisify(execFile);
 
-async function execGitWithRetry(
+export async function execGitWithRetry(
   args: string[],
   options?: Parameters<typeof execFileAsync>[2],
   maxRetries = 3,

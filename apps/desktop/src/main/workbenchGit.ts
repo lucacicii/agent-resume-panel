@@ -84,7 +84,7 @@ interface GitFileLogResult {
   layout: GitGraphLayout;
 }
 
-function formatExecError(error: unknown): string {
+export function formatExecError(error: unknown): string {
   const err = error as NodeJS.ErrnoException & { stderr?: string | Buffer; stdout?: string | Buffer };
   const stderr = err.stderr ? String(err.stderr).trim() : "";
   if (stderr) return stderr;
@@ -166,7 +166,7 @@ async function resolveRepoRoot(raw: string): Promise<string> {
   return (await queryGitRoot(resolved)) || resolved;
 }
 
-async function gitExec(repoRoot: string, args: string[], timeout = 30000, maxBuffer = 1024 * 1024): Promise<string> {
+export async function gitExec(repoRoot: string, args: string[], timeout = 30000, maxBuffer = 1024 * 1024): Promise<string> {
   const { stdout } = await execFileAsync("git", ["-C", repoRoot, ...args], {
     timeout,
     maxBuffer
@@ -188,7 +188,7 @@ function assertValidGitHash(hash: string): string {
   return trimmed;
 }
 
-function isValidGitBranchName(branch: string): boolean {
+export function isValidGitBranchName(branch: string): boolean {
   const trimmed = branch.trim();
   if (!trimmed || trimmed.startsWith("-")) return false;
   if (/[\0\r\n]/.test(trimmed)) return false;

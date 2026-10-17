@@ -99,7 +99,24 @@ When the agent needs an answer — a plan to approve, an `ask`-mode permission p
 4. Closing a terminal/editor tab focuses the most recently used panel.  
 5. Terminal features depend on a healthy PTY host; other Desktop tabs still work if the terminal subsystem fails to load.  
 6. **Jump to top / bottom** controls appear in embedded terminals: for streaming CLIs (Codex) they scroll the terminal history, and for full-screen TUIs (Claude Code, Prime Agent, …) they scroll the agent's own viewport.
-7. When a change touches any referenced repository (one or more): create a new worktree on a new branch per affected repo — never commit straight to the shared branches. Repos that require PRs go through PR review and merge the PR(s) when the task is done; repos that allow direct push (e.g. a private GitLab, a personal GitHub repo) push the branch and merge it when the task is done, no PR required.
+7. Each change belongs on its own branch, in its own checkout — see **Worktrees** below.
+
+### Worktrees
+
+A task that touches repositories usually wants every change on its own branch, in
+its own working copy. Open the task's **settings** (the gear in the task card) and
+turn on **Enable worktree mode**. From then on:
+
+- Every checkout of the task lives under `<panelHome>/.desktop/workspaces/<taskId>/.worktrees/<repository>-<branch>`. The path is derived from the task id, so renaming the task moves nothing.
+- Agents are told that location, and told to leave the checkouts alone: the panel never deletes one on its own initiative.
+- **Git**, **Explorer**, **Search** and the **terminal** group each carry a checkout selector. They follow one shared choice; the pin beside it keeps one of them on a different checkout.
+- **New Worktree…** creates one and offers to install dependencies in a terminal — a fresh checkout has no `node_modules`.
+- Removing one is always your decision. The settings sheet inspects the checkout first, says how many changes are uncommitted and how many commits are not in the base branch, and never touches the branch. Records of checkouts whose folder has already gone are cleared separately, as are checkouts left behind by a deleted task.
+- The panel reminds you when a task is marked done and when you close its window, and those dialogs only report: closing the window is not deleting anything.
+
+The switch governs what agents are told and which creation entries appear — a
+checkout that exists on disk stays visible either way, because work hidden behind
+a boolean reads as a bug.
 
 ### Related
 
@@ -202,7 +219,21 @@ agent 需要你回答时——批准计划、`ask` 档位的授权、插件的�
 4. 关闭终端 / 编辑器标签后会激活最近使用的面板。  
 5. 终端依赖 PTY；若终端子系统加载失败，其它页签仍可使用。  
 6. 内嵌终端支持**跳到顶部 / 回到底部**：流式 CLI（Codex）直接滚动终端历史；全屏 TUI（Claude Code、Prime Agent 等）会滚动 Agent 自身的视图。
-7. 当改动涉及任一引用仓库（一个或多个）时：每个受影响仓库新建 worktree + 新分支 —— 不要直接提交到共享分支。要求 PR 的仓库走 PR 评审，任务完成时合并 PR；允许直推的仓库（如私有 GitLab、个人 GitHub 仓库）推分支、任务完成时合并即可，不强制开 PR。
+7. 每份改动各占一个分支、各自一份检出——见下文 **Worktree**。
+
+### Worktree
+
+一个涉及仓库的任务，通常希望每份改动都在自己的分支、自己的工作副本里。打开任务的**设置**（任务卡片上的齿轮），打开 **启用 worktree 模式**。之后：
+
+- 该任务的所有 worktree 都落在 `<panelHome>/.desktop/workspaces/<任务 id>/.worktrees/<仓库名>-<分支名>`。路径由任务 id 派生，任务改名不会挪动任何目录。
+- Agent 会被告知这个落点，也会被告知不要动这些目录：面板**不会**自作主张删掉任何一个。
+- **Git 改动 / 文件目录 / 全局查找 / 终端**各自带一个 checkout 选择器，默认联动；旁边的图钉可以让其中一个钉在别的 checkout 上。
+- **新建 worktree…** 可以直接建一个，并顺手在终端里装依赖——新 checkout 里没有 `node_modules`。
+- 删除永远由你决定：设置弹层会先体检这个 checkout，告诉你有多少处未提交改动、多少提交还没进基础分支，并且**不碰分支**。目录已经消失的登记单独清理；被删任务遗留的 worktree 也会单独列出。
+- 面板会在**任务标记完成**和**关闭窗口**这两个时刻提醒你，而这些弹窗只负责报告：关窗不会删掉任何东西。
+
+开关管的是「告诉 agent 什么」和「哪里能新建」——磁盘上真实存在的 checkout
+无论如何都会显示，因为把真实存在的活儿藏在一个开关后面，看起来就像坏了。
 
 ### 相关文档
 

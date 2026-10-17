@@ -55,7 +55,8 @@ export function WorkbenchSearchSidePane({
   searchReplacing,
   onRunSearch,
   onReplace,
-  onOpenMatch
+  onOpenMatch,
+  headExtra
 }: {
   selectedProject: string | null;
   searchQuery: string;
@@ -108,10 +109,12 @@ export function WorkbenchSearchSidePane({
   onRunSearch: () => void;
   onReplace: (files: string[], onlyByPath?: Map<string, number>) => void;
   onOpenMatch: (match: WorkbenchSearchMatch, key: string) => void;
+  /** A control for the pane head, after the title; which checkout is searched is the panel's business. */
+  headExtra?: React.ReactNode;
 }): React.JSX.Element {
   const { t } = useI18n();
   return <div className="wb-side-pane">
-    <div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelSearch")}</span></div>
+    <div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelSearch")}</span>{headExtra}</div>
     <div className="wb-search-pane">
       <div className="wb-search-form" role="search">
         <input

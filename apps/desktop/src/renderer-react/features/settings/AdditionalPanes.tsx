@@ -1,8 +1,8 @@
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
-import { NativeMenuSelect } from "../../components/NativeMenuSelect";
-import { Children, isValidElement, useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { desktopApi } from "../../bridge";
 import { SegmentedControl } from "../../components/SegmentedControl";
+import { SelectRow, ToggleRow } from "../../components/SettingRows";
 import { Status, type StatusKind } from "../../components/Status";
 import { confirmAction, confirmDestructive } from "../../confirmAction";
 import { WORKBENCH_TERMINAL_THEME_IDS } from "../workbench/terminalThemes";
@@ -24,22 +24,6 @@ const TERMINAL_THEME_LABEL_KEYS: Record<string, string> = {
 
 function terminalThemeLabelKey(id: string): string {
   return TERMINAL_THEME_LABEL_KEYS[id] || "desktop.settings.terminalThemeDefaultDark";
-}
-
-function ToggleRow({ title, description, checked, onChange }: { title: string; description?: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{title}</span>{description ? <span className="settings-row-desc">{description}</span> : null}</span><span className="settings-toggle"><input type="checkbox" role="switch" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label>;
-}
-
-function SelectRow({ title, description, value, onChange, children }: { title: string; description?: string; value: string | number; onChange: (value: string) => void; children: ReactNode }) {
-  // The caller keeps the declarative `<option>` children; read them into the
-  // value/label pairs the native menu needs.
-  const options = Children.toArray(children).flatMap((child) => {
-    if (!isValidElement(child)) return [];
-    const props = child.props as { value?: string | number; children?: ReactNode };
-    if (props.value === undefined) return [];
-    return [{ value: String(props.value), label: String(props.children ?? props.value) }];
-  });
-  return <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{title}</span>{description ? <span className="settings-row-desc">{description}</span> : null}</span><NativeMenuSelect className="settings-row-control" ariaLabel={title} title={title} value={String(value)} options={options} onChange={onChange} /></label>;
 }
 
 export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: WorkbenchDraft; setDraft: (value: WorkbenchDraft) => void; commit: (value: WorkbenchDraft) => void; t: Translate }) {

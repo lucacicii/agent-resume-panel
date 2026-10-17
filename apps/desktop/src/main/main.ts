@@ -135,6 +135,7 @@ import {
   setWorkbenchWatcherActive
 } from "./workbenchWatcher";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
+import { registerWorktreeIpc } from "./worktreeGit";
 import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
 import {
   closeAllTaskWindows,
@@ -310,15 +311,18 @@ let ptyPidResolver: ((id: number) => number | null) | null = null;
 let ptyAttachedResolver: (() => number[]) | null = null;
 /** Workbench behind a pty, so a window-less pane still has an owner. */
 let ptyWorkbenchResolver: ((id: number) => string | null) | null = null;
+/** Panes whose working directory is inside a path, before one is deleted. */
+let ptyInPathResolver: ((target: string) => number) | null = null;
 
 function tryRegisterPtyIpc(): void {
   try {
     // Lazy-load so node-pty native binding issues do not block other IPC handlers.
-    const { registerPtyIpc, getPtyPid, getAttachedPtyIds, getPtyWorkbenchId } = require("./ptyHost") as typeof import("./ptyHost");
+    const { registerPtyIpc, getPtyPid, getAttachedPtyIds, getPtyWorkbenchId, countPtysInPath } = require("./ptyHost") as typeof import("./ptyHost");
     registerPtyIpc();
     ptyPidResolver = getPtyPid;
     ptyAttachedResolver = getAttachedPtyIds;
     ptyWorkbenchResolver = getPtyWorkbenchId;
+    ptyInPathResolver = countPtysInPath;
   } catch (error) {
     void recordAppError({
       source: "pty-host",
@@ -2129,7 +2133,13 @@ async function installApplicationMenu(): Promise<void> {
  * renderer to flush them first — the bargain the floating note windows make.
  */
 const pendingTaskWindowCloses = new Map<number, { settle: (closed: boolean) => void }>();
-const TASK_WINDOW_CLOSE_TIMEOUT_MS = 15_000;
+/**
+ * How long the renderer has to answer a close. Long enough to read the dialog
+ * the close chain shows about leftover worktrees — it is the only question there
+ * that a person has to think about — and short enough that a renderer which
+ * never answers cannot leave a window that refuses to close.
+ */
+const TASK_WINDOW_CLOSE_TIMEOUT_MS = 60_000;
 
 function registerTaskWindowCloseGuard(win: BrowserWindow): void {
   const senderId = win.webContents.id;
@@ -4039,6 +4049,7 @@ app.whenReady().then(async () => {
   registerWorkbenchFsIpc();
   registerWorkbenchWatcherIpc(() => mainWindow, (sender) => isTaskWindowSender(sender));
   registerWorkbenchGitIpc(() => app.getLocale());
+  registerWorktreeIpc({ liveSessionsInPath: (target) => ptyInPathResolver?.(target) ?? 0 });
   registerWorkbenchScriptsIpc();
   registerBrowserIpc({
     getMainWindow: () => mainWindow,
