@@ -138,8 +138,8 @@ importers:
         specifier: ^11.11.1
         version: 11.11.1
       lucide-react:
-        specifier: ^0.468.0
-        version: 0.468.0(react@19.2.7)
+        specifier: ^1.57.0
+        version: 1.57.0(@types/react@19.2.17)(react@19.2.7)
       node-pty:
         specifier: ^1.0.0
         version: 1.1.0
@@ -152,9 +152,6 @@ importers:
       remark-breaks:
         specifier: ^4.0.0
         version: 4.0.0
-      sf-symbols-lib:
-        specifier: ^2.0.1
-        version: 2.0.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       streamdown:
         specifier: ^2.6.0
         version: 2.6.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -2494,10 +2491,14 @@ packages:
   lru_map@0.4.1:
     resolution: {integrity: sha512-I+lBvqMMFfqaV8CJCISjI3wbjmwVu/VyOoU7+qtu9d7ioW5klMgsTTiUOUp+DJvfTTzKXoPbyC6YfgkNcyPSOg==}
 
-  lucide-react@0.468.0:
-    resolution: {integrity: sha512-6koYRhnM2N0GGZIdXzSeiNwguv1gt/FAjZOiPl76roBi3xKEXa4WmfpxgQwTTL4KipXjefrnf3oV4IsYhi4JFA==}
+  lucide-react@1.57.0:
+    resolution: {integrity: sha512-bXFZEucYhAzLD62Jse76AbTR6LiSLTn3Tqir2f1n8rZrWAdLodYy7jnRZSPIT89dRLk/IseMOUWG82wJtTyTTw==}
     peerDependencies:
-      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0-rc
+      '@types/react': '*'
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
 
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
@@ -3225,13 +3226,6 @@ packages:
 
   setprototypeof@1.2.0:
     resolution: {integrity: sha512-E5LDX7Wrp85Kil5bhZv46j8jOeboKq5JMmYM3gVGdGH8xFpPWXUMsNrlODCrkoxMEeNi/XZIwuRvY4XNwYMJpw==}
-
-  sf-symbols-lib@2.0.1:
-    resolution: {integrity: sha512-1xL41UlJADRCSpOST9PzZY4sHcBDD2o1GmyRv4tq23Sd4hwNy5SP2fRH0XZJflyReoDln2BYtYuMvcJEfA1AmA==}
-    engines: {node: '>=22.0.0'}
-    peerDependencies:
-      react: ^18.0.0 || ^19.0.0
-      react-dom: ^18.0.0 || ^19.0.0
 
   shebang-command@2.0.0:
     resolution: {integrity: sha512-kHxr2zZpYtdmrN1qDjrrX/Z1rR1kG8Dx+gkpK1G4eXmvXswmcE1hTWBWYUzlraYw1/yZp6YuDY77YtvbN0dmDA==}
@@ -6319,9 +6313,11 @@ snapshots:
 
   lru_map@0.4.1: {}
 
-  lucide-react@0.468.0(react@19.2.7):
+  lucide-react@1.57.0(@types/react@19.2.17)(react@19.2.7):
     dependencies:
       react: 19.2.7
+    optionalDependencies:
+      '@types/react': 19.2.17
 
   lz-string@1.5.0: {}
 
@@ -7319,11 +7315,6 @@ snapshots:
       - supports-color
 
   setprototypeof@1.2.0: {}
-
-  sf-symbols-lib@2.0.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
-    dependencies:
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
 
   shebang-command@2.0.0:
     dependencies:
