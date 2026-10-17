@@ -65,6 +65,27 @@ export function taskWorktreeRoot(panelHome: string, noteId: string): string {
   return path.join(taskWorkspaceDir(panelHome, noteId), ".worktrees");
 }
 
+/** Every task's workspace, one directory per note id. */
+export function taskWorkspacesDir(panelHome: string): string {
+  return path.join(desktopDataDir(panelHome), "workspaces");
+}
+
+/**
+ * The task whose `.worktrees/` holds `candidate`, or null when the path is not a
+ * task's checkout at all.
+ *
+ * A checkout carries no owner of its own — the repository that registered it
+ * only knows the path — so ownership is read back out of the location, and the
+ * note id in that location is what tells a checkout of the current task from one
+ * left behind by a task that no longer exists.
+ */
+export function worktreeOwnerNoteId(panelHome: string, candidate: string): string | null {
+  const relative = path.relative(taskWorkspacesDir(panelHome), path.resolve(candidate));
+  const [noteId, segment] = relative.split(path.sep);
+  if (!noteId || noteId === ".." || segment !== ".worktrees") return null;
+  return noteId;
+}
+
 /**
  * True for directories the panel owns itself (`<panelHome>/.desktop`: task
  * workspaces, scratch sessions, stores). They are implementation details of the

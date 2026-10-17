@@ -585,6 +585,25 @@ export function getPtyWorkbenchId(id: number): string | null {
   return ptySessions.get(Math.floor(id))?.workbenchId ?? null;
 }
 
+/**
+ * Open panes whose working directory is `target` or inside it.
+ *
+ * The recorded cwd is the one a pane was started with; a shell that has since
+ * `cd`-ed elsewhere still holds descriptors on the old directory, so this is a
+ * floor rather than a census. That is the right direction for the one caller it
+ * has: warning before a directory is removed out from under a running shell.
+ */
+export function countPtysInPath(target: string): number {
+  const wanted = path.resolve(target);
+  let count = 0;
+  for (const session of ptySessions.values()) {
+    const cwd = path.resolve(session.lastSpawnCwd);
+    const relative = path.relative(wanted, cwd);
+    if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) count += 1;
+  }
+  return count;
+}
+
 export function getPtyRuntimeMetrics(): PtyRuntimeMetrics {
   let attachedCount = 0;
   let replayBytes = 0;

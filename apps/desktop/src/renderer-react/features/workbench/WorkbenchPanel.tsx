@@ -131,6 +131,7 @@ import {
   WorktreeSelector
 } from "./git/GitGraphView";
 import { useTaskWorktrees, type CheckoutScope } from "./git/useTaskWorktrees";
+import { useWorktreeCleanup } from "./git/useWorktreeCleanup";
 import { TaskSettingsSheet } from "./TaskSettingsSheet";
 import { WorktreeCreateSheet } from "./WorktreeCreateSheet";
 import { WorkbenchDetailHeader } from "./layout/WorkbenchDetailHeader";
@@ -872,6 +873,20 @@ export function WorkbenchPanel(): ReactPortal | null {
     : undefined;
   const sideRootProjects = liveTaskEarly?.projects ?? taskScope?.projects ?? EMPTY_PROJECT_PATHS;
   const worktrees = useTaskWorktrees({ noteId: taskScope?.noteId ?? null, repos: sideRootProjects });
+  const worktreeCleanup = useWorktreeCleanup({
+    noteId: taskScope?.noteId ?? null,
+    repos: sideRootProjects,
+    // Orphans are only listed where they can be acted on, and only while that
+    // surface is open: the list is a few git calls and nothing changes it but a
+    // deleted task.
+    active: taskSettingsOpen,
+    onRemoved: (target) => {
+      setStatus({ text: t("desktop.workbench.worktreeDeleted", target.branchLabel), kind: "ok" });
+      // The selection may have been pointing at what just went away; the hook's
+      // own lookup drops a checkout that is no longer in the listing.
+      void worktrees.refresh();
+    }
+  });
   const sideRepoRoot = taskScope
     ? (sessionTarget
       || liveTaskEarly?.primaryProject
@@ -7483,6 +7498,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       projects={scopeProjects}
       aliases={aliases}
       worktrees={worktrees}
+      cleanup={worktreeCleanup}
       onAddProject={() => void pickTaskProject()}
       onRemoveProject={(path) => void removeProject(path)}
       onRevealPath={(path) => { void desktopApi().workbenchRevealPath({ rootPath: path, targetPath: path }).catch(() => undefined); }}

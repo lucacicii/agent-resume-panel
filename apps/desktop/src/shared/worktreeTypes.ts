@@ -87,7 +87,25 @@ export function normalizeTaskWorktreeState(value: unknown): TaskWorktreeState {
   };
 }
 
-export type WorktreeRiskReport = {  exists: boolean;
+/**
+ * Checkouts of this task's repositories that belong to no task any more.
+ *
+ * Deleting a task removes its note, not its workspace, so a checkout it left
+ * behind keeps both its directory and its slot in the repository's admin area.
+ * Only the repositories a task references can be scanned for them.
+ */
+export type TaskWorktreeOrphanRepo = {
+  repoRoot: string;
+  label: string;
+  /** The branch a checkout of this repository lands back in, for the risk report. */
+  baseBranch: string | null;
+  worktrees: TaskWorktreeInfo[];
+};
+
+export type TaskWorktreeOrphans = { repos: TaskWorktreeOrphanRepo[] };
+
+export type WorktreeRiskReport = {
+  exists: boolean;
   dirty: boolean;
   stagedCount: number;
   unstagedCount: number;
@@ -96,10 +114,17 @@ export type WorktreeRiskReport = {  exists: boolean;
   mergedIntoBase: boolean;
   /** Commits not pushed to the tracking branch, or null when there is none. */
   aheadOfUpstream: number | null;
+  /**
+   * Open terminals whose working directory is inside the checkout. The cwd is
+   * the one a pane was started with, so this is a floor rather than a census —
+   * and a floor is the right direction for a warning.
+   */
+  liveSessionsInPath: number;
   branch: string | null;
   baseBranch: string | null;
   detached: boolean;
   locked: boolean;
+  lockedReason?: string;
   prunable: boolean;
   isMain: boolean;
 };

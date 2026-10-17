@@ -4,6 +4,7 @@ import { ToggleRow } from "../../components/SettingRows";
 import { useI18n } from "../../i18n";
 import type { TaskWorktreeRepo } from "../../../shared/worktreeTypes";
 import { basename } from "./git/workbenchGitModel";
+import type { WorktreeCleanup } from "./git/useWorktreeCleanup";
 import type { TaskWorktrees } from "./git/useTaskWorktrees";
 
 /**
@@ -15,6 +16,11 @@ import type { TaskWorktrees } from "./git/useTaskWorktrees";
  * than what the panel is allowed to show: checkouts that exist on disk are
  * listed here whether or not the switch is on, since hiding real work behind a
  * boolean reads as a broken feature.
+ *
+ * This is also the only place a checkout is removed from, and it is a deliberate
+ * two-step: every removal goes through an inspection whose numbers the
+ * confirmation quotes. Nothing here deletes on its own — no timer, no window
+ * close, no "task finished".
  */
 export function TaskSettingsSheet({
   open,
@@ -25,6 +31,7 @@ export function TaskSettingsSheet({
   projects,
   aliases,
   worktrees,
+  cleanup,
   onAddProject,
   onRemoveProject,
   onRevealPath,
@@ -40,6 +47,7 @@ export function TaskSettingsSheet({
   projects: string[];
   aliases: Record<string, string>;
   worktrees: TaskWorktrees;
+  cleanup: WorktreeCleanup;
   onAddProject: () => void;
   onRemoveProject: (projectPath: string) => void;
   onRevealPath: (targetPath: string) => void;
@@ -53,6 +61,9 @@ export function TaskSettingsSheet({
   const checkouts = (worktrees.listing?.repos ?? []).flatMap((repo) => repo.worktrees.filter((worktree) => !worktree.isMain));
   /** Only the ones that are really there count as work left to clean up. */
   const present = checkouts.filter((worktree) => !worktree.missing).length;
+  const orphans = cleanup.orphans?.repos ?? [];
+  /** Orphans whose directory is already gone: clearing them throws nothing away. */
+  const goneOrphans = orphans.filter((repo) => repo.worktrees.some((worktree) => worktree.missing || worktree.prunable));
 
   const stateChip = (worktree: TaskWorktreeRepo["worktrees"][number]) => {
     if (worktree.missing || worktree.prunable) return <span className="wb-worktree-state is-missing">{t("desktop.workbench.worktreeStateMissing")}</span>;
@@ -133,24 +144,56 @@ export function TaskSettingsSheet({
                   ? <p className="muted wb-task-settings-empty">{t("desktop.workbench.worktreeFolderMissing")}</p>
                   : !repo.isGitRepo
                     ? <p className="muted wb-task-settings-empty">{t("desktop.workbench.worktreeNotGitRepo")}</p>
-                    : repo.worktrees.map((worktree) => (
-                      <div className="wb-worktree-settings-row" role="listitem" key={worktree.path}>
-                        <ThemeIcon name="git-branch" size={ICON_SIZE.dense} aria-hidden="true" />
-                        <span className="wb-worktree-settings-branch">
-                          {worktree.branch || (worktree.detached ? t("desktop.workbench.worktreeDetached") : "-")}
-                        </span>
-                        {stateChip(worktree)}
-                        <span className="wb-task-settings-path" title={worktree.path}>{basename(worktree.path)}</span>
-                        <button
-                          type="button"
-                          className="wb-icon-btn"
-                          disabled={worktree.missing}
-                          aria-label={t("desktop.common.revealInFinder")}
-                          title={worktree.path}
-                          onClick={() => onRevealPath(worktree.path)}
-                        ><ThemeIcon name="folder-open" size={ICON_SIZE.dense} aria-hidden="true" /></button>
-                      </div>
-                    ))}
+                    : repo.worktrees.map((worktree) => {
+                      const stale = worktree.missing || worktree.prunable;
+                      const busy = cleanup.busyPath === worktree.path;
+                      return (
+                        <div className="wb-worktree-settings-row" role="listitem" key={worktree.path}>
+                          <ThemeIcon name="git-branch" size={ICON_SIZE.dense} aria-hidden="true" />
+                          <span className="wb-worktree-settings-branch">
+                            {worktree.branch || (worktree.detached ? t("desktop.workbench.worktreeDetached") : "-")}
+                          </span>
+                          {stateChip(worktree)}
+                          <span className="wb-task-settings-path" title={worktree.path}>{basename(worktree.path)}</span>
+                          <button
+                            type="button"
+                            className="wb-icon-btn"
+                            disabled={worktree.missing}
+                            aria-label={t("desktop.common.revealInFinder")}
+                            title={worktree.path}
+                            onClick={() => onRevealPath(worktree.path)}
+                          ><ThemeIcon name="folder-open" size={ICON_SIZE.dense} aria-hidden="true" /></button>
+                          {/* A stale entry has no directory to lose, so it is cleared,
+                              not deleted; a locked one stays until the lock is gone. */}
+                          {worktree.isMain ? null : stale ? (
+                            <button
+                              type="button"
+                              className="wb-icon-btn"
+                              disabled={busy}
+                              aria-label={t("desktop.workbench.worktreePrune")}
+                              title={t("desktop.workbench.worktreePruneHint")}
+                              onClick={() => void cleanup.prune([repo.repoRoot])}
+                            ><ThemeIcon name="sparkles" size={ICON_SIZE.dense} aria-hidden="true" /></button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="wb-icon-btn"
+                              disabled={busy || worktree.locked}
+                              aria-label={t("desktop.workbench.worktreeDelete")}
+                              title={worktree.locked ? t("desktop.workbench.worktreeLockedHint", worktree.lockedReason || "") : t("desktop.workbench.worktreeDelete")}
+                              onClick={() => void cleanup.remove({
+                                repoRoot: repo.repoRoot,
+                                path: worktree.path,
+                                branchLabel: worktree.branch || basename(worktree.path),
+                                locked: worktree.locked,
+                                lockedReason: worktree.lockedReason,
+                                baseBranch: repo.baseBranch
+                              })}
+                            ><ThemeIcon name="trash" size={ICON_SIZE.dense} aria-hidden="true" /></button>
+                          )}
+                        </div>
+                      );
+                    })}
               </div>
             ))}
             {!checkouts.length ? <p className="muted wb-task-settings-empty">{t("desktop.workbench.worktreeListEmpty")}</p> : null}
@@ -163,6 +206,48 @@ export function TaskSettingsSheet({
               </button>
             </div>
           ) : null}
+          {orphans.length ? (
+            <div className="wb-worktree-orphans">
+              <p className="wb-worktree-orphan-head">
+                <ThemeIcon name="message-square-warning" size={ICON_SIZE.inline} aria-hidden="true" />
+                {t("desktop.workbench.worktreeOrphans", String(orphans.reduce((total, repo) => total + repo.worktrees.length, 0)))}
+              </p>
+              <p className="muted wb-task-settings-empty">{t("desktop.workbench.worktreeOrphanHint")}</p>
+              <div role="list">
+                {orphans.flatMap((repo) => repo.worktrees.map((worktree) => (
+                  <div className="wb-worktree-settings-row" role="listitem" key={worktree.path}>
+                    <ThemeIcon name="git-branch" size={ICON_SIZE.dense} aria-hidden="true" />
+                    <span className="wb-worktree-settings-branch">{repo.label} ▸ {worktree.branch || basename(worktree.path)}</span>
+                    <span className="wb-task-settings-path" title={worktree.path}>{basename(worktree.path)}</span>
+                    <button
+                      type="button"
+                      className="wb-icon-btn"
+                      disabled={cleanup.busyPath === worktree.path}
+                      aria-label={t("desktop.workbench.worktreeDelete")}
+                      title={t("desktop.workbench.worktreeDelete")}
+                      onClick={() => void cleanup.remove({
+                        repoRoot: repo.repoRoot,
+                        path: worktree.path,
+                        branchLabel: worktree.branch || basename(worktree.path),
+                        locked: worktree.locked,
+                        lockedReason: worktree.lockedReason,
+                        baseBranch: repo.baseBranch
+                      })}
+                    ><ThemeIcon name="trash" size={ICON_SIZE.dense} aria-hidden="true" /></button>
+                  </div>
+                )))}
+              </div>
+              {goneOrphans.length ? (
+                <div className="settings-action-row">
+                  <button type="button" className="tool-btn" onClick={() => void cleanup.prune(goneOrphans.map((repo) => repo.repoRoot))}>
+                    <ThemeIcon name="sparkles" size={ICON_SIZE.dense} aria-hidden="true" />
+                    {t("desktop.workbench.worktreePrune")}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {cleanup.error ? <p className="wb-worktree-error" role="alert">{cleanup.error}</p> : null}
         </div>
       </section>
     </Sheet>

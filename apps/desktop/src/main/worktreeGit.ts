@@ -1,12 +1,12 @@
 import { realpathSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { effectivePanelHome, expandHome, getCatalogMeta, loadSettings, setCatalogMeta } from "@agent-resume/core";
+import { effectivePanelHome, expandHome, getCatalogMeta, getNoteById, loadSettings, setCatalogMeta } from "@agent-resume/core";
 import { isGitRepo, gitRefExists, queryGitBranch, queryGitRoot } from "./gitNestedScan";
 import { shareGitQuery } from "./gitQueryShare";
 import { safeHandle } from "./ipcUtils";
 import { loadPanelDbPaths } from "./panelDatabases";
-import { taskWorktreeRoot } from "./taskWorkspace";
+import { taskWorktreeRoot, worktreeOwnerNoteId } from "./taskWorkspace";
 import { execGitWithRetry, gitStatusForRepo } from "./workbenchFs";
 import { formatExecError, gitExec, isValidGitBranchName } from "./workbenchGit";
 import {
@@ -14,6 +14,8 @@ import {
   worktreeDirName,
   type TaskWorktreeInfo,
   type TaskWorktreeListing,
+  type TaskWorktreeOrphanRepo,
+  type TaskWorktreeOrphans,
   type TaskWorktreeRepo,
   type TaskWorktreeState,
   type WorktreeEntry,
@@ -260,6 +262,12 @@ export async function worktreeInspect(input: {
   repoRoot: string;
   targetPath: string;
   baseBranch?: string;
+  /**
+   * Open terminals inside the checkout. Injected rather than imported so this
+   * module stays a pure git capability (`ptyHost` drags in Electron and the
+   * native pty binding, which no test of this file should need).
+   */
+  liveSessionsInPath?: (target: string) => number;
 }): Promise<WorktreeRiskReport> {
   const repo = await resolveGitRepo(input.repoRoot);
   const wanted = realPath(input.targetPath);
@@ -288,13 +296,75 @@ export async function worktreeInspect(input: {
     unmergedCommits,
     mergedIntoBase: comparable ? await isAncestor(repo, entry.head, baseBranch as string) : false,
     aheadOfUpstream,
+    liveSessionsInPath: input.liveSessionsInPath?.(realPath(entry.path)) ?? 0,
     branch: entry.branch,
     baseBranch,
     detached: entry.detached,
     locked: entry.locked,
+    lockedReason: entry.lockedReason,
     prunable: entry.prunable,
     isMain: entry.isMain
   };
+}
+
+/**
+ * Checkouts of this task's repositories whose owning task no longer exists.
+ *
+ * Deleting a task removes its note but leaves its workspace, and a checkout that
+ * keeps a directory also keeps its entry in the repository's admin area, where
+ * nothing else will ever look at it again. Only the repositories this task
+ * references can be scanned — the panel holds no index of repositories — and a
+ * checkout is reported only when the task whose `.worktrees/` holds it is really
+ * gone, so another task's work is never offered up here.
+ */
+export async function worktreeListOrphans(input: {
+  panelHome: string;
+  catalogDb: string;
+  noteId: string;
+  repos: ReadonlyArray<{ repoRoot: string; label: string }>;
+}): Promise<TaskWorktreeOrphans> {
+  const live = new Map<string, boolean>();
+  const isLive = async (noteId: string): Promise<boolean> => {
+    const cached = live.get(noteId);
+    if (cached !== undefined) return cached;
+    const found = await getNoteById(input.catalogDb, noteId).then(
+      (note) => Boolean(note),
+      () => true // Unreadable catalog: assume alive, i.e. do not offer anything.
+    );
+    live.set(noteId, found);
+    return found;
+  };
+
+  const repos = await Promise.all(
+    input.repos.map(async (repo): Promise<TaskWorktreeOrphanRepo | null> => {
+      if (!(await pathIsDirectory(repo.repoRoot))) return null;
+      const resolved = await queryGitRoot(repo.repoRoot);
+      if (!resolved) return null;
+      const repoRoot = realPath(resolved);
+      let entries: WorktreeEntry[];
+      try {
+        entries = await shareGitQuery(`worktree-list:${repoRoot}`, () => listWorktreesForRepo(repoRoot));
+      } catch {
+        return null;
+      }
+      const orphans: WorktreeEntry[] = [];
+      for (const entry of entries) {
+        const checkout = realPath(entry.path);
+        const owner = worktreeOwnerNoteId(input.panelHome, checkout);
+        if (!owner || owner === input.noteId) continue;
+        if (!(await isLive(owner))) orphans.push(entry);
+      }
+      if (!orphans.length) return null;
+      const baseBranch = await queryGitBranch(repoRoot);
+      return {
+        repoRoot,
+        label: repo.label,
+        baseBranch,
+        worktrees: await Promise.all(orphans.map((entry) => describeWorktree(entry, repoRoot, baseBranch)))
+      };
+    })
+  );
+  return { repos: repos.filter((repo): repo is TaskWorktreeOrphanRepo => repo !== null) };
 }
 
 // ---------------------------------------------------------------------------
@@ -428,9 +498,12 @@ export async function patchTaskWorktreeState(
 // IPC
 // ---------------------------------------------------------------------------
 
-async function panelContext(): Promise<{ panelHome: string; desktopDb: string }> {
+async function panelContext(): Promise<{ panelHome: string; desktopDb: string; catalogDb: string }> {
   const settings = await loadSettings();
-  return { panelHome: effectivePanelHome(settings), desktopDb: (await loadPanelDbPaths(settings)).desktopDb };
+  const paths = await loadPanelDbPaths(settings);
+  // `desktop.db` carries this machine's panel preferences; the notes that decide
+  // whether a task still exists live in the shared catalog.
+  return { panelHome: effectivePanelHome(settings), desktopDb: paths.desktopDb, catalogDb: paths.catalogDb };
 }
 
 function requireNoteId(raw: unknown): string {
@@ -455,10 +528,25 @@ function normalizeRepos(raw: unknown): Array<{ repoRoot: string; label: string }
   return out;
 }
 
-export function registerWorktreeIpc(): void {
+export function registerWorktreeIpc(options?: {
+  /** Live terminals inside a path; `main.ts` passes the pty host's count. */
+  liveSessionsInPath?: (target: string) => number;
+}): void {
   safeHandle("workbench:worktrees", async (_event, args: { noteId?: unknown; repos?: unknown }) => {
     const { panelHome } = await panelContext();
     return worktreeListForTask({ panelHome, noteId: requireNoteId(args?.noteId), repos: normalizeRepos(args?.repos) });
+  });
+
+  safeHandle("workbench:worktreeOrphans", async (_event, args: { noteId?: unknown; repos?: unknown }) => {
+    const { panelHome, catalogDb } = await panelContext();
+    return worktreeListOrphans({
+      panelHome,
+      // Liveness is a property of the note catalog, and this is the same
+      // database the panel's own note list is read from.
+      catalogDb,
+      noteId: requireNoteId(args?.noteId),
+      repos: normalizeRepos(args?.repos)
+    });
   });
 
   safeHandle(
@@ -486,7 +574,8 @@ export function registerWorktreeIpc(): void {
       worktreeInspect({
         repoRoot: String(args?.repoRoot ?? ""),
         targetPath: String(args?.path ?? ""),
-        baseBranch: args?.baseBranch === undefined ? undefined : String(args.baseBranch)
+        baseBranch: args?.baseBranch === undefined ? undefined : String(args.baseBranch),
+        liveSessionsInPath: options?.liveSessionsInPath
       })
   );
 

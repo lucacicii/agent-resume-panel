@@ -311,15 +311,18 @@ let ptyPidResolver: ((id: number) => number | null) | null = null;
 let ptyAttachedResolver: (() => number[]) | null = null;
 /** Workbench behind a pty, so a window-less pane still has an owner. */
 let ptyWorkbenchResolver: ((id: number) => string | null) | null = null;
+/** Panes whose working directory is inside a path, before one is deleted. */
+let ptyInPathResolver: ((target: string) => number) | null = null;
 
 function tryRegisterPtyIpc(): void {
   try {
     // Lazy-load so node-pty native binding issues do not block other IPC handlers.
-    const { registerPtyIpc, getPtyPid, getAttachedPtyIds, getPtyWorkbenchId } = require("./ptyHost") as typeof import("./ptyHost");
+    const { registerPtyIpc, getPtyPid, getAttachedPtyIds, getPtyWorkbenchId, countPtysInPath } = require("./ptyHost") as typeof import("./ptyHost");
     registerPtyIpc();
     ptyPidResolver = getPtyPid;
     ptyAttachedResolver = getAttachedPtyIds;
     ptyWorkbenchResolver = getPtyWorkbenchId;
+    ptyInPathResolver = countPtysInPath;
   } catch (error) {
     void recordAppError({
       source: "pty-host",
@@ -4040,7 +4043,7 @@ app.whenReady().then(async () => {
   registerWorkbenchFsIpc();
   registerWorkbenchWatcherIpc(() => mainWindow, (sender) => isTaskWindowSender(sender));
   registerWorkbenchGitIpc(() => app.getLocale());
-  registerWorktreeIpc();
+  registerWorktreeIpc({ liveSessionsInPath: (target) => ptyInPathResolver?.(target) ?? 0 });
   registerWorkbenchScriptsIpc();
   registerBrowserIpc({
     getMainWindow: () => mainWindow,

@@ -337,7 +337,19 @@
     "desktop.workbench.worktreeNewTerminalHint": "Existing terminals keep their folder; this sets where new ones start.",
     "desktop.workbench.worktreeSelect": "Checkout",
     "desktop.workbench.worktreeReminder": "{0} worktree(s) still on disk. Delete each one once its work is merged.",
-    "desktop.workbench.worktreeCreated": "Worktree created: {0}"
+    "desktop.workbench.worktreeCreated": "Worktree created: {0}",
+    "desktop.workbench.worktreeDeleteConfirm": "Remove the worktree {0}?",
+    "desktop.workbench.worktreeDeleted": "Worktree removed: {0} — its branch was kept.",
+    "desktop.workbench.worktreeDeleteLocked": "This checkout is locked and cannot be removed: {0}",
+    "desktop.workbench.worktreeLockedHint": "Locked: {0}",
+    "desktop.workbench.worktreeRiskUnmerged": "{0} commit(s) not in the base branch",
+    "desktop.workbench.worktreeRiskUnpushed": "{0} commit(s) not pushed",
+    "desktop.workbench.worktreeRiskSessions": "{0} terminal(s) still open in this folder",
+    "desktop.workbench.worktreeRiskBranchKept": "The branch {0} is kept.",
+    "desktop.workbench.worktreeRiskDetached": "This checkout is on a detached HEAD.",
+    "desktop.workbench.worktreePruneConfirm": "Forget the {0} repository's records of checkouts whose folders are gone? Nothing on disk is deleted.",
+    "desktop.workbench.worktreeOrphans": "{0} worktree(s) left behind by deleted tasks",
+    "desktop.workbench.worktreeOrphanHint": "Their tasks no longer exist. The folders and git's records stay until you remove them."
   },
   "ja": {
     "desktop.nav.label": "ナビゲーション",
@@ -677,7 +689,19 @@
     "desktop.workbench.worktreeNewTerminalHint": "既存のターミナルはそのままです。ここは新しいターミナルの開始位置を決めます。",
     "desktop.workbench.worktreeSelect": "チェックアウト",
     "desktop.workbench.worktreeReminder": "ディスク上にワークツリーが {0} 個残っています。取り込みが済んだら削除してください。",
-    "desktop.workbench.worktreeCreated": "ワークツリーを作成しました：{0}"
+    "desktop.workbench.worktreeCreated": "ワークツリーを作成しました：{0}",
+    "desktop.workbench.worktreeDeleteConfirm": "ワークツリー {0} を削除しますか？",
+    "desktop.workbench.worktreeDeleted": "ワークツリーを削除しました：{0}（ブランチは残ります）",
+    "desktop.workbench.worktreeDeleteLocked": "このチェックアウトはロックされているため削除できません：{0}",
+    "desktop.workbench.worktreeLockedHint": "ロック中：{0}",
+    "desktop.workbench.worktreeRiskUnmerged": "ベースブランチに入っていないコミット {0} 件",
+    "desktop.workbench.worktreeRiskUnpushed": "プッシュされていないコミット {0} 件",
+    "desktop.workbench.worktreeRiskSessions": "このフォルダで開いたままのターミナル {0} 個",
+    "desktop.workbench.worktreeRiskBranchKept": "ブランチ {0} は残ります。",
+    "desktop.workbench.worktreeRiskDetached": "このチェックアウトは detached HEAD です。",
+    "desktop.workbench.worktreePruneConfirm": "フォルダが消えたチェックアウトの記録を {0} 個のリポジトリから削除しますか？ディスク上のものは削除されません。",
+    "desktop.workbench.worktreeOrphans": "削除されたタスクが残したワークツリー {0} 個",
+    "desktop.workbench.worktreeOrphanHint": "元のタスクはもう存在しません。削除するまでフォルダと git の記録は残ります。"
   },
   "zh-cn": {
     "desktop.nav.label": "导航",
@@ -1017,6 +1041,18 @@
     "desktop.workbench.worktreeNewTerminalHint": "已有终端不会换目录；这里决定新终端从哪开始。",
     "desktop.workbench.worktreeSelect": "checkout",
     "desktop.workbench.worktreeReminder": "磁盘上还有 {0} 个 worktree。合并完之后记得逐个删掉。",
-    "desktop.workbench.worktreeCreated": "已创建 worktree：{0}"
+    "desktop.workbench.worktreeCreated": "已创建 worktree：{0}",
+    "desktop.workbench.worktreeDeleteConfirm": "删除 worktree {0}？",
+    "desktop.workbench.worktreeDeleted": "已删除 worktree：{0}（分支保留）",
+    "desktop.workbench.worktreeDeleteLocked": "该 checkout 已锁定，无法删除：{0}",
+    "desktop.workbench.worktreeLockedHint": "已锁定：{0}",
+    "desktop.workbench.worktreeRiskUnmerged": "有 {0} 个提交还没进基础分支",
+    "desktop.workbench.worktreeRiskUnpushed": "有 {0} 个提交还没推送",
+    "desktop.workbench.worktreeRiskSessions": "有 {0} 个终端仍开在这个目录里",
+    "desktop.workbench.worktreeRiskBranchKept": "分支 {0} 会保留。",
+    "desktop.workbench.worktreeRiskDetached": "这个 checkout 处于游离 HEAD。",
+    "desktop.workbench.worktreePruneConfirm": "从 {0} 个仓库里清掉「目录已消失」的登记？磁盘上的东西不会被删。",
+    "desktop.workbench.worktreeOrphans": "已删除任务遗留的 worktree（{0} 个）",
+    "desktop.workbench.worktreeOrphanHint": "它们所属的任务已经不在了。在你处理之前，目录和 git 的登记都会留着。"
   }
 }

@@ -7338,6 +7338,34 @@ body.is-pane-resizing-v * {
   font-weight: 600;
 }
 
+/* Checkouts left behind by tasks that no longer exist: a warning worth acting
+   on, but not part of this task, so it sits below its own list. */
+.wb-worktree-orphans {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-separator);
+}
+
+.wb-worktree-orphan-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin: 0;
+  font-size: var(--font-size-callout);
+  font-weight: 600;
+  color: var(--color-warning);
+}
+
+.wb-worktree-error {
+  margin: 0;
+  font-size: var(--font-size-callout);
+  line-height: var(--line-height-body);
+  color: var(--color-destructive);
+}
+
 /* The label inside a native-menu select trigger; the chevron stays put. */
 .native-menu-select-label {
   min-width: 0;

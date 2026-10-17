@@ -63,6 +63,7 @@ import type {
 import type { SelectionAction } from "../shared/selectionActions";
 import type {
   TaskWorktreeListing,
+  TaskWorktreeOrphans,
   TaskWorktreeState,
   WorktreeRiskReport
 } from "../shared/worktreeTypes";
@@ -1365,6 +1366,11 @@ export interface DesktopApi {
     noteId: string;
     repos: Array<{ repoRoot: string; label: string }>;
   }): Promise<TaskWorktreeListing>;
+  /** Checkouts of those same repositories left behind by tasks that are gone. */
+  workbenchListOrphanWorktrees(args: {
+    noteId: string;
+    repos: Array<{ repoRoot: string; label: string }>;
+  }): Promise<TaskWorktreeOrphans>;
   workbenchCreateWorktree(args: {
     noteId: string;
     repoRoot: string;
@@ -2128,6 +2134,7 @@ const api: DesktopApi = {
   notesAddTaskProject: (args) => ipcRenderer.invoke("notes:addTaskProject", args),
   notesRemoveTaskProject: (args) => ipcRenderer.invoke("notes:removeTaskProject", args),
   workbenchListWorktrees: (args) => ipcRenderer.invoke("workbench:worktrees", args),
+  workbenchListOrphanWorktrees: (args) => ipcRenderer.invoke("workbench:worktreeOrphans", args),
   workbenchCreateWorktree: (args) => ipcRenderer.invoke("workbench:createWorktree", args),
   workbenchInspectWorktree: (args) => ipcRenderer.invoke("workbench:inspectWorktree", args),
   workbenchRemoveWorktree: (args) => ipcRenderer.invoke("workbench:removeWorktree", args),

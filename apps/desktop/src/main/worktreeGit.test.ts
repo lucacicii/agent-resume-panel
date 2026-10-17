@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { ensureExtensionCatalogSchema, setCatalogMeta } from "@agent-resume/core";
+import { ensureExtensionCatalogSchema, setCatalogMeta, upsertNoteRecord, type NoteRecord } from "@agent-resume/core";
 import { taskWorktreeRoot } from "./taskWorkspace";
 import {
   isPathWithin,
@@ -14,6 +14,7 @@ import {
   worktreeCreate,
   worktreeInspect,
   worktreeListForTask,
+  worktreeListOrphans,
   worktreeRemove
 } from "./worktreeGit";
 import { worktreeDirName } from "../shared/worktreeTypes";
@@ -47,6 +48,19 @@ async function setup(): Promise<{ panelHome: string; noteId: string; repoRoot: s
 
 function listTask(panelHome: string, noteId: string, repoRoot: string) {
   return worktreeListForTask({ panelHome, noteId, repos: [{ repoRoot, label: "app" }] });
+}
+
+/** A note row, so a task can be made to exist in the catalog. */
+function noteRecord(noteId: string): NoteRecord {
+  return {
+    noteId,
+    scope: "library",
+    filename: `${noteId}.md`,
+    relDir: "",
+    relMdPath: `${noteId}.md`,
+    createdAtMs: 1,
+    updatedAtMs: 1
+  };
 }
 
 afterEach(async () => {
@@ -190,6 +204,56 @@ describe("worktreeGit", () => {
     await fs.mkdir(stray, { recursive: true });
     await expect(worktreeRemove({ repoRoot, targetPath: stray })).rejects.toThrow(/已注册的 worktree/);
     expect(await fs.stat(stray)).not.toBeNull();
+  });
+
+  it("reports what a person is about to lose, including open terminals", async () => {
+    const { panelHome, noteId, repoRoot } = await setup();
+    const created = await worktreeCreate({ panelHome, noteId, repoRoot, branch: "feat/counts" });
+    await fs.writeFile(path.join(created.path, "work.txt"), "work\n");
+    await git(created.path, ["add", "-A"]);
+    await git(created.path, ["commit", "-m", "work"]);
+
+    const report = await worktreeInspect({
+      repoRoot,
+      targetPath: created.path,
+      baseBranch: "main",
+      liveSessionsInPath: (target) => (target === created.path ? 2 : 0)
+    });
+    expect(report).toMatchObject({
+      dirty: false,
+      unmergedCommits: 1,
+      mergedIntoBase: false,
+      liveSessionsInPath: 2,
+      branch: "feat/counts",
+      baseBranch: "main"
+    });
+    // With nobody wiring a pty host in — a test, an older build — the count is
+    // simply absent rather than a reason to fail.
+    expect((await worktreeInspect({ repoRoot, targetPath: created.path })).liveSessionsInPath).toBe(0);
+  });
+
+  it("finds checkouts left behind by tasks that are gone, and only those", async () => {
+    const { panelHome, noteId, repoRoot } = await setup();
+    const catalogDb = path.join(panelHome, "catalog.db");
+    await ensureExtensionCatalogSchema(catalogDb);
+
+    const left = await worktreeCreate({ panelHome, noteId: "note-deleted", repoRoot, branch: "feat/left" });
+    await worktreeCreate({ panelHome, noteId, repoRoot, branch: "feat/mine" });
+    // A checkout made outside any task workspace is not this feature's litter to
+    // collect, so it stays out of the listing entirely.
+    await git(repoRoot, ["worktree", "add", path.join(panelHome, "elsewhere"), "-b", "feat/outside"]);
+
+    const orphans = () => worktreeListOrphans({ panelHome, catalogDb, noteId, repos: [{ repoRoot, label: "app" }] });
+    const found = await orphans();
+    expect(found.repos).toHaveLength(1);
+    expect(found.repos[0]).toMatchObject({ repoRoot, label: "app", baseBranch: "main" });
+    expect(found.repos[0].worktrees.map((worktree) => worktree.path)).toEqual([left.path]);
+    expect(found.repos[0].worktrees[0]).toMatchObject({ branch: "feat/left", missing: false });
+
+    // The task comes back — a note synced from another machine, a re-created one
+    // — and its checkout is work again rather than litter.
+    await upsertNoteRecord(catalogDb, noteRecord("note-deleted"));
+    expect((await orphans()).repos).toEqual([]);
   });
 
   it("refuses a worktree root nested in the repository it would check out", async () => {
