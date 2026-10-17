@@ -134,7 +134,7 @@ describe("isPathWithin", () => {
 });
 
 describe("worktreeGit", () => {
-  it("creates a checkout under the task root and lists only that root", async () => {
+  it("lists the task's checkouts and the repository's own working tree, and nothing else", async () => {
     const { panelHome, noteId, repoRoot } = await setup();
     const root = taskWorktreeRoot(panelHome, noteId);
     expect(root).toBe(path.join(panelHome, ".desktop", "workspaces", noteId, ".worktrees"));
@@ -147,15 +147,20 @@ describe("worktreeGit", () => {
     expect(listing.root).toBe(root);
     const [repo] = listing.repos;
     expect(repo).toMatchObject({ exists: true, isGitRepo: true, baseBranch: "main" });
-    expect(repo.worktrees).toHaveLength(1);
-    expect(repo.worktrees[0]).toMatchObject({ path: created.path, branch: "feat/one", missing: false });
+    // The repository's own working tree leads the list: a pane diverted to one of
+    // the checkouts below has to be able to come back to it.
+    expect(repo.worktrees.map((item) => [item.path, item.isMain])).toEqual([
+      [repoRoot, true],
+      [created.path, false]
+    ]);
+    expect(repo.worktrees[1]).toMatchObject({ branch: "feat/one", missing: false });
 
     // A worktree created elsewhere — an agent that ignored the convention — is
     // visible to git but belongs to no task root, so it stays out of the listing.
     const outside = path.join(panelHome, "elsewhere");
     await git(repoRoot, ["worktree", "add", outside, "-b", "feat/outside"]);
     const after = await listTask(panelHome, noteId, repoRoot);
-    expect(after.repos[0].worktrees.map((item) => item.path)).toEqual([created.path]);
+    expect(after.repos[0].worktrees.map((item) => item.path)).toEqual([repoRoot, created.path]);
   });
 
   it("reports a checkout as merged only once its commit is in the base branch", async () => {
@@ -165,10 +170,12 @@ describe("worktreeGit", () => {
     await git(created.path, ["add", "-A"]);
     await git(created.path, ["commit", "-m", "work"]);
 
-    expect((await listTask(panelHome, noteId, repoRoot)).repos[0].worktrees[0].merged).toBe(false);
+    const merged = async (): Promise<boolean | undefined> =>
+      (await listTask(panelHome, noteId, repoRoot)).repos[0].worktrees.find((item) => item.path === created.path)?.merged;
+    expect(await merged()).toBe(false);
 
     await git(repoRoot, ["merge", "--ff-only", "feat/two"]);
-    expect((await listTask(panelHome, noteId, repoRoot)).repos[0].worktrees[0].merged).toBe(true);
+    expect(await merged()).toBe(true);
   });
 
   it("counts what is at risk before a checkout is removed", async () => {

@@ -106,8 +106,59 @@ describe("useTaskWorktrees", () => {
     expect(result.current.checkoutFor("default", MAIN_APP)).toBeNull();
   });
 
-  it("survives a bridge that answers with nothing", async () => {
-    // An older or failed call gives no listing at all: the panel then has no
+  it("puts the panes back on the main checkout when the one they were using is gone", async () => {
+    const { result } = await mount({ list: LISTING });
+    // One pane pinned to the checkout, and the shared default on it as well.
+    act(() => result.current.pin("git"));
+    act(() => result.current.select("git", MAIN_APP, FEAT_APP));
+    act(() => result.current.select("default", MAIN_APP, FEAT_APP));
+    await waitFor(() => expect(result.current.rootFor("git", MAIN_APP)).toBe(FEAT_APP));
+    expect(result.current.rootFor("files", MAIN_APP)).toBe(FEAT_APP);
+
+    // An agent merged the branch it was working on and removed the checkout: git
+    // lists it no longer, which is how a failed read is told apart from a real one.
+    installBridge({
+      list: {
+        ...LISTING,
+        repos: [{ ...LISTING.repos[0], worktrees: [entry(MAIN_APP, "main", { isMain: true })] }, LISTING.repos[1]]
+      }
+    });
+    let handled = false;
+    await act(async () => {
+      handled = await result.current.dropVanishedCheckouts([FEAT_APP]);
+    });
+    expect(handled).toBe(true);
+    // Every pane, pinned or not, and with nothing said about it.
+    await waitFor(() => expect(result.current.rootFor("git", MAIN_APP)).toBe(MAIN_APP));
+    expect(result.current.rootFor("files", MAIN_APP)).toBe(MAIN_APP);
+    expect(result.current.rootFor("terminal", MAIN_APP)).toBe(MAIN_APP);
+  });
+
+  it("leaves a failure against a checkout that is still there to be reported", async () => {
+    const { result } = await mount({ list: LISTING });
+    act(() => result.current.select("files", MAIN_APP, FEAT_APP));
+    await waitFor(() => expect(result.current.rootFor("files", MAIN_APP)).toBe(FEAT_APP));
+
+    let handled = true;
+    await act(async () => {
+      handled = await result.current.dropVanishedCheckouts([FEAT_APP]);
+    });
+    // Still listed, so whatever the pane tripped over is a real error.
+    expect(handled).toBe(false);
+    expect(result.current.rootFor("files", MAIN_APP)).toBe(FEAT_APP);
+  });
+
+  it("has nothing to say about a root no pane is diverting", async () => {
+    const { result } = await mount({ list: LISTING });
+    let handled = true;
+    await act(async () => {
+      handled = await result.current.dropVanishedCheckouts([MAIN_APP]);
+    });
+    expect(handled).toBe(false);
+    expect(result.current.rootFor("files", MAIN_LIB)).toBe(MAIN_LIB);
+  });
+
+  it("survives a bridge that answers with nothing", async () => {    // An older or failed call gives no listing at all: the panel then has no
     // checkout control rather than a crash on an unexpected shape.
     const { result } = await mount({ list: null });
     expect(result.current.checkouts).toEqual([]);

@@ -32,7 +32,14 @@ export type TaskWorktrees = {
   error: string | null;
   state: TaskWorktreeState;
   saveState: (patch: Partial<TaskWorktreeState>) => Promise<void>;
-  refresh: () => Promise<void>;
+  /** Re-reads the checkouts. Answers with them, for a caller that has to judge one. */
+  refresh: () => Promise<TaskWorktreeListing | null>;
+  /**
+   * A pane could not read what it was pointed at. Answers whether that is a
+   * checkout having been removed from under it, in which case every pane is put
+   * back on its repository's main checkout and the caller reports nothing.
+   */
+  dropVanishedCheckouts: (roots: readonly string[]) => Promise<boolean>;
   /** The path a pane with this scope shows for a repository root. */
   rootFor: (scope: CheckoutScope, repoRoot: string) => string;
   /** The checkout a repository is diverted to for this scope, or null at its main one. */
@@ -70,6 +77,17 @@ function basename(value: string): string {
   return parts[parts.length - 1] || value;
 }
 
+/** The same selection with the given repository keys taken out of it. */
+function withoutKeys(selection: CheckoutSelection, keys: ReadonlySet<string>): CheckoutSelection {
+  let dropped = false;
+  const next: CheckoutSelection = {};
+  for (const [key, value] of Object.entries(selection)) {
+    if (keys.has(key)) dropped = true;
+    else next[key] = value;
+  }
+  return dropped ? next : selection;
+}
+
 export function useTaskWorktrees(options: { noteId: string | null; repos: string[] }): TaskWorktrees {
   const { noteId, repos } = options;
   const reposKey = useMemo(() => repos.map(pathKey).filter(Boolean).join("\0"), [repos]);
@@ -100,9 +118,9 @@ export function useTaskWorktrees(options: { noteId: string | null; repos: string
   const signatureRef = useRef("");
   const requestRef = useRef(0);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<TaskWorktreeListing | null> => {
     const api = desktopApi();
-    if (typeof api.workbenchListWorktrees !== "function") return;
+    if (typeof api.workbenchListWorktrees !== "function") return null;
     // The repositories come from the caller rather than from the main process,
     // so a task whose notes have not loaded yet simply has nothing to ask about.
     const targets = reposRef.current.map(pathKey).filter(Boolean);
@@ -113,7 +131,7 @@ export function useTaskWorktrees(options: { noteId: string | null; repos: string
         setLoading(false);
         setError(null);
       }
-      return;
+      return null;
     }
     const request = ++requestRef.current;
     if (mountedRef.current) setLoading(true);
@@ -122,7 +140,7 @@ export function useTaskWorktrees(options: { noteId: string | null; repos: string
         noteId,
         repos: targets.map((repoRoot) => ({ repoRoot, label: basename(repoRoot) }))
       });
-      if (!mountedRef.current || request !== requestRef.current) return;
+      if (!mountedRef.current || request !== requestRef.current) return null;
       // An answer that is not a listing is no answer: treat it as "none", so a
       // failed or older bridge leaves the panel without the control rather than
       // crashing on a shape it did not expect.
@@ -133,9 +151,11 @@ export function useTaskWorktrees(options: { noteId: string | null; repos: string
         setListing(next);
       }
       setError(null);
+      return next;
     } catch (failure) {
-      if (!mountedRef.current || request !== requestRef.current) return;
+      if (!mountedRef.current || request !== requestRef.current) return null;
       setError(failure instanceof Error ? failure.message : String(failure));
+      return null;
     } finally {
       if (mountedRef.current && request === requestRef.current) setLoading(false);
     }
@@ -276,6 +296,67 @@ export function useTaskWorktrees(options: { noteId: string | null; repos: string
     });
   }, []);
 
+  /** Which of these roots a pane is currently diverted to a checkout of. */
+  const divertedFor = useCallback(
+    (roots: readonly string[]): string[] => {
+      const diverted = new Set(
+        [...Object.values(shared), ...Object.values(pins).flatMap((selection) => Object.values(selection ?? {}))].map(pathKey)
+      );
+      const found: string[] = [];
+      for (const root of roots.map(pathKey)) {
+        if (diverted.has(root) && !found.includes(root)) found.push(root);
+      }
+      return found;
+    },
+    [pins, shared]
+  );
+
+  /**
+   * Whether a pane that failed to read one of `roots` is looking at a checkout
+   * somebody removed from under it — the agent that has just merged its branch,
+   * or Finder. Git is the authority on what exists, so the checkouts are re-read,
+   * and a checkout that is really gone is dropped from every pane at once: they
+   * fall back to the repository's main checkout, which is where the work now is.
+   * Answers true when that happened, so the caller reports no error — a folder
+   * the panel itself picked and somebody else removed is not a failure worth
+   * interrupting anyone for. A read that failed with the checkout still in place
+   * answers false, and is reported the way it always was.
+   */
+  const dropVanishedCheckouts = useCallback(
+    async (roots: readonly string[]): Promise<boolean> => {
+      const diverted = divertedFor(roots);
+      if (!diverted.length) return false;
+      const fresh = await refresh();
+      if (!fresh) return false;
+      const present = new Set(
+        fresh.repos.flatMap((repo) =>
+          repo.worktrees
+            .filter((worktree) => !worktree.missing && !worktree.prunable)
+            .map((worktree) => pathKey(worktree.path))
+        )
+      );
+      const gone = new Set(diverted.filter((path) => !present.has(path)));
+      if (!gone.size) return false;
+      const dropped = (selection: CheckoutSelection): ReadonlySet<string> =>
+        new Set(Object.entries(selection).filter(([, path]) => gone.has(pathKey(path))).map(([repoRoot]) => repoRoot));
+      setShared((current) => withoutKeys(current, dropped(current)));
+      setPins((current) => {
+        let changed = false;
+        const next = { ...current };
+        for (const [scope, selection] of Object.entries(current)) {
+          if (!selection) continue;
+          const remaining = withoutKeys(selection, dropped(selection));
+          if (remaining === selection) continue;
+          next[scope as CheckoutScope] = remaining;
+          changed = true;
+        }
+        return changed ? next : current;
+      });
+      return true;
+    },
+    [divertedFor, refresh]
+  );
+
   const saveState = useCallback(
     async (patch: Partial<TaskWorktreeState>) => {
       if (!noteId) return;
@@ -294,6 +375,7 @@ export function useTaskWorktrees(options: { noteId: string | null; repos: string
     state,
     saveState,
     refresh,
+    dropVanishedCheckouts,
     rootFor,
     checkoutFor,
     isPinned,

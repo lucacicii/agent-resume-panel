@@ -53,7 +53,8 @@ function worktreesWith(worktrees: TaskWorktreeInfo[]): TaskWorktrees {
     error: null,
     state: { enabled: true, baseBranch: {} },
     saveState: async () => undefined,
-    refresh: async () => undefined,
+    refresh: async () => null,
+    dropVanishedCheckouts: async () => false,
     rootFor: (_scope, repoRoot) => repoRoot,
     checkoutFor: () => null,
     isPinned: () => false,
@@ -97,14 +98,23 @@ afterEach(() => {
 });
 
 describe("TaskSettingsSheet", () => {
-  it("offers to delete a checkout, but never the main one", async () => {
+  it("offers to delete a checkout, and never a repository's own working tree", async () => {
     renderSheet({
       worktrees: [entry(REPO, "main", { isMain: true }), entry(`${REPO}-feat`, "feat/x", { merged: true })]
     });
-    await waitFor(() => expect(screen.getByText("Main checkout")).toBeTruthy());
-    // One delete button for one removable checkout: the main working tree is the
-    // repository itself and has no delete affordance at all.
+    // The main working tree has no row here at all: it is the repository itself,
+    // named by the folder list above, and there is nothing about it to manage.
+    expect(await screen.findByText("feat/x")).toBeTruthy();
+    expect(screen.queryByText("Main checkout")).toBeNull();
+    // One delete button for one removable checkout.
     expect(screen.getAllByRole("button", { name: "Delete…" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Clean Up Stale Entries" })).toBeNull();
+  });
+
+  it("leaves a repository with nothing but its own working tree out of the list", async () => {
+    renderSheet({ worktrees: [entry(REPO, "main", { isMain: true })] });
+    expect(await screen.findByText("No worktrees yet.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Delete…" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Clean Up Stale Entries" })).toBeNull();
   });
 

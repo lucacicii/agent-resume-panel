@@ -957,6 +957,31 @@ export function WorkbenchPanel(): ReactPortal | null {
   const worktreesRef = useRef(worktrees);
   worktreesRef.current = worktrees;
   /**
+   * A pane failed to read one of its roots, which may be nothing more than the
+   * checkout it had been given having been removed from under it: an agent that
+   * merged its branch and cleaned up, or Finder. That is not a failure to pop a
+   * notification up for — the panel puts the panes back on the repository's main
+   * checkout and says nothing, which is what the reader would have asked for. A
+   * read that failed with the checkout still there is reported as it always was.
+   */
+  const reportReadFailure = useCallback(
+    (message: string, roots: readonly string[]) => {
+      void (async () => {
+        if (await worktreesRef.current.dropVanishedCheckouts(roots)) return;
+        setStatus({ text: message, kind: "error" });
+      })();
+    },
+    [setStatus]
+  );
+  /** Git's own voice, held stable for the hook and routed through the checkouts. */
+  const notifyGitStatus = useCallback(
+    (status: { text: string; kind?: "error" | "ok" | "warning" }) => {
+      if (status.kind === "error") reportReadFailure(status.text, gitRootsRef.current);
+      else setStatus(status);
+    },
+    [reportReadFailure, setStatus]
+  );
+  /**
    * Where a checkout can be made: a repository that is really there, and really
    * is a git repository. A folder that is neither cannot have worktrees, and the
    * panel never turns one into a repository to make the feature apply.
@@ -1035,7 +1060,9 @@ export function WorkbenchPanel(): ReactPortal | null {
     onGitMutated: () => {
       terminalsRef.current.forEach((pane) => void refreshTerminalGitRef.current(pane.key));
     },
-    notifyStatus: setStatus
+    // Git speaks about the checkouts it was given, so a failure while one of them
+    // has just been removed is the same story as a pane's read failing.
+    notifyStatus: notifyGitStatus
   });
 
   useEffect(() => { terminalsRef.current = terminals; }, [terminals]);
@@ -7303,7 +7330,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               }}
             />;
           })}{terminalCreating && !currentTerminals.some((pane) => !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={ICON_SIZE.prominent} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length && !currentThunderChats.length && !currentBrowsers.length && !currentNotePanes.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side === "browser" ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel"><BrowserSidePanel active={active} browsers={panelBrowsers} projectPath={panelProject} onRequestCreate={() => void openBrowser(panelProject ?? undefined)} onOpenSource={(path, line) => void openFile(path, { path, line: line ?? 1, column: 1, endColumn: 1 }, projectForPath(path) || undefined)} onSendToSession={sendProbePromptToSession} /></aside></> : side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} roots={filesRoots} headExtra={worktreeControl("files")} activePath={currentFilePath} onOpenFile={(path) => void openFile(path, undefined, projectForPath(path) || undefined)} onOpenPreview={(path) => void openFile(path, undefined, projectForPath(path) || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /> : side === "search" ? <WorkbenchSearchSidePane
+          {side === "browser" ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel"><BrowserSidePanel active={active} browsers={panelBrowsers} projectPath={panelProject} onRequestCreate={() => void openBrowser(panelProject ?? undefined)} onOpenSource={(path, line) => void openFile(path, { path, line: line ?? 1, column: 1, endColumn: 1 }, projectForPath(path) || undefined)} onSendToSession={sendProbePromptToSession} /></aside></> : side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} roots={filesRoots} headExtra={worktreeControl("files")} activePath={currentFilePath} onOpenFile={(path) => void openFile(path, undefined, projectForPath(path) || undefined)} onOpenPreview={(path) => void openFile(path, undefined, projectForPath(path) || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message, root) => root ? reportReadFailure(message, [root]) : setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /> : side === "search" ? <WorkbenchSearchSidePane
             headExtra={worktreeControl("search")}
             selectedProject={sideRepoRoots.length ? worktrees.rootFor("search", sideRepoRoots[0]) : null}
             searchQuery={searchQuery}

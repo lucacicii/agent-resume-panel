@@ -187,12 +187,15 @@ async function describeWorktree(entry: WorktreeEntry, repoRoot: string, baseBran
 }
 
 /**
- * Every worktree of this task, across the repositories it references.
+ * The checkouts this task can look at, across the repositories it references.
  *
  * Ownership needs no inference: a checkout is visible in the listing of exactly
  * the repository that registered it, so whatever `worktree list` reports for a
- * repo belongs to that repo. Only checkouts under the task's own root are kept —
- * those are the ones the panel and its agents are meant to share.
+ * repo belongs to that repo. Two kinds of entry are kept: the checkouts under
+ * the task's own root, which are the ones the panel and its agents share, and
+ * each repository's own working tree — a pane has to be able to come back to it,
+ * and it is the one checkout here that cannot be removed from under the panel.
+ * Git prints it first, so it leads each repository's list.
  */
 export async function worktreeListForTask(input: {
   panelHome: string;
@@ -219,11 +222,13 @@ export async function worktreeListForTask(input: {
         return { ...bare, repoRoot, exists: true, isGitRepo: true, baseBranch: null, error: formatExecError(error), worktrees: [] };
       }
       const baseBranch = await queryGitBranch(repoRoot);
-      const owned = entries.filter((entry) => {
+      const ours = entries.filter((entry) => {
+        if (entry.isMain) return true;
         const checkout = realPath(entry.path);
+        // The task's own `.worktrees/` folder is not a checkout of anything.
         return checkout !== realRoot && isPathWithin(checkout, realRoot);
       });
-      const worktrees = await Promise.all(owned.map((entry) => describeWorktree(entry, repoRoot, baseBranch)));
+      const worktrees = await Promise.all(ours.map((entry) => describeWorktree(entry, repoRoot, baseBranch)));
       return { ...bare, repoRoot, exists: true, isGitRepo: true, baseBranch, worktrees };
     })
   );

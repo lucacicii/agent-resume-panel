@@ -109,7 +109,8 @@ turn on **Enable worktree mode**. From then on:
 
 - Every checkout of the task lives under `<panelHome>/.desktop/workspaces/<taskId>/.worktrees/<repository>-<branch>`. The path is derived from the task id, so renaming the task moves nothing.
 - Agents are told that location, and told to leave the checkouts alone: the panel never deletes one on its own initiative.
-- **Git**, **Explorer**, **Search** and the **terminal** group each carry a checkout selector. They follow one shared choice; the pin beside it keeps one of them on a different checkout.
+- **Git**, **Explorer**, **Search** and the **terminal** group each carry a checkout selector. They follow one shared choice; the pin beside it keeps one of them on a different checkout. A repository is always listed with its own working tree first, so a pane can come back to it.
+- A checkout can also vanish under a pane: the agent that just merged its branch removed it, or Finder did. The pane then returns to its repository's main checkout and says nothing — a folder the panel itself picked and somebody else removed is not a fault to interrupt for.
 - **New Worktree…** creates one and offers to install dependencies in a terminal — a fresh checkout has no `node_modules`.
 - Removing one is always your decision. The settings sheet inspects the checkout first, says how many changes are uncommitted and how many commits are not in the base branch, and never touches the branch. Records of checkouts whose folder has already gone are cleared separately, as are checkouts left behind by a deleted task.
 - The panel reminds you when a task is marked done and when you close its window, and those dialogs only report: closing the window is not deleting anything.
@@ -227,7 +228,8 @@ agent 需要你回答时——批准计划、`ask` 档位的授权、插件的�
 
 - 该任务的所有 worktree 都落在 `<panelHome>/.desktop/workspaces/<任务 id>/.worktrees/<仓库名>-<分支名>`。路径由任务 id 派生，任务改名不会挪动任何目录。
 - Agent 会被告知这个落点，也会被告知不要动这些目录：面板**不会**自作主张删掉任何一个。
-- **Git 改动 / 文件目录 / 全局查找 / 终端**各自带一个 checkout 选择器，默认联动；旁边的图钉可以让其中一个钉在别的 checkout 上。
+- **Git 改动 / 文件目录 / 全局查找 / 终端**各自带一个 checkout 选择器，默认联动；旁边的图钉可以让其中一个钉在别的 checkout 上。每个仓库都把自己的主工作副本列在最前，所以任何一个面板都能切回来。
+- checkout 也可能在你眼皮底下消失：agent 刚把分支合掉顺手删了它，或者你在访达里删了。面板会把这个面板切回该仓库的主工作副本，而且什么都不说——一个面板自己挑的目录被别的程序删掉，不算需要打断你的事故。
 - **新建 worktree…** 可以直接建一个，并顺手在终端里装依赖——新 checkout 里没有 `node_modules`。
 - 删除永远由你决定：设置弹层会先体检这个 checkout，告诉你有多少处未提交改动、多少提交还没进基础分支，并且**不碰分支**。目录已经消失的登记单独清理；被删任务遗留的 worktree 也会单独列出。
 - 面板会在**任务标记完成**和**关闭窗口**这两个时刻提醒你，而这些弹窗只负责报告：关窗不会删掉任何东西。
