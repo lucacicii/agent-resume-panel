@@ -1,7 +1,6 @@
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { NativeMenuSelect } from "../../components/NativeMenuSelect";
 import { Children, isValidElement, useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
-import type { WorkbenchComposerMention } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
@@ -55,14 +54,6 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
     if (options?.commit !== false) commit(next);
   };
   const slashPhrases = draft.composerSlashPhrases ?? [];
-  const mentions = draft.composerMentions ?? [];
-  const mentionAt = (index: number, patch: Partial<WorkbenchComposerMention>): WorkbenchComposerMention[] =>
-    mentions.map((item, mentionIndex) => mentionIndex === index ? { ...item, ...patch } : item);
-  const pickMentionPath = async (title: string): Promise<string | null> => {
-    if (typeof desktopApi().pickDirectory !== "function") return null;
-    const result = await desktopApi().pickDirectory({ title });
-    return result.ok ? result.path : null;
-  };
   return <>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.newSessionGroup")}</h3><div className="settings-group-body">
       <SelectRow
@@ -219,119 +210,6 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
           className="tool-btn"
           onClick={() => update("composerSlashPhrases", [...slashPhrases, { trigger: "", phrase: "" }], { commit: false })}
         ><ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />{t("desktop.settings.composerSlashAdd")}</button>
-      </div>
-    </div></section>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.composerMentionsGroup")}</h3><div className="settings-group-body">
-      <p className="settings-footnote">{t("desktop.settings.composerMentionsDesc")}</p>
-      {mentions.length === 0 ? <p className="settings-footnote">{t("desktop.settings.composerMentionsEmpty")}</p> : null}
-      {mentions.map((item, index) => {
-        const references = item.roots.filter((root) => root.role === "reference");
-        return (
-          <div className="settings-item" key={`mention-${index}`}>
-            <div className="settings-item-row">
-              <input
-                className="settings-item-name"
-                value={item.id}
-                spellCheck={false}
-                autoCapitalize="off"
-                autoCorrect="off"
-                aria-label={t("desktop.settings.composerMentionsId")}
-                placeholder={t("desktop.settings.composerMentionsIdPlaceholder")}
-                onChange={(event) => update("composerMentions", mentionAt(index, { id: event.target.value }), { commit: false })}
-                onBlur={() => commit(draft)}
-              />
-              <input
-                className="settings-item-path"
-                value={item.cwd}
-                spellCheck={false}
-                aria-label={t("desktop.settings.composerMentionsCwd")}
-                placeholder={t("desktop.settings.composerMentionsCwdPlaceholder")}
-                onChange={(event) => {
-                  const cwd = event.target.value;
-                  const nextRoots = [{ path: cwd, role: "work" as const }, ...item.roots.filter((root) => root.role === "reference")];
-                  update("composerMentions", mentionAt(index, { cwd, roots: nextRoots }), { commit: false });
-                }}
-                onBlur={() => commit(draft)}
-              />
-              <button
-                type="button"
-                className="tool-btn settings-item-icon"
-                aria-label={t("desktop.settings.composerMentionsBrowse")}
-                title={t("desktop.settings.composerMentionsBrowse")}
-                onClick={() => {
-                  void pickMentionPath(t("desktop.settings.composerMentionsCwd")).then((picked) => {
-                    if (!picked) return;
-                    const nextRoots = [{ path: picked, role: "work" as const }, ...item.roots.filter((root) => root.role === "reference")];
-                    update("composerMentions", mentionAt(index, { cwd: picked, roots: nextRoots }));
-                  });
-                }}
-              ><ThemeIcon name="folder-open" size={ICON_SIZE.dense} aria-hidden="true" /></button>
-              <button
-                type="button"
-                className="tool-btn settings-item-icon"
-                aria-label={t("desktop.settings.composerMentionsRemove")}
-                title={t("desktop.settings.composerMentionsRemove")}
-                onClick={() => update("composerMentions", mentions.filter((_, mentionIndex) => mentionIndex !== index))}
-              ><ThemeIcon name="trash" size={ICON_SIZE.dense} aria-hidden="true" /></button>
-            </div>
-            {references.map((root, rootIndex) => (
-              <div className="settings-item-row settings-item-subrow" key={`mention-${index}-ref-${rootIndex}`}>
-                <ThemeIcon name="folder" className="settings-item-subrow-icon" size={ICON_SIZE.dense} aria-hidden="true" />
-                <input
-                  className="settings-item-path"
-                  value={root.path}
-                  spellCheck={false}
-                  aria-label={t("desktop.settings.composerMentionsReferences")}
-                  placeholder={t("desktop.settings.composerMentionsReferencePlaceholder")}
-                  onChange={(event) => {
-                    const nextRefs = references.map((entry, entryIndex) => entryIndex === rootIndex ? { ...entry, path: event.target.value } : entry);
-                    update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }), { commit: false });
-                  }}
-                  onBlur={() => commit(draft)}
-                />
-                <button
-                  type="button"
-                  className="tool-btn settings-item-icon"
-                  aria-label={t("desktop.settings.composerMentionsBrowse")}
-                  title={t("desktop.settings.composerMentionsBrowse")}
-                  onClick={() => {
-                    void pickMentionPath(t("desktop.settings.composerMentionsReferences")).then((picked) => {
-                      if (!picked) return;
-                      const nextRefs = references.map((entry, entryIndex) => entryIndex === rootIndex ? { ...entry, path: picked } : entry);
-                      update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }));
-                    });
-                  }}
-                ><ThemeIcon name="folder-open" size={ICON_SIZE.dense} aria-hidden="true" /></button>
-                <button
-                  type="button"
-                  className="tool-btn settings-item-icon"
-                  aria-label={t("desktop.settings.composerMentionsRemoveReference")}
-                  title={t("desktop.settings.composerMentionsRemoveReference")}
-                  onClick={() => {
-                    const nextRefs = references.filter((_, entryIndex) => entryIndex !== rootIndex);
-                    update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }));
-                  }}
-                ><ThemeIcon name="close" size={ICON_SIZE.dense} aria-hidden="true" /></button>
-              </div>
-            ))}
-            <div className="settings-action-row">
-              <button
-                type="button"
-                className="tool-btn"
-                onClick={() => update("composerMentions", mentionAt(index, {
-                  roots: [...item.roots, { path: "", role: "reference" }]
-                }), { commit: false })}
-              ><ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />{t("desktop.settings.composerMentionsAddReference")}</button>
-            </div>
-          </div>
-        );
-      })}
-      <div className="settings-action-row">
-        <button
-          type="button"
-          className="tool-btn"
-          onClick={() => update("composerMentions", [...mentions, { id: "", cwd: "", roots: [{ path: "", role: "work" }] }], { commit: false })}
-        ><ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />{t("desktop.settings.composerMentionsAdd")}</button>
       </div>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.embeddedEditorGroup")}</h3><div className="settings-group-body">

@@ -4346,15 +4346,7 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: {
         defaultNewSessionProvider: "codex",
-        defaultNewSessionTarget: "",
-        composerMentions: [{
-          id: "anfeng",
-          cwd: "/work/c",
-          roots: [
-            { path: "/work/c", role: "work" },
-            { path: "/work/a", role: "reference" }
-          ]
-        }]
+        defaultNewSessionTarget: ""
       } }),
       contextMenuShow,
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
@@ -4383,16 +4375,15 @@ describe("WorkbenchPanel", () => {
     expect(items.find((item) => item.label === "CLI (terminal)")).toBeTruthy();
   });
 
-  it("launches immediately when a workspace mention is chosen with a default agent", async () => {
+  it("launches default agent immediately when target is set", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
-    const workbenchNewSession = vi.fn(async () => ({ mode: "external-system", cwd: "/work/c" }));
+    const workbenchNewSession = vi.fn(async () => ({ mode: "external-system", cwd: "/work/app" }));
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.terminalTabs": "Terminal tabs",
-        "desktop.settings.defaultAgent": "Default agent", "desktop.settings.newSessionGroupCli": "CLI (terminal)", "desktop.settings.newSessionGroupAcp": "ACP (visual chat)", "desktop.settings.newSessionTarget.cli_codex": "Codex", "desktop.settings.newSessionTarget.cli_claude": "Claude",
-        "desktop.settings.composerMentionsWorkspace": "Workspace", "desktop.settings.composerMentionsCurrentProject": "Current project"
+        "desktop.settings.defaultAgent": "Default agent", "desktop.settings.newSessionGroupCli": "CLI (terminal)", "desktop.settings.newSessionGroupAcp": "ACP (visual chat)", "desktop.settings.newSessionTarget.cli_codex": "Codex", "desktop.settings.newSessionTarget.cli_claude": "Claude"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -4403,12 +4394,7 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: {
         defaultNewSessionProvider: "codex",
-        defaultNewSessionTarget: "cli:codex",
-        composerMentions: [{
-          id: "anfeng",
-          cwd: "/work/c",
-          roots: [{ path: "/work/c", role: "work" }]
-        }]
+        defaultNewSessionTarget: "cli:codex"
       } }),
       contextMenuShow,
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
@@ -4423,17 +4409,13 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     await activateTaskDirectory("/work/app");
-    chooseContextMenuItem("anfeng");
     fireEvent.click(document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement);
     await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({
-      cwd: "/work/c",
+      cwd: "/work/app",
       provider: "codex",
       executionMode: "standard",
       taskNoteId: "wi-test"
     }));
-    const items = contextMenuShow.mock.calls.at(-1)![0].items;
-    expect(items.find((item) => item.label === "Workspace")).toBeTruthy();
-    expect(items.find((item) => item.label === "anfeng")).toBeTruthy();
   });
 
   it("does not leave loading visible for external-system new sessions", async () => {
