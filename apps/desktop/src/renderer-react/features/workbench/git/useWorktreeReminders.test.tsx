@@ -6,9 +6,9 @@ import { useWorktreeReminders } from "./useWorktreeReminders";
 import type { TaskWorktrees } from "./useTaskWorktrees";
 
 const MESSAGES = {
-  "desktop.workbench.worktreeOpenNotice": "{0} worktree(s) of this task are still around.",
-  "desktop.workbench.worktreeDoneNotice": "Task marked done, with {0} worktree(s) still around.",
-  "desktop.workbench.worktreeCloseNotice": "Closing with {0} worktree(s) still on disk.",
+  "desktop.workbench.worktreeOpenNotice": "{0} worktree(s) of this task still need cleaning up.",
+  "desktop.workbench.worktreeDoneNotice": "Task marked done, with {0} worktree(s) still to clean up.",
+  "desktop.workbench.worktreeCloseNotice": "Closing with {0} worktree(s) still around.",
   "desktop.workbench.worktreeReview": "Show Worktrees",
   "desktop.workbench.worktreeDontRemind": "Don't remind me again",
   "desktop.workbench.worktreeLater": "Later",
@@ -88,7 +88,7 @@ describe("useWorktreeReminders", () => {
       confirm: true
     });
     await waitFor(() => expect(calls.confirm).toHaveLength(1));
-    expect(calls.confirm[0].message).toBe("2 worktree(s) of this task are still around.");
+    expect(calls.confirm[0].message).toBe("2 worktree(s) of this task still need cleaning up.");
     expect(calls.confirm[0].detail).toBe("app ▸ feat/x\napp ▸ feat/y");
     expect(calls.confirm[0].confirmLabel).toBe("Don't remind me again");
     // Alert style: Return and Escape mean "later", so forgetting takes a click.
@@ -102,7 +102,7 @@ describe("useWorktreeReminders", () => {
       worktrees: worktreesWith([entry(FEAT, "feat/x"), entry(OTHER, "feat/y")], { dismissed: { [FEAT]: 1 } })
     });
     await waitFor(() => expect(calls.confirm).toHaveLength(1));
-    expect(calls.confirm[0].message).toBe("1 worktree(s) of this task are still around.");
+    expect(calls.confirm[0].message).toBe("1 worktree(s) of this task still need cleaning up.");
     expect(calls.confirm[0].detail).toBe("app ▸ feat/y");
 
     const silent = await mount({ worktrees: worktreesWith([entry(FEAT, "feat/x")], { dismissed: { [FEAT]: 1 } }) });
@@ -129,7 +129,7 @@ describe("useWorktreeReminders", () => {
     await act(async () => {
       rerender({ status: "done" });
     });
-    await waitFor(() => expect(calls.confirm.some((call) => call.message === "Task marked done, with 1 worktree(s) still around.")).toBe(true));
+    await waitFor(() => expect(calls.confirm.some((call) => call.message === "Task marked done, with 1 worktree(s) still to clean up.")).toBe(true));
     expect(calls.confirm.at(-1)?.confirmLabel).toBe("Show Worktrees");
     expect(onOpenWorktrees).toHaveBeenCalledTimes(1);
   });
@@ -150,7 +150,7 @@ describe("useWorktreeReminders", () => {
     });
     const closing = calls.confirm.filter((call) => call.message.startsWith("Closing"));
     expect(allowed).toBe(true);
-    expect(closing[0].message).toBe("Closing with 1 worktree(s) still on disk.");
+    expect(closing[0].message).toBe("Closing with 1 worktree(s) still around.");
     expect(closing[0].cancelLabel).toBe("Close");
     // The dialog says out loud that closing is not deleting.
     expect(closing[0].detail).toContain("Nothing is deleted");

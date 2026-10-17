@@ -2133,7 +2133,13 @@ async function installApplicationMenu(): Promise<void> {
  * renderer to flush them first — the bargain the floating note windows make.
  */
 const pendingTaskWindowCloses = new Map<number, { settle: (closed: boolean) => void }>();
-const TASK_WINDOW_CLOSE_TIMEOUT_MS = 15_000;
+/**
+ * How long the renderer has to answer a close. Long enough to read the dialog
+ * the close chain shows about leftover worktrees — it is the only question there
+ * that a person has to think about — and short enough that a renderer which
+ * never answers cannot leave a window that refuses to close.
+ */
+const TASK_WINDOW_CLOSE_TIMEOUT_MS = 60_000;
 
 function registerTaskWindowCloseGuard(win: BrowserWindow): void {
   const senderId = win.webContents.id;

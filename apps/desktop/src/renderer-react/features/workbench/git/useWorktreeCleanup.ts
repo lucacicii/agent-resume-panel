@@ -146,6 +146,9 @@ export function useWorktreeCleanup(options: {
         // git's own protection in place.
         await api.workbenchRemoveWorktree({ repoRoot: target.repoRoot, path: target.path, force: report.dirty });
         await onRemoved(target);
+        // A row can be an orphan rather than one of this task's checkouts, so the
+        // list that offers it has to be re-read too.
+        await refreshOrphans();
         return true;
       } catch (failure) {
         if (mountedRef.current) setError(message(failure));
@@ -154,7 +157,7 @@ export function useWorktreeCleanup(options: {
         if (mountedRef.current) setBusyPath(null);
       }
     },
-    [onRemoved, riskDetail, t]
+    [onRemoved, refreshOrphans, riskDetail, t]
   );
 
   const prune = useCallback(

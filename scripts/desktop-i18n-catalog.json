@@ -349,9 +349,9 @@
     "desktop.workbench.worktreeOrphanHint": "Their tasks no longer exist. The folders and git's records stay until you remove them.",
     "desktop.workbench.worktreeLater": "Later",
     "desktop.workbench.worktreeDontRemind": "Don't remind me again",
-    "desktop.workbench.worktreeOpenNotice": "{0} worktree(s) of this task are still around.",
-    "desktop.workbench.worktreeDoneNotice": "Task marked done, with {0} worktree(s) still around.",
-    "desktop.workbench.worktreeCloseNotice": "Closing with {0} worktree(s) still on disk.",
+    "desktop.workbench.worktreeOpenNotice": "{0} worktree(s) of this task still need cleaning up.",
+    "desktop.workbench.worktreeDoneNotice": "Task marked done, with {0} worktree(s) still to clean up.",
+    "desktop.workbench.worktreeCloseNotice": "Closing with {0} worktree(s) still around.",
     "desktop.workbench.worktreeReview": "Show Worktrees",
     "desktop.workbench.worktreeNothingDeleted": "Nothing is deleted — the panel only reminds you."
   },
@@ -705,8 +705,8 @@
     "desktop.workbench.worktreeOrphanHint": "元のタスクはもう存在しません。削除するまでフォルダと git の記録は残ります。",
     "desktop.workbench.worktreeLater": "後で",
     "desktop.workbench.worktreeDontRemind": "今後表示しない",
-    "desktop.workbench.worktreeOpenNotice": "このタスクのワークツリーが {0} 個残っています。",
-    "desktop.workbench.worktreeDoneNotice": "タスクを完了にしましたが、ワークツリーが {0} 個残っています。",
+    "desktop.workbench.worktreeOpenNotice": "このタスクには後片付けが必要なワークツリーが {0} 個あります。",
+    "desktop.workbench.worktreeDoneNotice": "タスクを完了にしましたが、後片付けが必要なワークツリーが {0} 個あります。",
     "desktop.workbench.worktreeCloseNotice": "ワークツリーを {0} 個残したまま閉じます。",
     "desktop.workbench.worktreeReview": "ワークツリーを表示",
     "desktop.workbench.worktreeNothingDeleted": "何も削除されません — これは確認です。"
@@ -1061,9 +1061,9 @@
     "desktop.workbench.worktreeOrphanHint": "它们所属的任务已经不在了。在你处理之前，目录和 git 的登记都会留着。",
     "desktop.workbench.worktreeLater": "稍后",
     "desktop.workbench.worktreeDontRemind": "不再提醒",
-    "desktop.workbench.worktreeOpenNotice": "这个任务还有 {0} 个 worktree 在磁盘上。",
-    "desktop.workbench.worktreeDoneNotice": "任务已完成，但还有 {0} 个 worktree 在磁盘上。",
-    "desktop.workbench.worktreeCloseNotice": "关闭窗口时有 {0} 个 worktree 仍在磁盘上。",
+    "desktop.workbench.worktreeOpenNotice": "这个任务还有 {0} 个 worktree 需要清理。",
+    "desktop.workbench.worktreeDoneNotice": "任务已完成，但还有 {0} 个 worktree 需要清理。",
+    "desktop.workbench.worktreeCloseNotice": "关闭窗口时还有 {0} 个 worktree 留在磁盘上。",
     "desktop.workbench.worktreeReview": "查看 worktree",
     "desktop.workbench.worktreeNothingDeleted": "不会删除任何东西——面板只负责提醒。"
   }
