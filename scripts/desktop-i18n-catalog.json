@@ -336,7 +336,8 @@
     "desktop.workbench.worktreePinned": "Pinned to {0}",
     "desktop.workbench.worktreeNewTerminalHint": "Existing terminals keep their folder; this sets where new ones start.",
     "desktop.workbench.worktreeSelect": "Checkout",
-    "desktop.workbench.worktreeReminder": "{0} worktree(s) still on disk. Delete each one once its work is merged."
+    "desktop.workbench.worktreeReminder": "{0} worktree(s) still on disk. Delete each one once its work is merged.",
+    "desktop.workbench.worktreeCreated": "Worktree created: {0}"
   },
   "ja": {
     "desktop.nav.label": "ナビゲーション",
@@ -675,7 +676,8 @@
     "desktop.workbench.worktreePinned": "{0} に固定中",
     "desktop.workbench.worktreeNewTerminalHint": "既存のターミナルはそのままです。ここは新しいターミナルの開始位置を決めます。",
     "desktop.workbench.worktreeSelect": "チェックアウト",
-    "desktop.workbench.worktreeReminder": "ディスク上にワークツリーが {0} 個残っています。取り込みが済んだら削除してください。"
+    "desktop.workbench.worktreeReminder": "ディスク上にワークツリーが {0} 個残っています。取り込みが済んだら削除してください。",
+    "desktop.workbench.worktreeCreated": "ワークツリーを作成しました：{0}"
   },
   "zh-cn": {
     "desktop.nav.label": "导航",
@@ -1014,6 +1016,7 @@
     "desktop.workbench.worktreePinned": "已固定在 {0}",
     "desktop.workbench.worktreeNewTerminalHint": "已有终端不会换目录；这里决定新终端从哪开始。",
     "desktop.workbench.worktreeSelect": "checkout",
-    "desktop.workbench.worktreeReminder": "磁盘上还有 {0} 个 worktree。合并完之后记得逐个删掉。"
+    "desktop.workbench.worktreeReminder": "磁盘上还有 {0} 个 worktree。合并完之后记得逐个删掉。",
+    "desktop.workbench.worktreeCreated": "已创建 worktree：{0}"
   }
 }

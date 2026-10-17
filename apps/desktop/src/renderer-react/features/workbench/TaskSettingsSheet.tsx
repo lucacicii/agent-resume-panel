@@ -27,7 +27,8 @@ export function TaskSettingsSheet({
   worktrees,
   onAddProject,
   onRemoveProject,
-  onRevealPath
+  onRevealPath,
+  onCreateWorktree
 }: {
   open: boolean;
   onClose: () => void;
@@ -42,6 +43,8 @@ export function TaskSettingsSheet({
   onAddProject: () => void;
   onRemoveProject: (projectPath: string) => void;
   onRevealPath: (targetPath: string) => void;
+  /** Opens the new-worktree sheet; the dialog stays behind it. */
+  onCreateWorktree: () => void;
 }): React.JSX.Element {
   const { t } = useI18n();
   // Repositories with nothing to show are left out, except the ones that cannot
@@ -152,6 +155,14 @@ export function TaskSettingsSheet({
             ))}
             {!checkouts.length ? <p className="muted wb-task-settings-empty">{t("desktop.workbench.worktreeListEmpty")}</p> : null}
           </div>
+          {repos.some((repo) => repo.exists && repo.isGitRepo) ? (
+            <div className="settings-action-row">
+              <button type="button" className="tool-btn" onClick={onCreateWorktree}>
+                <ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />
+                {t("desktop.workbench.worktreeCreate")}
+              </button>
+            </div>
+          ) : null}
         </div>
       </section>
     </Sheet>

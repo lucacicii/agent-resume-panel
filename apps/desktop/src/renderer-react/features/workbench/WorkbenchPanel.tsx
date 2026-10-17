@@ -132,6 +132,7 @@ import {
 } from "./git/GitGraphView";
 import { useTaskWorktrees, type CheckoutScope } from "./git/useTaskWorktrees";
 import { TaskSettingsSheet } from "./TaskSettingsSheet";
+import { WorktreeCreateSheet } from "./WorktreeCreateSheet";
 import { WorkbenchDetailHeader } from "./layout/WorkbenchDetailHeader";
 import { taskFromRecord, type WorkbenchTask } from "./task";
 import {
@@ -711,6 +712,11 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [leftTab, setLeftTab] = useState<"note" | "session">("session");
   /** The task settings dialog: folders and worktrees for this workbench. */
   const [taskSettingsOpen, setTaskSettingsOpen] = useState(false);
+  /**
+   * The new-worktree sheet, and which surface opened it: the checkout appears in
+   * the scope that asked for it, which is not always the shared default.
+   */
+  const [worktreeCreateFor, setWorktreeCreateFor] = useState<{ scope: CheckoutScope; repoRoot: string | null } | null>(null);
   /** Left-panel note list: all notes, optionally filtered to the task's note tree. */
   const [noteItems, setNoteItems] = useState<Array<{ noteId: string; title: string; updatedAtMs: number; gtdStatus?: GtdStatus }>>([]);
   const [noteFilter, setNoteFilter] = useState<"task" | "all">("task");
@@ -927,6 +933,23 @@ export function WorkbenchPanel(): ReactPortal | null {
   const worktreesRef = useRef(worktrees);
   worktreesRef.current = worktrees;
   /**
+   * Where a checkout can be made: a repository that is really there, and really
+   * is a git repository. A folder that is neither cannot have worktrees, and the
+   * panel never turns one into a repository to make the feature apply.
+   */
+  const gitRepos = useMemo(
+    () => (worktrees.listing?.repos ?? [])
+      .filter((repo) => repo.exists && repo.isGitRepo)
+      .map((repo) => ({ repoRoot: repo.repoRoot, label: repo.label, baseBranch: repo.baseBranch })),
+    [worktrees.listing]
+  );
+  const canCreateWorktree = Boolean(taskScope) && gitRepos.length > 0;
+  /** The repository a surface is working in, so the sheet opens on that one. */
+  const openWorktreeCreate = (scope: CheckoutScope) => {
+    const diverted = sideRepoRoots.find((root) => worktrees.checkoutFor(scope, root));
+    setWorktreeCreateFor({ scope, repoRoot: diverted ?? sideRepoRoots[0] ?? null });
+  };
+  /**
    * The checkout control a pane head carries. It renders nothing unless the task
    * actually has a worktree, so a task without one keeps exactly the chrome it
    * had before — which is also what makes this safe to put in every pane head.
@@ -942,6 +965,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       onSelect={(repoRoot, path) => worktrees.select(scope, repoRoot, path)}
       onPin={() => worktrees.pin(scope)}
       onUnpin={() => worktrees.unpin(scope)}
+      onCreate={canCreateWorktree ? () => openWorktreeCreate(scope) : undefined}
     />
   );
   /** The root an absolute path belongs to (longest match), or "" when outside every root. */
@@ -7462,7 +7486,34 @@ export function WorkbenchPanel(): ReactPortal | null {
       onAddProject={() => void pickTaskProject()}
       onRemoveProject={(path) => void removeProject(path)}
       onRevealPath={(path) => { void desktopApi().workbenchRevealPath({ rootPath: path, targetPath: path }).catch(() => undefined); }}
+      onCreateWorktree={() => openWorktreeCreate("default")}
     /> : null}
+    <WorktreeCreateSheet
+      open={worktreeCreateFor !== null}
+      onClose={() => setWorktreeCreateFor(null)}
+      repos={gitRepos}
+      root={worktrees.root}
+      preferredRepo={worktreeCreateFor?.repoRoot ?? null}
+      savedBaseBranch={worktrees.state.baseBranch}
+      onCreate={async (input) => {
+        const scope = worktreeCreateFor?.scope ?? "default";
+        const created = await desktopApi().workbenchCreateWorktree({
+          noteId: taskScope?.noteId ?? "",
+          repoRoot: input.repoRoot,
+          branch: input.branch,
+          baseBranch: input.baseBranch
+        });
+        await worktrees.refresh();
+        // The checkout just made is the one being worked in: show it everywhere
+        // the workbench is not pinned elsewhere. It is keyed by the repository as
+        // the task names it, which is what every root in the panel is spelled
+        // with — not by the git root main resolved it to.
+        worktrees.select(scope, input.repoRoot, created.path);
+        setStatus({ text: t("desktop.workbench.worktreeCreated", created.path), kind: "ok" });
+        return created;
+      }}
+      onOpenTerminal={(cwd) => void openBlankTerminal(cwd)}
+    />
     <GitChangesPanel
       visible={side === "git" && !gitHistoryContext}
       git={git}

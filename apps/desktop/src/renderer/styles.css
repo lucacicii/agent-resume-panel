@@ -7302,6 +7302,42 @@ body.is-pane-resizing-v * {
 .wb-worktree-state.is-warning { color: var(--color-warning); }
 .wb-worktree-state.is-missing { color: var(--color-label-tertiary); text-decoration: line-through; }
 
+/* ---- the new-worktree sheet ---- */
+
+.wb-worktree-branch-input {
+  box-sizing: border-box;
+  flex: 0 1 220px;
+  min-width: 140px;
+  max-width: 240px;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--color-control-bg, var(--bg));
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--font-size-callout);
+}
+
+.wb-worktree-branch-input:focus {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.wb-worktree-created {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.wb-worktree-created-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin: 0;
+  font-weight: 600;
+}
+
 /* The label inside a native-menu select trigger; the chevron stays put. */
 .native-menu-select-label {
   min-width: 0;

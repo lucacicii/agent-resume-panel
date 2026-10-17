@@ -102,6 +102,9 @@ export function GitRepositorySelector({
   />;
 }
 
+/** The menu item that creates a checkout rather than choosing one. */
+const CREATE_ITEM_ID = "__create-worktree__";
+
 /**
  * The checkout a pane is looking at: a repository's main working tree, or one of
  * its worktrees.
@@ -121,7 +124,8 @@ export function WorktreeSelector({
   hint,
   onSelect,
   onPin,
-  onUnpin
+  onUnpin,
+  onCreate
 }: {
   checkouts: CheckoutOption[];
   checkoutFor: (scope: CheckoutScope, repoRoot: string) => string | null;
@@ -133,6 +137,8 @@ export function WorktreeSelector({
   onSelect: (repoRoot: string, path: string) => void;
   onPin: () => void;
   onUnpin: () => void;
+  /** Adds "New Worktree…" as the menu's last item, when the caller can create one. */
+  onCreate?: () => void;
 }): React.JSX.Element | null {
   const { t } = useI18n();
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -185,7 +191,15 @@ export function WorktreeSelector({
         });
       });
     });
+    if (onCreate) {
+      items.push({ type: "separator" });
+      items.push({ id: CREATE_ITEM_ID, label: t("desktop.workbench.worktreeCreate") });
+    }
     const chosen = await showContextMenuAt({ x: rect.left, y: rect.bottom + 4 }, items);
+    if (chosen === CREATE_ITEM_ID) {
+      onCreate?.();
+      return;
+    }
     const selection = chosen ? selectionById.get(chosen) : undefined;
     if (selection) onSelect(selection.repoRoot, selection.path);
   };
