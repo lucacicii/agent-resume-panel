@@ -7,7 +7,12 @@ Those terms are independent of this project's GNU Affero General Public License 
 
 SVG/PNG marks under `apps/desktop/src/renderer/assets/providers/` and `apps/extension/resources/` identify third-party products. Those trademarks belong to their owners and are used here only for identification.
 
-## Apple SF Symbols
+## Lucide
 
-The desktop application interface utilizes Apple SF Symbols pursuant to Apple's SF Symbols License Agreement.
-SF Symbols are the intellectual property of Apple Inc. and are used solely within software products running on Apple operating systems.
+The desktop application's icons are drawn with [Lucide](https://lucide.dev) via `lucide-react`, distributed under the ISC License.
+
+Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors 2022.
+
+Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.

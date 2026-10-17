@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { ICON_SIZE } from "./ThemeIcon";
+import { ICON_SIZE, ICON_STROKE_WIDTH } from "./ThemeIcon";
 
 /**
  * Static guard for the Desktop icon contract.
@@ -16,6 +16,24 @@ const RENDERER_REACT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.
 const STYLES_CSS = path.resolve(RENDERER_REACT_ROOT, "../renderer/styles.css");
 const STYLES_ROOT = path.dirname(STYLES_CSS);
 const THEME_ICON_FILE = "components/ThemeIcon.tsx";
+
+const DESKTOP_ROOT = path.resolve(RENDERER_REACT_ROOT, "../..");
+const DESKTOP_MANIFEST = path.join(DESKTOP_ROOT, "package.json");
+const DESKTOP_SRC_ROOT = path.join(DESKTOP_ROOT, "src");
+
+/** Every way a source file can reach an icon library. */
+const ICON_LIBRARY_IMPORTS = [
+  { label: "lucide-react", pattern: /from\s+["']lucide-react(?:\/[^"']*)?["']/ },
+  { label: "sf-symbols-lib (retired)", pattern: /from\s+["']sf-symbols-lib(?:\/[^"']*)?["']/ }
+] as const;
+
+/**
+ * A *code path* to the retired library — an import, a dynamic import or a
+ * require. Deliberately not a bare name match: ThemeIcon's own doc comment
+ * names `sf-symbols-lib` to say it must not come back, and prose about the
+ * retired layer is the contract working, not a violation.
+ */
+const RETIRED_SF_REACHES = /(?:from|import|require)\s*\(?\s*["']sf-symbols-lib/;
 
 // Functional SVG (data visualisation, user content, library-rendered chrome) is
 // not an icon and is out of scope. Keep this list explicit and short.
@@ -100,13 +118,50 @@ describe("icon contract", () => {
     }
   });
 
+  it("keeps one stroke weight in the acceptable band", () => {
+    // A band rather than an equality: the value is meant to be tuned against
+    // the app on a real display, but drifting to 3 is a regression, not a tune.
+    expect(typeof ICON_STROKE_WIDTH).toBe("number");
+    expect(ICON_STROKE_WIDTH).toBeGreaterThanOrEqual(1.5);
+    expect(ICON_STROKE_WIDTH).toBeLessThanOrEqual(2.25);
+  });
+
   it("imports icon libraries only through ThemeIcon", () => {
+    const offenders: string[] = [];
+    for (const file of SOURCE_FILES) {
+      if (relative(file) === THEME_ICON_FILE) continue;
+      const source = read(file);
+      for (const { label, pattern } of ICON_LIBRARY_IMPORTS) {
+        if (pattern.test(source)) offenders.push(`${relative(file)} -> ${label}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("never reaches for the retired SF Symbols library, anywhere in the app", () => {
+    // The renderer guard above cannot see src/main, so scan the whole desktop
+    // app — and pin the manifest, so the dependency cannot quietly come back.
+    const offenders = listSourceFiles(DESKTOP_SRC_ROOT)
+      .filter((file) => RETIRED_SF_REACHES.test(read(file)))
+      .map((file) => path.relative(DESKTOP_SRC_ROOT, file));
+    expect(offenders).toEqual([]);
+
+    const manifest = JSON.parse(read(DESKTOP_MANIFEST)) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const declared = { ...manifest.dependencies, ...manifest.devDependencies };
+    const retired = /sf-symbols-lib/;
+    expect(Object.keys(declared).filter((name) => retired.test(name))).toEqual([]);
+  });
+
+  it("does not tag icons with an icon-system marker", () => {
+    // One icon system means no per-system hook. `data-icon-system` is exactly
+    // what let the SF rules drift out of sync with the component: the stylesheet
+    // asked for "lucide" while the component emitted "open", so the rule that
+    // was supposed to give Lucide icons their stroke never matched.
     const offenders = SOURCE_FILES
-      .filter(
-        (file) =>
-          relative(file) !== THEME_ICON_FILE &&
-          (/from\s+["']lucide-react["']/.test(read(file)) || /from\s+["']sf-symbols-lib/.test(read(file)))
-      )
+      .filter((file) => /data-icon-system/.test(read(file)))
       .map(relative);
     expect(offenders).toEqual([]);
   });
