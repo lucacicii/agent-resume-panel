@@ -55,10 +55,13 @@ export function TaskSettingsSheet({
   onCreateWorktree: () => void;
 }): React.JSX.Element {
   const { t } = useI18n();
+  /** What there is to manage here. A repository's main working tree is not one of
+   * them: it is where the work happens, and the folders above name it. */
+  const checkoutsOf = (repo: TaskWorktreeRepo) => repo.worktrees.filter((worktree) => !worktree.isMain);
+  const checkouts = (worktrees.listing?.repos ?? []).flatMap(checkoutsOf);
   // Repositories with nothing to show are left out, except the ones that cannot
   // have worktrees at all: those are exactly what a person needs told.
-  const repos = (worktrees.listing?.repos ?? []).filter((repo) => repo.worktrees.length || !repo.exists || !repo.isGitRepo);
-  const checkouts = (worktrees.listing?.repos ?? []).flatMap((repo) => repo.worktrees.filter((worktree) => !worktree.isMain));
+  const repos = (worktrees.listing?.repos ?? []).filter((repo) => checkoutsOf(repo).length || !repo.exists || !repo.isGitRepo);
   /** Only the ones that are really there count as work left to clean up. */
   const present = checkouts.filter((worktree) => !worktree.missing).length;
   const orphans = cleanup.orphans?.repos ?? [];
@@ -67,7 +70,6 @@ export function TaskSettingsSheet({
 
   const stateChip = (worktree: TaskWorktreeRepo["worktrees"][number]) => {
     if (worktree.missing || worktree.prunable) return <span className="wb-worktree-state is-missing">{t("desktop.workbench.worktreeStateMissing")}</span>;
-    if (worktree.isMain) return <span className="wb-worktree-state">{t("desktop.workbench.worktreeMainCheckout")}</span>;
     if (worktree.locked) return <span className="wb-worktree-state is-warning" title={worktree.lockedReason}>{t("desktop.workbench.worktreeStateLocked")}</span>;
     // Anything else still holds work, which is not a state worth a chip.
     return worktree.merged ? <span className="wb-worktree-state is-ok">{t("desktop.workbench.worktreeStateMerged")}</span> : null;
@@ -144,7 +146,7 @@ export function TaskSettingsSheet({
                   ? <p className="muted wb-task-settings-empty">{t("desktop.workbench.worktreeFolderMissing")}</p>
                   : !repo.isGitRepo
                     ? <p className="muted wb-task-settings-empty">{t("desktop.workbench.worktreeNotGitRepo")}</p>
-                    : repo.worktrees.map((worktree) => {
+                    : checkoutsOf(repo).map((worktree) => {
                       const stale = worktree.missing || worktree.prunable;
                       const busy = cleanup.busyPath === worktree.path;
                       return (
@@ -165,7 +167,7 @@ export function TaskSettingsSheet({
                           ><ThemeIcon name="folder-open" size={ICON_SIZE.dense} aria-hidden="true" /></button>
                           {/* A stale entry has no directory to lose, so it is cleared,
                               not deleted; a locked one stays until the lock is gone. */}
-                          {worktree.isMain ? null : stale ? (
+                          {stale ? (
                             <button
                               type="button"
                               className="wb-icon-btn"

@@ -225,7 +225,12 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   onShowGitHistory?: (path: string) => void | Promise<void>;
   /** Search scope target: the folder itself, or the parent folder for files. */
   onFindInFolder?: (directoryPath: string) => void | Promise<void>;
-  onError: (message: string) => void;
+  /**
+   * A read failed. `root` is the project root it was reading, when the failure
+   * was a directory read at all: a root can be removed while the tree is showing
+   * it, and only the caller knows whether that is worth saying anything about.
+   */
+  onError: (message: string, root?: string) => void;
   /**
    * A control for the pane head, after the title. The explorer owns its head but
    * not what belongs in it: which checkout the tree is showing is the panel's
@@ -316,7 +321,7 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
         const next = new Set([...current].filter((item) => !isPathWithin(item, directoryPath)));
         return next.size === current.size ? current : next;
       });
-      onErrorRef.current(errorMessage(error));
+      onErrorRef.current(errorMessage(error), targetRoot);
     }
   }, []);
 
