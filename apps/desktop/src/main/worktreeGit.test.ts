@@ -12,6 +12,7 @@ import {
   patchTaskWorktreeState,
   readTaskWorktreeState,
   worktreeCreate,
+  worktreeContextForTask,
   worktreeInspect,
   worktreeListForTask,
   worktreeListOrphans,
@@ -232,8 +233,7 @@ describe("worktreeGit", () => {
     expect((await worktreeInspect({ repoRoot, targetPath: created.path })).liveSessionsInPath).toBe(0);
   });
 
-  it("finds checkouts left behind by tasks that are gone, and only those", async () => {
-    const { panelHome, noteId, repoRoot } = await setup();
+  it("finds checkouts left behind by tasks that are gone, and only those", async () => {    const { panelHome, noteId, repoRoot } = await setup();
     const catalogDb = path.join(panelHome, "catalog.db");
     await ensureExtensionCatalogSchema(catalogDb);
 
@@ -256,8 +256,36 @@ describe("worktreeGit", () => {
     expect((await orphans()).repos).toEqual([]);
   });
 
-  it("refuses a worktree root nested in the repository it would check out", async () => {
-    const { repoRoot } = await setup();
+  it("describes a task's checkouts the way an agent has to hear them", async () => {
+    const { panelHome, noteId, repoRoot } = await setup();
+    const desktopDb = path.join(panelHome, "catalog.db");
+    await ensureExtensionCatalogSchema(desktopDb);
+    // A repository the task names by a path that is not what git resolves it to:
+    // the address table has to be keyed by the task's own spelling, or the panel
+    // would list a checkout under a repository nobody recognises.
+    const named = path.join(repoRoot, ".");
+    const created = await worktreeCreate({ panelHome, noteId, repoRoot, branch: "feat/told" });
+    const repos = [{ repoRoot: named, label: "app" }];
+
+    const off = await worktreeContextForTask({ panelHome, desktopDb, noteId, repos });
+    expect(off.enabled).toBe(false);
+    expect(off.root).toBe(taskWorktreeRoot(panelHome, noteId));
+    // Discovered either way — the switch governs the convention, not what is real.
+    expect(off.worktrees[named]).toEqual([{ branch: "feat/told", path: created.path, missing: false }]);
+    expect(off.dirs).toEqual([created.path]);
+
+    await patchTaskWorktreeState(desktopDb, noteId, { enabled: true });
+    expect((await worktreeContextForTask({ panelHome, desktopDb, noteId, repos })).enabled).toBe(true);
+
+    // A checkout whose folder has gone is still reported, so the table can say
+    // so, but is never granted to a sandbox.
+    await fs.rm(created.path, { recursive: true, force: true });
+    const gone = await worktreeContextForTask({ panelHome, desktopDb, noteId, repos });
+    expect(gone.worktrees[named][0]).toMatchObject({ missing: true, branch: "feat/told" });
+    expect(gone.dirs).toEqual([]);
+  });
+
+  it("refuses a worktree root nested in the repository it would check out", async () => {    const { repoRoot } = await setup();
     // panelHome inside the repository puts the task root inside it too.
     const nestedHome = path.join(repoRoot, "panel-home");
     roots.push(nestedHome);

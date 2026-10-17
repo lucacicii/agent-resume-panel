@@ -34,6 +34,16 @@ type TaskAddressProject = {
   label: string;
   /** False when the path does not exist on this machine (e.g. synced from another Mac). */
   exists: boolean;
+  /** Existing checkouts of this repository, when the task works in worktrees. */
+  worktrees?: TaskAddressWorktree[];
+};
+
+/** One checkout of a referenced repository, as the address table reports it. */
+export type TaskAddressWorktree = {
+  /** Null on a detached HEAD, which the table says out loud rather than leaving blank. */
+  branch: string | null;
+  path: string;
+  missing: boolean;
 };
 
 export type TaskAddress = {
@@ -45,6 +55,12 @@ export type TaskAddress = {
   /** Absolute path of the note file, so agents running in any cwd can read it. */
   noteAbsPath: string;
   projects: TaskAddressProject[];
+  /**
+   * Where this task's checkouts belong, present only while the task opts into the
+   * worktree convention. Set or absent is what the block keys on, so turning the
+   * switch over rewrites the managed block exactly once.
+   */
+  worktreeRoot?: string;
 };
 
 /** Deterministic workspace directory: same note id → same path, forever. */
@@ -127,6 +143,30 @@ export function sessionContextFile(workspaceDir: string, sessionCwd: string): st
   return path.join(workspaceDir, "AGENTS.md");
 }
 
+/**
+ * What an agent is told about where its work belongs.
+ *
+ * Without a worktree root this is the sentence the managed block has always
+ * carried: it states the convention but not the location, because there is no
+ * location to state. With one, the convention becomes executable — the root,
+ * the naming rule and the way back out — which is the whole point of the
+ * switch: an agent that creates a checkout outside this root creates one the
+ * panel can never show, or remind anyone about.
+ */
+export function worktreePolicyLines(address: TaskAddress): string[] {
+  const mergeRule =
+    "Repos that require PRs go through PR review and merge the PR(s) when the task is done; repos that allow direct push (e.g. a private GitLab, a personal GitHub repo) push the branch and merge it when the task is done, no PR required.";
+  if (!address.worktreeRoot) {
+    return [`When a change touches any referenced repository (one or more): create a new worktree on a new branch per affected repo — never commit straight to the shared branches. ${mergeRule}`];
+  }
+  return [
+    `When a change touches any referenced repository (one or more): create a new worktree on a new branch per affected repo — never commit straight to the shared branches. ${mergeRule}`,
+    `Every checkout of this task belongs under ${address.worktreeRoot}, named after the repository and the branch: \`git worktree add ${path.join(address.worktreeRoot, "<repository>-<branch>")} -b <branch> <base>\`. Checkouts kept here are the ones the panel can show, and the ones it can remind the user to delete.`,
+    "A fresh checkout has no node_modules (and no build output): install dependencies before running anything in it.",
+    "Removing a checkout belongs to the user and to git: `git worktree remove <path>` keeps the branch, and the panel never deletes one on its own. Say so when a checkout is finished with — the folder and its dependencies stay on disk until someone removes it."
+  ];
+}
+
 /** The address table itself, shared by the workspace files and the IM preamble. */
 export function renderAddressTable(address: TaskAddress, workspaceDir?: string): string {
   const lines = [
@@ -135,8 +175,13 @@ export function renderAddressTable(address: TaskAddress, workspaceDir?: string):
     ""
   ];
   if (workspaceDir) {
+    lines.push("This directory is the task's neutral workspace (it is not a git repository).");
+    if (address.worktreeRoot) {
+      // Said plainly, because `.worktrees/` sitting next to a scratch workspace
+      // looks like something to tidy up — it is the work itself.
+      lines.push("Its .worktrees/ folder holds this task's checkouts of the repositories below, one directory per repository and branch. They are working copies: do not clean them up, and do not treat them as scratch space.");
+    }
     lines.push(
-      "This directory is the task's neutral workspace (it is not a git repository).",
       "Shared long-lived docs go under .arp/docs/ here — the panel never reads them.",
       "In a repository, .arp/ holds the committed panel config instead.",
       ""
@@ -145,11 +190,16 @@ export function renderAddressTable(address: TaskAddress, workspaceDir?: string):
   lines.push(
     "Repositories referenced by this task:",
     ...(address.projects.length
-      ? address.projects.map((project) => `- ${project.label} → ${project.path}${project.exists ? "" : "  (path not found on this machine)"}`)
+      ? address.projects.flatMap((project) => [
+        `- ${project.label} → ${project.path}${project.exists ? "" : "  (path not found on this machine)"}`,
+        ...(project.worktrees ?? []).map(
+          (worktree) => `  - worktree ${worktree.branch || "detached HEAD"} → ${worktree.path}${worktree.missing ? "  (folder is gone)" : ""}`
+        )
+      ])
       : ["- (none yet) — add a project from the task header, or link a session to one"]),
     "",
     "cd into the repository you need before running project commands.",
-    "When a change touches any referenced repository (one or more): create a new worktree on a new branch per affected repo — never commit straight to the shared branches. Repos that require PRs go through PR review and merge the PR(s) when the task is done; repos that allow direct push (e.g. a private GitLab, a personal GitHub repo) push the branch and merge it when the task is done, no PR required.",
+    ...worktreePolicyLines(address),
     `Full note: ${address.noteAbsPath} (or the note_read MCP tool, noteId ${address.noteId})`
   );
   return lines.join("\n");

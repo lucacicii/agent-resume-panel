@@ -6,7 +6,7 @@ import { isGitRepo, gitRefExists, queryGitBranch, queryGitRoot } from "./gitNest
 import { shareGitQuery } from "./gitQueryShare";
 import { safeHandle } from "./ipcUtils";
 import { loadPanelDbPaths } from "./panelDatabases";
-import { taskWorktreeRoot, worktreeOwnerNoteId } from "./taskWorkspace";
+import { taskWorktreeRoot, worktreeOwnerNoteId, type TaskAddressWorktree } from "./taskWorkspace";
 import { execGitWithRetry, gitStatusForRepo } from "./workbenchFs";
 import { formatExecError, gitExec, isValidGitBranchName } from "./workbenchGit";
 import {
@@ -451,6 +451,55 @@ export async function worktreeRemove(input: {
   await execGitWithRetry(["-C", repo, ...args], { timeout: WORKTREE_WRITE_TIMEOUT_MS, maxBuffer: GIT_READ_BUFFER });
   await worktreePrune(repo);
   return { pruned: false };
+}
+
+// ---------------------------------------------------------------------------
+// What an agent is told
+// ---------------------------------------------------------------------------
+
+export type TaskWorktreeContext = {
+  /** The task opted into the worktree convention. */
+  enabled: boolean;
+  root: string;
+  /** Repository root → its checkouts, for the address table. */
+  worktrees: Record<string, TaskAddressWorktree[]>;
+  /**
+   * Checkout directories that exist right now, for the sandbox's extra roots.
+   * Never empty-by-preference: a checkout the panel cannot write to is broken
+   * whatever the switch says.
+   */
+  dirs: string[];
+};
+
+/**
+ * The checkouts of a task, in the shape the agent-facing texts need: the
+ * location, the per-repository paths for the address table, and the directories
+ * to grant a sandbox.
+ */
+export async function worktreeContextForTask(input: {
+  panelHome: string;
+  desktopDb: string;
+  noteId: string;
+  repos: ReadonlyArray<{ repoRoot: string; label: string }>;
+}): Promise<TaskWorktreeContext> {
+  const [state, listing] = await Promise.all([
+    readTaskWorktreeState(input.desktopDb, input.noteId),
+    worktreeListForTask({ panelHome: input.panelHome, noteId: input.noteId, repos: input.repos })
+  ]);
+  const worktrees: Record<string, TaskAddressWorktree[]> = {};
+  const dirs: string[] = [];
+  for (const [index, repo] of listing.repos.entries()) {
+    const owned = repo.worktrees.filter((worktree) => !worktree.isMain);
+    if (!owned.length) continue;
+    // Keyed by the path the caller named the repository with — the one the task
+    // and the panel both spell — not by the git root main resolved it to.
+    const key = input.repos[index]?.repoRoot ?? repo.repoRoot;
+    worktrees[key] = owned.map((worktree) => ({ branch: worktree.branch, path: worktree.path, missing: worktree.missing }));
+    for (const worktree of owned) {
+      if (!worktree.missing) dirs.push(worktree.path);
+    }
+  }
+  return { enabled: state.enabled, root: listing.root, worktrees, dirs };
 }
 
 // ---------------------------------------------------------------------------

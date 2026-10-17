@@ -64,7 +64,7 @@ function installBridge(confirm: boolean) {
 async function mount(options: { worktrees: TaskWorktrees; status?: string; confirm?: boolean; noteId?: string | null }) {
   const calls = installBridge(options.confirm ?? false);
   const onOpenWorktrees = vi.fn();
-  const saveState = vi.fn(async () => undefined);
+  const saveState = vi.fn(async (_patch: Partial<TaskWorktreeState>) => undefined);
   const worktrees = { ...options.worktrees, saveState };
   const rendered = renderHook(
     (props: { status?: string }) =>
@@ -94,8 +94,9 @@ describe("useWorktreeReminders", () => {
     // Alert style: Return and Escape mean "later", so forgetting takes a click.
     expect(calls.confirm[0].destructive).toBe(true);
     await waitFor(() => expect(saveState).toHaveBeenCalledTimes(1));
-    expect(Object.keys(saveState.mock.calls[0][0].dismissed)).toEqual([FEAT, OTHER]);
+    expect(Object.keys(saveState.mock.calls[0][0].dismissed ?? {})).toEqual([FEAT, OTHER]);
   });
+
   it("leaves dismissed checkouts out, and asks nothing when they all are", async () => {
     const { calls } = await mount({
       worktrees: worktreesWith([entry(FEAT, "feat/x"), entry(OTHER, "feat/y")], { dismissed: { [FEAT]: 1 } })

@@ -177,6 +177,49 @@ describe("taskWorkspace", () => {
     // Injected into a session whose cwd is the user's repository: never tell the
     // agent to create <repo>/.arp/ there.
     expect(table).not.toContain(".arp");
+    // Without a worktree root there is no location to name, so the convention
+    // stays the sentence it has always been.
+    expect(table).toContain("create a new worktree on a new branch per affected repo");
+    expect(table).not.toContain(".worktrees");
+    expect(table).not.toContain("git worktree add");
+  });
+
+  it("tells an opting-in task where its checkouts belong, and that they are work", () => {
+    const root = "/panel/.desktop/workspaces/wi-1/.worktrees";
+    const table = renderAddressTable(
+      {
+        noteId: "wi-1",
+        title: "T",
+        status: "next",
+        noteAbsPath: "/panel/notes/library/wi.md",
+        worktreeRoot: root,
+        projects: [
+          {
+            path: "/work/app",
+            label: "app",
+            exists: true,
+            worktrees: [
+              { path: `${root}/app-feat-x`, branch: "feat/x", missing: false },
+              { path: `${root}/app-gone`, branch: null, missing: true }
+            ]
+          },
+          { path: "/work/lib", label: "lib", exists: true }
+        ]
+      },
+      "/panel/.desktop/workspaces/wi-1"
+    );
+    // The location and the naming rule, so an agent's checkout lands where the
+    // panel can see it and remind the user about it.
+    expect(table).toContain(`${root}/${"<repository>-<branch>"}`);
+    expect(table).toContain("git worktree add");
+    // Existing checkouts, per repository, with a detached one never left blank.
+    expect(table).toContain(`  - worktree feat/x → ${root}/app-feat-x`);
+    expect(table).toContain(`  - worktree detached HEAD → ${root}/app-gone  (folder is gone)`);
+    expect(table.match(/- lib → \/work\/lib/g)).toHaveLength(1);
+    // A workspace holding checkouts is not a place to tidy up.
+    expect(table).toContain("do not clean them up");
+    // Removal is the user's call, and the branch outlives the checkout.
+    expect(table).toContain("the panel never deletes one on its own");
   });
 
   it("treats the panel's own data directory as internal, not as a task project", async () => {
