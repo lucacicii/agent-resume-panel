@@ -158,6 +158,16 @@ describe("useTaskWorktrees", () => {
     expect(result.current.rootFor("files", MAIN_LIB)).toBe(MAIN_LIB);
   });
 
+  it("answers whether git still has a checkout, without a pane having to use it", async () => {
+    const { result } = await mount({ list: LISTING });
+    // The settings sheet asks about a row of its own, which no pane need be
+    // showing: the answer is about git's records, not about the panel's choices.
+    expect(await result.current.checkoutIsGone(FEAT_APP)).toBe(false);
+    expect(await result.current.checkoutIsGone("/wt/app-nobody")).toBe(true);
+    // A record whose folder has gone is a record, not a checkout.
+    expect(await result.current.checkoutIsGone("/wt/lib-gone")).toBe(true);
+  });
+
   it("survives a bridge that answers with nothing", async () => {    // An older or failed call gives no listing at all: the panel then has no
     // checkout control rather than a crash on an unexpected shape.
     const { result } = await mount({ list: null });

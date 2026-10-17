@@ -22,7 +22,10 @@ export type WorktreeCleanup = {
   /** Checkouts of this task's repositories that no task owns any more. */
   orphans: TaskWorktreeOrphans | null;
   refreshOrphans: () => Promise<void>;
-  /** Inspects, asks, and only then removes. Answers whether anything was removed. */
+  /**
+   * Inspects, asks, and only then removes. Answers whether the checkout is gone
+   * from disk afterwards: removed here, or found to have gone already.
+   */
   remove: (target: WorktreeCleanupTarget) => Promise<boolean>;
   /** Forgets the admin entries of checkouts whose directories are already gone. */
   prune: (repoRoots: string[]) => Promise<boolean>;
@@ -52,10 +55,16 @@ export function useWorktreeCleanup(options: {
   repos: string[];
   /** True while the surface offering these actions is on screen. */
   active: boolean;
+  /**
+   * Whether a checkout git was asked about has gone. The row offering it can
+   * outlive it: the agent working in it merges its branch and cleans up, and the
+   * panel only finds out on its next read.
+   */
+  checkoutGone: (path: string) => Promise<boolean>;
   /** Something was removed: re-read what the panel shows. */
   onRemoved: (target: WorktreeCleanupTarget) => void | Promise<void>;
 }): WorktreeCleanup {
-  const { noteId, repos, active, onRemoved } = options;
+  const { noteId, repos, active, checkoutGone, onRemoved } = options;
   const { t } = useI18n();
   const [busyPath, setBusyPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -130,6 +139,11 @@ export function useWorktreeCleanup(options: {
       setBusyPath(target.path);
       setError(null);
       try {
+        // The checkout can be gone before the button is pressed — an agent that
+        // has just merged its branch and cleaned up, or Finder. There is then
+        // nothing to weigh, nothing to confirm and nothing to say: the row goes
+        // away with the re-read, and the branch is not the panel's to report on.
+        if (await checkoutGone(target.path)) return true;
         const report = await api.workbenchInspectWorktree({
           repoRoot: target.repoRoot,
           path: target.path,
@@ -157,7 +171,7 @@ export function useWorktreeCleanup(options: {
         if (mountedRef.current) setBusyPath(null);
       }
     },
-    [onRemoved, refreshOrphans, riskDetail, t]
+    [checkoutGone, onRemoved, refreshOrphans, riskDetail, t]
   );
 
   const prune = useCallback(

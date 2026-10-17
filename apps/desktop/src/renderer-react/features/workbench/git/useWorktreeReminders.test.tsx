@@ -40,6 +40,7 @@ function worktreesWith(worktrees: TaskWorktreeInfo[], state: Partial<TaskWorktre
     saveState: async () => undefined,
     refresh: async () => null,
     dropVanishedCheckouts: async () => false,
+    checkoutIsGone: async () => false,
     rootFor: (_scope, repoRoot) => repoRoot,
     checkoutFor: () => null,
     isPinned: () => false,

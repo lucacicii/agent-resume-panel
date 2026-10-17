@@ -43,6 +43,13 @@ export function useWorkbenchSearch(options: {
   onStatus: (status: { text: string; kind?: "error" | "ok" | "warning" }) => void;
   onReconcileEditors: (projectPath: string) => void;
   onOpenSearchSide: () => void;
+  /**
+   * The roots a search reads can be gone before it reads them — the agent that
+   * merged its branch removed the checkout. Answers whether that is what went
+   * wrong, in which case there is no search failure to report: the roots move and
+   * the query runs again against the main checkout.
+   */
+  onRootsUnreadable?: (roots: readonly string[]) => Promise<boolean>;
 }): {
   searchQuery: string;
   setSearchQuery: (value: string) => void;
@@ -126,6 +133,12 @@ export function useWorkbenchSearch(options: {
   const searchReplaceInputRef = useRef<HTMLInputElement | null>(null);
   const searchIncludeInputRef = useRef<HTMLInputElement | null>(null);
   const searchExcludeInputRef = useRef<HTMLInputElement | null>(null);
+  // Read through a ref: the search callback must not change identity over it, or
+  // the debounce that calls it would restart on every render.
+  const onRootsUnreadableRef = useRef(options.onRootsUnreadable);
+  useEffect(() => {
+    onRootsUnreadableRef.current = options.onRootsUnreadable;
+  }, [options.onRootsUnreadable]);
 
   const runProjectSearch = useCallback(async (query: string, options?: { matchCase?: boolean; wholeWord?: boolean; useRegex?: boolean }) => {
     const trimmed = query.trim();
@@ -181,6 +194,12 @@ export function useWorkbenchSearch(options: {
       }
       setSearchMatches([]);
       setSearchTruncated(false);
+      // A root that is gone is not a search that failed: the panel falls back, the
+      // roots change and this runs again, so there is nothing worth saying here.
+      if (await onRootsUnreadableRef.current?.(projects)) {
+        setSearchError("");
+        return;
+      }
       setSearchError(t("desktop.workbench.searchFailed", statusError(error)));
     } finally {
       if (seq === searchSeqRef.current) setSearchLoading(false);

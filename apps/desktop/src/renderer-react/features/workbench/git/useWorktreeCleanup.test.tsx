@@ -46,7 +46,7 @@ const ORPHANS: TaskWorktreeOrphans = {
   repos: [{ repoRoot: REPO, label: "app", baseBranch: "main", worktrees: [] }]
 };
 
-function installBridge(options: { risk?: WorktreeRiskReport; confirm?: boolean; orphans?: TaskWorktreeOrphans | null } = {}) {
+function installBridge(options: { risk?: WorktreeRiskReport; confirm?: boolean; orphans?: TaskWorktreeOrphans | null; gone?: boolean } = {}) {
   const calls = {
     remove: [] as Array<{ repoRoot: string; path: string; force?: boolean }>,
     prune: [] as Array<{ repoRoot: string }>,
@@ -81,7 +81,13 @@ async function mount(options: Parameters<typeof installBridge>[0] & { active?: b
   const calls = installBridge(options);
   const onRemoved = vi.fn();
   const rendered = renderHook(
-    () => useWorktreeCleanup({ noteId: "n1", repos: [REPO], active: options.active ?? true, onRemoved }),
+    () => useWorktreeCleanup({
+      noteId: "n1",
+      repos: [REPO],
+      active: options.active ?? true,
+      checkoutGone: async () => options.gone ?? false,
+      onRemoved
+    }),
     { wrapper: I18nProvider }
   );
   // The i18n bundle arrives in an effect; the messages must be in place before a
@@ -117,6 +123,19 @@ describe("useWorktreeCleanup", () => {
     expect(calls.confirm[0].detail).toContain("The branch feat/x is kept.");
     expect(calls.remove[0]).toMatchObject({ repoRoot: REPO, path: CHECKOUT, force: true });
     expect(onRemoved).toHaveBeenCalledWith(expect.objectContaining({ path: CHECKOUT }));
+  });
+
+  it("says nothing about a checkout that went away before the button was pressed", async () => {
+    const { result, calls, onRemoved } = await mount({ gone: true });
+    await act(async () => {
+      expect(await result.current.remove({ repoRoot: REPO, path: CHECKOUT, branchLabel: "feat/x" })).toBe(true);
+    });
+    // Nothing to weigh and nothing to confirm: the row is already gone, and whose
+    // hand removed it — the agent's, or Finder's — is not the panel's to report on.
+    expect(calls.confirm).toEqual([]);
+    expect(calls.remove).toEqual([]);
+    expect(result.current.error).toBeNull();
+    expect(onRemoved).not.toHaveBeenCalled();
   });
 
   it("leaves a clean checkout to git without the force flag", async () => {
@@ -155,7 +174,10 @@ describe("useWorktreeCleanup", () => {
       throw new Error("fatal: validation failed, cannot remove working tree");
     };
     const onRemoved = vi.fn();
-    const { result } = renderHook(() => useWorktreeCleanup({ noteId: "n1", repos: [REPO], active: true, onRemoved }), { wrapper: I18nProvider });
+    const { result } = renderHook(
+      () => useWorktreeCleanup({ noteId: "n1", repos: [REPO], active: true, checkoutGone: async () => false, onRemoved }),
+      { wrapper: I18nProvider }
+    );
     await act(async () => {
       await Promise.resolve();
     });
