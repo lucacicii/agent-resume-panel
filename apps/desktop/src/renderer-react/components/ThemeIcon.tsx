@@ -2,13 +2,13 @@ import type { JSX } from "react";
 import {
   Activity, AppWindow, Archive, ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpToLine, AtSign, Bell, Bot, Check,
   ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, Clipboard, Clock, Cloud, Command,
-  Copy, CornerDownRight, Download, Ellipsis, ExternalLink, Eye, EyeOff, File, FileArchive, FileAudio,
-  FileCode2, FileCog, FileDiff, FileImage, FileJson, FilePlus2,
-  FileSpreadsheet, FileTerminal, FileText, FileVideo, Folder, FolderOpen,
-  FolderTree, GitBranch, Globe, GripVertical, History, Inbox, LayoutDashboard, LoaderCircle,
+  Copy, CornerDownRight, Download, Ellipsis, ExternalLink, Eye, EyeOff, File, FileArchive, FileHeadphone,
+  FileCodeCorner, FileCog, FileDiff, FileImage, FileBraces, FilePlusCorner,
+  FileSpreadsheet, FileTerminal, FileText, FilePlay, Folder, FolderOpen,
+  FolderTree, GitBranch, Globe, GripVertical, RotateCcwClock, Inbox, LayoutDashboard, LoaderCircle,
   MessageSquare, MessageSquarePlus, MessageSquareWarning, NotebookText, PanelLeftClose, PanelRight, Paperclip, Pencil, Pin, Play, Plus,
   Quote, RefreshCw, Replace, ReplaceAll, Save, Search, Send, Settings, ShieldCheck, Sparkles, Square,
-  SquareKanban, Target, TerminalSquare, Trash2, Undo2, Upload, User, Waypoints, Wrench, X, Zap,
+  SquareKanban, Target, SquareTerminal, Trash, Undo2, Upload, User, Waypoints, Wrench, X, Zap,
   type LucideIcon,
   type LucideProps
 } from "lucide-react";
@@ -65,12 +65,12 @@ const LUCIDE_ICONS = {
   "chevron-down": ChevronDown, "chevron-left": ChevronLeft, "chevron-right": ChevronRight, "chevron-up": ChevronUp,
   circle: Circle, clipboard: Clipboard, clock: Clock, cloud: Cloud, command: Command, copy: Copy,
   download: Download, ellipsis: Ellipsis, "external-link": ExternalLink, eye: Eye, "eye-off": EyeOff,
-  file: File, "file-archive": FileArchive, "file-audio": FileAudio, "file-code": FileCode2,
-  "file-cog": FileCog, "file-diff": FileDiff, "file-image": FileImage, "file-json": FileJson,
-  "file-plus": FilePlus2, "file-spreadsheet": FileSpreadsheet, "file-terminal": FileTerminal,
-  "file-text": FileText, "file-video": FileVideo, folder: Folder, "folder-open": FolderOpen,
+  file: File, "file-archive": FileArchive, "file-audio": FileHeadphone, "file-code": FileCodeCorner,
+  "file-cog": FileCog, "file-diff": FileDiff, "file-image": FileImage, "file-json": FileBraces,
+  "file-plus": FilePlusCorner, "file-spreadsheet": FileSpreadsheet, "file-terminal": FileTerminal,
+  "file-text": FileText, "file-video": FilePlay, folder: Folder, "folder-open": FolderOpen,
   "folder-tree": FolderTree, "git-branch": GitBranch, globe: Globe, "grip-vertical": GripVertical,
-  history: History, inbox: Inbox, "layout-dashboard": LayoutDashboard, loader: LoaderCircle,
+  history: RotateCcwClock, inbox: Inbox, "layout-dashboard": LayoutDashboard, loader: LoaderCircle,
   "message-square": MessageSquare, "message-square-plus": MessageSquarePlus, "message-square-warning": MessageSquareWarning,
   notebook: NotebookText,
   "panel-left": PanelLeftClose,
@@ -78,8 +78,8 @@ const LUCIDE_ICONS = {
   "app-window": AppWindow,
   quote: Quote, refresh: RefreshCw, replace: Replace, "replace-all": ReplaceAll, save: Save, search: Search, send: Send, settings: Settings,
   "shield-check": ShieldCheck, sparkles: Sparkles, square: Square, "square-kanban": SquareKanban, target: Target,
-  terminal: TerminalSquare,
-  trash: Trash2, undo: Undo2, upload: Upload, user: User, waypoints: Waypoints, wrench: Wrench, close: X,
+  terminal: SquareTerminal,
+  trash: Trash, undo: Undo2, upload: Upload, user: User, waypoints: Waypoints, wrench: Wrench, close: X,
   zap: Zap, "corner-down-right": CornerDownRight
 } as const satisfies Record<string, LucideIcon>;
 
