@@ -22,10 +22,7 @@ import {
   type ThunderConversationSummary
 } from "@agent-resume/core";
 import {
-  WORKBENCH_NEW_SESSION_TARGET_OPTIONS,
-  buildComposerMentionPrompt,
-  matchComposerMentionForCwd,
-  resolveComposerMention
+  WORKBENCH_NEW_SESSION_TARGET_OPTIONS
 } from "../settings/model";
 import {
   DESKTOP_GTD_STATUSES,
@@ -3161,19 +3158,14 @@ export function WorkbenchPanel(): ReactPortal | null {
     target: WorkbenchNewSessionTarget,
     targetProject?: string,
     projectId?: string,
-    initialPrompt?: string,
-    mentionId?: string
+    initialPrompt?: string
   ) => {
     if (terminalCreating) return;
     setTerminalCreating(true);
     try {
-      const mentions = settings?.workbench?.composerMentions ?? [];
-      const explicitMention = resolveComposerMention(mentions, mentionId || "");
-      const resolvedCwd = explicitMention
-        ? { cwd: explicitMention.cwd, isWorkspace: false }
-        : await resolveNewSessionCwd(targetProject);
+      const resolvedCwd = await resolveNewSessionCwd(targetProject);
       let cwd = resolvedCwd.cwd;
-      if (!explicitMention && projectId && typeof desktopApi().resolveProjectCwd === "function") {
+      if (projectId && typeof desktopApi().resolveProjectCwd === "function") {
         const resolved = await desktopApi().resolveProjectCwd({ projectId });
         if (resolved.source === "missing" || !resolved.cwd) {
           setStatus({ text: t("desktop.workbench.pathMissingHint"), kind: "error" });
@@ -3181,12 +3173,8 @@ export function WorkbenchPanel(): ReactPortal | null {
         }
         cwd = resolved.cwd;
       }
-      const mention = explicitMention || matchComposerMentionForCwd(mentions, cwd);
-      if (mention) cwd = mention.cwd;
       if (taskScopeRef.current && !resolvedCwd.isWorkspace) selectProject(cwd, { keepSessionKey: true });
-      const prompt = [mention ? buildComposerMentionPrompt(mention) : "", initialPrompt?.trim() || ""]
-        .filter(Boolean)
-        .join("\n\n");
+      const prompt = initialPrompt?.trim() || "";
       if (target.channel === "acp") {
         const record = await desktopApi().acpCreateSession({ projectPath: cwd, provider: target.provider });
         addAcpChat(record, prompt ? { initialPrompt: prompt } : undefined);
@@ -3241,64 +3229,50 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { setTerminalCreating(false); }
-  }, [addAcpChat, addPendingSession, addTerminal, addThunderChat, linkSessionToOpenTask, loadSessions, reloadWorkbench, settings?.workbench?.composerMentions, t, terminalCreating, trackThunderTuiPane]);
+  }, [addAcpChat, addPendingSession, addTerminal, addThunderChat, linkSessionToOpenTask, loadSessions, reloadWorkbench, t, terminalCreating, trackThunderTuiPane]);
 
   /**
    * New-session picker as a native `NSMenu`.
    *
-   * With a resolved default agent this is just the workspace-mention step; with no
-   * default agent it lists the CLI/ACP targets and the session starts in the current
-   * project (single selection, no two-step).
+   * Lists the CLI/ACP/Thunder targets and starts the session in the current project.
    */
-  const openNewSessionMenu = useCallback(async (target: WorkbenchNewSessionTarget | null, targetProject?: string, projectId?: string) => {
+  const openNewSessionMenu = useCallback(async (targetProject?: string, projectId?: string) => {
     const rect = newSessionButtonRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const mentions = settings?.workbench?.composerMentions ?? [];
     const items: NativeContextMenuItem[] = [];
     const actionById = new Map<string, () => void>();
-    if (target && mentions.length) {
-      items.push({ label: t("desktop.settings.composerMentionsWorkspace"), enabled: false });
-      actionById.set("mention:", () => void launchNewSession(target, targetProject, projectId));
-      items.push({ id: "mention:", label: t("desktop.settings.composerMentionsCurrentProject"), type: "checkbox", checked: true });
-      mentions.forEach((mention) => {
-        actionById.set(`mention:${mention.id}`, () => void launchNewSession(target, targetProject, projectId, undefined, mention.id));
-        items.push({ id: `mention:${mention.id}`, label: mention.id, type: "checkbox", checked: false });
-      });
-    } else {
-      const groups: Array<{ key: "cli" | "acp" | "thunder"; label: string }> = [
-        { key: "cli", label: t("desktop.settings.newSessionGroupCli") },
-        { key: "acp", label: t("desktop.settings.newSessionGroupAcp") },
-        { key: "thunder", label: t("desktop.settings.newSessionGroupThunder") }
-      ];
-      groups.forEach((group) => {
-        const options = WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === group.key);
-        if (!options.length) return;
-        if (items.length) items.push({ type: "separator" });
-        items.push({ label: group.label, enabled: false });
-        options.forEach((option) => {
-          actionById.set(`target:${option.value}`, () => {
-            const parsed = parseNewSessionTarget(option.value);
-            if (parsed) void launchNewSession(parsed, targetProject, projectId);
-          });
-          items.push({ id: `target:${option.value}`, label: t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`) });
+    const groups: Array<{ key: "cli" | "acp" | "thunder"; label: string }> = [
+      { key: "cli", label: t("desktop.settings.newSessionGroupCli") },
+      { key: "acp", label: t("desktop.settings.newSessionGroupAcp") },
+      { key: "thunder", label: t("desktop.settings.newSessionGroupThunder") }
+    ];
+    groups.forEach((group) => {
+      const options = WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === group.key);
+      if (!options.length) return;
+      if (items.length) items.push({ type: "separator" });
+      items.push({ label: group.label, enabled: false });
+      options.forEach((option) => {
+        actionById.set(`target:${option.value}`, () => {
+          const parsed = parseNewSessionTarget(option.value);
+          if (parsed) void launchNewSession(parsed, targetProject, projectId);
         });
+        items.push({ id: `target:${option.value}`, label: t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`) });
       });
-    }
+    });
     const chosen = await showContextMenuAt({ x: rect.left, y: rect.bottom + 4 }, items);
     const action = chosen ? actionById.get(chosen) : undefined;
     action?.();
-  }, [launchNewSession, parseNewSessionTarget, settings?.workbench?.composerMentions, t]);
+  }, [launchNewSession, parseNewSessionTarget, t]);
 
   const requestNewSession = useCallback(async (targetProject?: string, projectId?: string) => {
     if (terminalCreating) return;
     const target = resolveNewSessionTarget();
-    const mentions = settings?.workbench?.composerMentions ?? [];
-    if (target && !mentions.length) {
+    if (target) {
       await launchNewSession(target, targetProject, projectId);
       return;
     }
-    await openNewSessionMenu(target, targetProject, projectId);
-  }, [launchNewSession, openNewSessionMenu, resolveNewSessionTarget, settings?.workbench?.composerMentions, terminalCreating]);
+    await openNewSessionMenu(targetProject, projectId);
+  }, [launchNewSession, openNewSessionMenu, resolveNewSessionTarget, terminalCreating]);
 
   const newSession = useCallback(() => requestNewSession(), [requestNewSession]);
 
