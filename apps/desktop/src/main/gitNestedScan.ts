@@ -191,14 +191,14 @@ export async function discoverGitReposUnder(
   return found;
 }
 
-function isValidGitBranchRef(branch: string): boolean {
+export function isValidGitBranchRef(branch: string): boolean {
   const trimmed = branch.trim();
   if (!trimmed || trimmed.startsWith("-")) return false;
   if (/[\0\r\n]/.test(trimmed)) return false;
   return true;
 }
 
-async function queryGitBranch(repoRoot: string): Promise<string | null> {
+export async function queryGitBranch(repoRoot: string): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync("git", ["-C", repoRoot, "rev-parse", "--abbrev-ref", "HEAD"], {
       timeout: 3000,
@@ -340,7 +340,7 @@ export async function listGitBranchesWithNested(
   return { mode: "nested", repos };
 }
 
-async function gitRefExists(repoRoot: string, ref: string): Promise<boolean> {
+export async function gitRefExists(repoRoot: string, ref: string): Promise<boolean> {
   try {
     await execFileAsync("git", ["-C", repoRoot, "show-ref", "--verify", "--quiet", ref], {
       timeout: 5000,

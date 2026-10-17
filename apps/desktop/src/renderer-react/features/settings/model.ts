@@ -4,7 +4,6 @@ import type {
   ModelUse,
   PanelSettings,
   ProviderModel,
-  WorkbenchComposerMention,
   WorkbenchComposerSlashPhrase
 } from "@agent-resume/core";
 import {
@@ -45,87 +44,6 @@ function normalizeComposerSlashPhrases(
   return output;
 }
 
-const COMPOSER_MENTION_ID = /^[A-Za-z0-9_-]{1,40}$/;
-const COMPOSER_MENTIONS_MAX = 50;
-const COMPOSER_MENTION_ROOTS_MAX = 20;
-
-/** Keep in sync with packages/core normalizeWorkbenchComposerMentions (draft-side, no path.resolve). */
-function normalizeComposerMentions(
-  value: WorkbenchComposerMention[] | undefined | null
-): WorkbenchComposerMention[] {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  const output: WorkbenchComposerMention[] = [];
-  for (const entry of value) {
-    if (!entry || typeof entry !== "object") continue;
-    const id = String(entry.id ?? "").trim().replace(/^@+/, "");
-    if (!COMPOSER_MENTION_ID.test(id)) continue;
-    const key = id.toLowerCase();
-    if (seen.has(key)) continue;
-    const cwd = String(entry.cwd ?? "").trim();
-    if (!cwd) continue;
-    seen.add(key);
-    const cwdKey = cwd.replace(/[\\/]+$/, "") || cwd;
-    const roots: WorkbenchComposerMention["roots"] = [{ path: cwd, role: "work" }];
-    const seenPaths = new Set<string>([cwdKey]);
-    for (const root of Array.isArray(entry.roots) ? entry.roots : []) {
-      if (!root || typeof root !== "object") continue;
-      const rootPath = String(root.path ?? "").trim();
-      if (!rootPath) continue;
-      const rootKey = rootPath.replace(/[\\/]+$/, "") || rootPath;
-      if (seenPaths.has(rootKey)) continue;
-      seenPaths.add(rootKey);
-      roots.push({ path: rootPath, role: "reference" });
-      if (roots.length >= COMPOSER_MENTION_ROOTS_MAX) break;
-    }
-    output.push({ id, cwd, roots });
-    if (output.length >= COMPOSER_MENTIONS_MAX) break;
-  }
-  return output;
-}
-
-function mentionIdKey(id: string): string {
-  return id.trim().replace(/^@+/, "").toLowerCase();
-}
-
-function mentionCwdKey(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  return trimmed.replace(/[\\/]+$/, "") || trimmed;
-}
-
-export function resolveComposerMention(
-  mentions: readonly WorkbenchComposerMention[] | undefined | null,
-  id: string
-): WorkbenchComposerMention | null {
-  const needle = mentionIdKey(id);
-  if (!needle) return null;
-  return mentions?.find((item) => item.id.toLowerCase() === needle) ?? null;
-}
-
-export function matchComposerMentionForCwd(
-  mentions: readonly WorkbenchComposerMention[] | undefined | null,
-  cwd: string
-): WorkbenchComposerMention | null {
-  const key = mentionCwdKey(cwd);
-  if (!key || !mentions?.length) return null;
-  return mentions.find((item) => mentionCwdKey(item.cwd) === key) ?? null;
-}
-
-export function buildComposerMentionPrompt(mention: WorkbenchComposerMention): string {
-  const references = mention.roots.filter((root) => root.role === "reference");
-  const lines = [
-    `[Workspace ${mention.id}]`,
-    `Work cwd (write here only): ${mention.cwd}`
-  ];
-  if (references.length) {
-    lines.push("Reference (read only):");
-    for (const root of references) {
-      lines.push(`- ${root.path}`);
-    }
-  }
-  return lines.join("\n");
-}
 
 type UiLanguageValue = "auto" | "en" | "zh-cn" | "ja";
 
@@ -145,12 +63,10 @@ export interface ProvidersDraft {
   toolSelection: ModelSelection;
   chatSelection: ModelSelection;
   embeddingSelection: ModelSelection;
-  imageSelection: ModelSelection;
   gitCommitSelection: ModelSelection;
   sessionRenameSelection: ModelSelection;
   sessionSummarySelection: ModelSelection;
   reportSelection: ModelSelection;
-  gtdSelection: ModelSelection;
   translateSelection: ModelSelection;
   /** Tool-use options (summaries / digests output language, budgets). */
   toolOutputLanguage: UiLanguageValue;
@@ -198,9 +114,7 @@ export interface WorkbenchDraft {
   /** Single-list Default Agent: CLI and ACP-prefixed options */
   defaultNewSessionTarget: WorkbenchNewSessionTargetDraft;
   newSessionYolo: boolean;
-  projectEditor: "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
   terminalMode: "xterm" | "external-system";
-  terminalEngine: "xterm" | "ghostty-web";
   terminalTheme: WorkbenchTerminalThemeId;
   editorTheme: "follow-app" | "light" | "dark";
   /** webgl (default) or force canvas for CJK/GPU compatibility */
@@ -219,8 +133,6 @@ export interface WorkbenchDraft {
   gitNestedScanIgnoreDirs: string;
   /** User-defined `/trigger` expansions for the terminal composer. */
   composerSlashPhrases: WorkbenchComposerSlashPhrase[];
-  /** Global workspace packs for New session / `arpm`. */
-  composerMentions: WorkbenchComposerMention[];
   /** ACP permission policy */
   acpAutoApprovePermissions: "ask" | "allowAll";
   /** Experimental Grok Build vendor ACP UI (model + reasoning effort). */
@@ -325,12 +237,10 @@ export function providersDraftFromSettings(settings: PanelSettings): ProvidersDr
     toolSelection: legacyTool,
     chatSelection: settings.modelSelections?.chat ?? legacyTool,
     embeddingSelection: settings.modelSelections?.embedding ?? {},
-    imageSelection: settings.modelSelections?.image ?? {},
     gitCommitSelection: settings.modelSelections?.gitCommit ?? legacyTool,
     sessionRenameSelection: settings.modelSelections?.sessionRename ?? legacyTool,
     sessionSummarySelection: settings.modelSelections?.sessionSummary ?? legacyTool,
     reportSelection: settings.modelSelections?.report ?? legacyTool,
-    gtdSelection: settings.modelSelections?.gtd ?? legacyTool,
     translateSelection: settings.modelSelections?.translate ?? legacyTool,
     toolOutputLanguage: normalizeOutputLanguage(toolOptions?.outputLanguage),
     toolMaxContextChars: typeof toolOptions?.maxContextChars === "number" ? toolOptions.maxContextChars : 120_000,
@@ -366,12 +276,10 @@ function normalizeDraftSelections(draft: ProvidersDraft): Partial<Record<ModelUs
     ["tool", draft.toolSelection],
     ["chat", draft.chatSelection],
     ["embedding", draft.embeddingSelection],
-    ["image", draft.imageSelection],
     ["gitCommit", draft.gitCommitSelection],
     ["sessionRename", draft.sessionRenameSelection],
     ["sessionSummary", draft.sessionSummarySelection],
     ["report", draft.reportSelection],
-    ["gtd", draft.gtdSelection],
     ["translate", draft.translateSelection]
   ];
   for (const [use, selection] of entries) {
@@ -577,9 +485,7 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     defaultProvider: defaultProvider,
     defaultNewSessionTarget: target,
     newSessionYolo: workbench?.newSessionYolo === true,
-    projectEditor: workbench?.projectEditor === "vscode" || workbench?.projectEditor === "vscodium" || workbench?.projectEditor === "cursor" || workbench?.projectEditor === "windsurf" ? workbench.projectEditor : "auto",
     terminalMode: workbench?.terminalMode === "external-system" || workbench?.terminalMode === "external-ghostty" ? "external-system" : "xterm",
-    terminalEngine: workbench?.terminalEngine === "ghostty-web" ? "ghostty-web" : "xterm",
     terminalTheme: resolveTerminalThemeId(workbench?.terminalTheme),
     editorTheme: workbench?.editorTheme === "light" || workbench?.editorTheme === "dark" ? workbench.editorTheme : "follow-app",
     terminalRenderer: workbench?.terminalRenderer === "canvas" ? "canvas" : "webgl",
@@ -596,7 +502,6 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     gitNestedScanMaxDepth: numberInRange(workbench?.gitNestedScanMaxDepth, 6, 1, 10),
     gitNestedScanIgnoreDirs: Array.isArray(workbench?.gitNestedScanIgnoreDirs) ? workbench.gitNestedScanIgnoreDirs.join("\n") : "",
     composerSlashPhrases: normalizeComposerSlashPhrases(workbench?.composerSlashPhrases),
-    composerMentions: normalizeComposerMentions(workbench?.composerMentions),
     acpAutoApprovePermissions: settings.acp?.autoApprovePermissions === "allowAll" ? "allowAll" : "ask",
     acpExperimentalGrokVendorUi: settings.acp?.experimentalGrokVendorUi === true
   };
@@ -629,9 +534,7 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       defaultNewSessionProvider: safeCli,
       defaultNewSessionTarget: target,
       newSessionYolo: draft.newSessionYolo === true,
-      projectEditor: draft.projectEditor,
       terminalMode: draft.terminalMode,
-      terminalEngine: draft.terminalEngine,
       terminalTheme: resolveTerminalThemeId(draft.terminalTheme),
       editorTheme: draft.editorTheme,
       terminalRenderer: draft.terminalRenderer === "canvas" ? "canvas" : "webgl",
@@ -650,7 +553,6 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       gitNestedScanMaxDepth: numberInRange(draft.gitNestedScanMaxDepth, 6, 1, 10),
       gitNestedScanIgnoreDirs: draft.gitNestedScanIgnoreDirs.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean),
       composerSlashPhrases: normalizeComposerSlashPhrases(draft.composerSlashPhrases),
-      composerMentions: normalizeComposerMentions(draft.composerMentions)
     },
     acp: {
       ...settings.acp,

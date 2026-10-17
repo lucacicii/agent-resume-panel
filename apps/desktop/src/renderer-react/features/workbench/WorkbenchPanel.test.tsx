@@ -11,6 +11,7 @@ import {
 } from "./WorkbenchPanel";
 import { WB_PATH_DND_MIME } from "./workbenchDnd";
 import type { GtdStatus } from "@agent-resume/core";
+import type { TaskWorktreeInfo, TaskWorktreeListing, TaskWorktreeState } from "../../../shared/worktreeTypes";
 
 const notificationMocks = vi.hoisted(() => ({ notifyDesktop: vi.fn() }));
 type MockBuffer = {
@@ -1007,7 +1008,6 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
-      workbenchGetProjectEditor: async () => ({ selected: "vscode", available: true, editor: { id: "vscode", label: "VS Code" } }),
       workbenchNewSession,
       workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
     } as unknown as typeof window.agentResume;
@@ -1054,7 +1054,6 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionTarget: "thunder:visual" } }),
       listSessions: async () => [],
-      workbenchGetProjectEditor: async () => ({ selected: "auto", available: false, editor: null }),
       workbenchNewSession,
       acpCreateSession,
       thunderGetStatus: async () => ({ available: true, repoPath: "/thunder", daemonPath: "/thunder/daemon", tuiPath: "/thunder/tui", models: [] }),
@@ -1105,7 +1104,6 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionTarget: "cli:thunder" } }),
       listSessions: async () => [],
-      workbenchGetProjectEditor: async () => ({ selected: "auto", available: false, editor: null }),
       workbenchNewSession,
       notesRead: async () => ({ record: { work: { projects: [] } }, content: "" }),
       notesListTasks: async () => []
@@ -1147,7 +1145,6 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [],
-      workbenchGetProjectEditor: async () => ({ selected: "auto", available: false, editor: null }),
       contextMenuShow,
       workbenchNewSession: vi.fn(async () => ({ mode: "external-system", cwd: "/work/app", external: true })),
       thunderGetStatus: async () => ({ available: true, repoPath: "/thunder", daemonPath: "/thunder/daemon", tuiPath: "/thunder/tui", models: [] }),
@@ -1255,7 +1252,6 @@ describe("WorkbenchPanel", () => {
     listProjectAliases: async () => ({}),
     getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
     listSessions: async () => [],
-    workbenchGetProjectEditor: async () => ({ selected: "auto", available: false, editor: null }),
     contextMenuShow,
     workbenchNewSession: vi.fn(async () => ({ mode: "external-system", cwd: "/work/app", external: true })),
     thunderGetStatus: async () => ({ available: true, repoPath: "/thunder", daemonPath: "/thunder/daemon", tuiPath: "/thunder/tui", models: [] }),
@@ -1482,7 +1478,6 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionTarget: "cli:thunder" } }),
       listSessions: async () => [],
-      workbenchGetProjectEditor: async () => ({ selected: "auto", available: false, editor: null }),
       contextMenuShow,
       workbenchNewSession,
       previewSession,
@@ -4352,15 +4347,7 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: {
         defaultNewSessionProvider: "codex",
-        defaultNewSessionTarget: "",
-        composerMentions: [{
-          id: "anfeng",
-          cwd: "/work/c",
-          roots: [
-            { path: "/work/c", role: "work" },
-            { path: "/work/a", role: "reference" }
-          ]
-        }]
+        defaultNewSessionTarget: ""
       } }),
       contextMenuShow,
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
@@ -4389,16 +4376,15 @@ describe("WorkbenchPanel", () => {
     expect(items.find((item) => item.label === "CLI (terminal)")).toBeTruthy();
   });
 
-  it("launches immediately when a workspace mention is chosen with a default agent", async () => {
+  it("launches default agent immediately when target is set", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
-    const workbenchNewSession = vi.fn(async () => ({ mode: "external-system", cwd: "/work/c" }));
+    const workbenchNewSession = vi.fn(async () => ({ mode: "external-system", cwd: "/work/app" }));
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.terminalTabs": "Terminal tabs",
-        "desktop.settings.defaultAgent": "Default agent", "desktop.settings.newSessionGroupCli": "CLI (terminal)", "desktop.settings.newSessionGroupAcp": "ACP (visual chat)", "desktop.settings.newSessionTarget.cli_codex": "Codex", "desktop.settings.newSessionTarget.cli_claude": "Claude",
-        "desktop.settings.composerMentionsWorkspace": "Workspace", "desktop.settings.composerMentionsCurrentProject": "Current project"
+        "desktop.settings.defaultAgent": "Default agent", "desktop.settings.newSessionGroupCli": "CLI (terminal)", "desktop.settings.newSessionGroupAcp": "ACP (visual chat)", "desktop.settings.newSessionTarget.cli_codex": "Codex", "desktop.settings.newSessionTarget.cli_claude": "Claude"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -4409,12 +4395,7 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: {
         defaultNewSessionProvider: "codex",
-        defaultNewSessionTarget: "cli:codex",
-        composerMentions: [{
-          id: "anfeng",
-          cwd: "/work/c",
-          roots: [{ path: "/work/c", role: "work" }]
-        }]
+        defaultNewSessionTarget: "cli:codex"
       } }),
       contextMenuShow,
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
@@ -4429,17 +4410,13 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     await activateTaskDirectory("/work/app");
-    chooseContextMenuItem("anfeng");
     fireEvent.click(document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement);
     await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({
-      cwd: "/work/c",
+      cwd: "/work/app",
       provider: "codex",
       executionMode: "standard",
       taskNoteId: "wi-test"
     }));
-    const items = contextMenuShow.mock.calls.at(-1)![0].items;
-    expect(items.find((item) => item.label === "Workspace")).toBeTruthy();
-    expect(items.find((item) => item.label === "anfeng")).toBeTruthy();
   });
 
   it("does not leave loading visible for external-system new sessions", async () => {
@@ -6126,11 +6103,15 @@ describe("WorkbenchPanel", () => {
   });
 
   const searchI18nMessages: Record<string, string> = {
-    "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.findCount": "{0} / {1}", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelSearch": "Search", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoRoot": "Select a project", "desktop.workbench.searchPlaceholder": "Search in project", "desktop.workbench.searchOptions": "Search options", "desktop.workbench.searchMatchCase": "Match Case", "desktop.workbench.searchWholeWord": "Match Whole Word", "desktop.workbench.searchUseRegex": "Use Regular Expression", "desktop.workbench.searchHint": "Type to search", "desktop.workbench.searchSearching": "Searching…", "desktop.workbench.searchNoResults": "No results", "desktop.workbench.searchResultSummary": "{0} results in {1} files", "desktop.workbench.searchTruncated": "results limited", "desktop.workbench.searchFailed": "Search failed: {0}", "desktop.workbench.explorerGitFileHistory": "View Git File History", "desktop.workbench.findInFolder": "Find in Folder", "desktop.workbench.searchToggleDetails": "Toggle search details", "desktop.workbench.searchToggleReplace": "Toggle replace", "desktop.workbench.searchReplacePlaceholder": "Replace", "desktop.workbench.searchReplaceAll": "Replace All", "desktop.workbench.searchReplaceInFile": "Replace all in file", "desktop.workbench.searchReplaceMatch": "Replace occurrence", "desktop.workbench.searchReplaceLimited": "Results were limited", "desktop.workbench.searchReplaceDone": "Replaced {0} occurrence(s) in {1} file(s)", "desktop.workbench.searchReplaceSkipped": "{0} skipped (unsaved changes)", "desktop.workbench.searchReplaceBlockedDirty": "Target files have unsaved changes", "desktop.workbench.searchReplaceFailed": "Replace failed: {0}", "desktop.workbench.searchFilesToInclude": "files to include", "desktop.workbench.searchFilesToIncludePlaceholder": "e.g. **/*.{ts,tsx}, src/**", "desktop.workbench.searchFilesToExclude": "files to exclude", "desktop.workbench.searchFilesToExcludePlaceholder": "e.g. **/*.test.ts", "desktop.workbench.quickAccessProjectPlaceholder": "Search projects by name or path", "desktop.workbench.quickAccessSelectProject": "Select project", "desktop.workbench.quickAccessNoProjects": "No matching projects", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.fileSaved": "Saved", "desktop.workbench.fileModified": "Modified", "desktop.workbench.fileSaving": "Saving…", "desktop.common.save": "Save", "desktop.workbench.closeFile": "Close file"
+    "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.findCount": "{0} / {1}", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelSearch": "Search", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoRoot": "Select a project", "desktop.workbench.searchPlaceholder": "Search in project", "desktop.workbench.searchOptions": "Search options", "desktop.workbench.searchMatchCase": "Match Case", "desktop.workbench.searchWholeWord": "Match Whole Word", "desktop.workbench.searchUseRegex": "Use Regular Expression", "desktop.workbench.searchHint": "Type to search", "desktop.workbench.searchSearching": "Searching…", "desktop.workbench.searchNoResults": "No results", "desktop.workbench.searchResultSummary": "{0} results in {1} files", "desktop.workbench.searchTruncated": "results limited", "desktop.workbench.searchFailed": "Search failed: {0}", "desktop.workbench.explorerGitFileHistory": "View Git File History", "desktop.workbench.findInFolder": "Find in Folder", "desktop.workbench.searchToggleDetails": "Toggle search details", "desktop.workbench.searchToggleReplace": "Toggle replace", "desktop.workbench.searchReplacePlaceholder": "Replace", "desktop.workbench.searchReplaceAll": "Replace All", "desktop.workbench.searchReplaceInFile": "Replace all in file", "desktop.workbench.searchReplaceMatch": "Replace occurrence", "desktop.workbench.searchReplaceLimited": "Results were limited", "desktop.workbench.searchReplaceDone": "Replaced {0} occurrence(s) in {1} file(s)", "desktop.workbench.searchReplaceSkipped": "{0} skipped (unsaved changes)", "desktop.workbench.searchReplaceBlockedDirty": "Target files have unsaved changes", "desktop.workbench.searchReplaceFailed": "Replace failed: {0}", "desktop.workbench.searchFilesToInclude": "files to include", "desktop.workbench.searchFilesToIncludePlaceholder": "e.g. **/*.{ts,tsx}, src/**", "desktop.workbench.searchFilesToExclude": "files to exclude", "desktop.workbench.searchFilesToExcludePlaceholder": "e.g. **/*.test.ts", "desktop.workbench.quickAccessProjectPlaceholder": "Search projects by name or path", "desktop.workbench.quickAccessSelectProject": "Select project", "desktop.workbench.quickAccessNoProjects": "No matching projects", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.fileSaved": "Saved", "desktop.workbench.fileModified": "Modified", "desktop.workbench.fileSaving": "Saving…", "desktop.common.save": "Save", "desktop.workbench.closeFile": "Close file", "desktop.workbench.worktreeSelect": "Checkout", "desktop.workbench.worktreeMainCheckout": "Main checkout", "desktop.workbench.worktreePin": "Pin this panel to a checkout", "desktop.workbench.worktreeUnpin": "Unpin", "desktop.workbench.worktreePinned": "Pinned to {0}", "desktop.workbench.worktreeCreate": "New Worktree…"
   };
 
   function searchHarness(opts: {
     searchResult?: { matches: unknown[]; truncated: boolean; filesSearched: number; engine: string };
+    /** The task's checkouts, for a test that wants a worktree to move between. */
+    worktrees?: TaskWorktreeListing;
+    /** Worktree settings; a checkout waved away there stays out of the reminders. */
+    worktreeState?: Partial<TaskWorktreeState>;
   }) {
     const host = document.createElement("div");
     host.id = "react-workbench";
@@ -6166,7 +6147,10 @@ describe("WorkbenchPanel", () => {
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
       workbenchSearchText,
       workbenchSearchTextCancel: async () => ({ ok: true }),
-      workbenchReplaceText
+      workbenchReplaceText,
+      contextMenuShow,
+      workbenchListWorktrees: async () => opts.worktrees ?? null,
+      notesGetWorktreeSettings: async () => ({ enabled: false, baseBranch: {}, ...opts.worktreeState })
     } as unknown as typeof window.agentResume;
     return { workbenchSearchText, workbenchReplaceText, host };
   }
@@ -6204,6 +6188,63 @@ describe("WorkbenchPanel", () => {
     });
     await waitFor(() => expect(workbenchSearchText).toHaveBeenLastCalledWith(
       expect.objectContaining({ filesToInclude: "src/**", filesToExclude: "**/*.test.ts" })
+    ));
+  });
+
+  /** A task's repository, with the checkout an agent has been working in. */
+  const searchWorktrees: TaskWorktreeListing = {
+    root: "/Users/lucas/.agent-resume-panel/.desktop/workspaces/wi-test/.worktrees",
+    repos: [{
+      repoRoot: "/work/app",
+      label: "app",
+      exists: true,
+      isGitRepo: true,
+      baseBranch: "main",
+      worktrees: [
+        { path: "/work/app", branch: "main", head: "0".repeat(40), detached: false, bare: false, locked: false, prunable: false, isMain: true, missing: false, merged: false, createdAtMs: null },
+        { path: "/wt/app-feat-x", branch: "feat/x", head: "1".repeat(40), detached: false, bare: false, locked: false, prunable: false, isMain: false, missing: false, merged: false, createdAtMs: null }
+      ] satisfies TaskWorktreeInfo[]
+    }]
+  };
+
+  it("searches the checkout the search pane is on, not the one the workbench moved to", async () => {
+    const { workbenchSearchText } = searchHarness({
+      worktrees: searchWorktrees,
+      // The reminder about the checkout this task still has was waved away already:
+      // this test is about where the search reads, not about that dialog.
+      worktreeState: { dismissed: { "/wt/app-feat-x": 1 } }
+    });
+    localStorage.setItem("wb-search-details-open", "false");
+    localStorage.setItem("wb-search-replace-open", "false");
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateTaskDirectory("/work/app");
+    fireEvent.click(screen.getByRole("button", { name: "Search", pressed: false }));
+    const searchbox = await screen.findByRole("searchbox", { name: "Search" });
+    const pane = searchbox.closest(".wb-side-pane");
+    if (!pane) throw new Error("search side pane missing");
+    const searchPane = within(pane as HTMLElement);
+
+    // Nothing is pinned yet, so choosing the checkout here is a plain choice for the
+    // whole workbench and the search reads it.
+    chooseContextMenuItem("⌥ feat/x");
+    fireEvent.click(searchPane.getByRole("button", { name: "Checkout: Main checkout" }));
+    await waitFor(() => expect(searchPane.getByRole("button", { name: "Checkout: feat/x" })).toBeTruthy());
+    fireEvent.change(searchbox, { target: { value: "findme" } });
+    await waitFor(() => expect(workbenchSearchText).toHaveBeenLastCalledWith(
+      expect.objectContaining({ rootPaths: ["/wt/app-feat-x"] })
+    ));
+
+    // Pin this pane and send it back to the repository's own working tree while the
+    // rest of the workbench stays on the checkout...
+    fireEvent.click(searchPane.getByRole("button", { name: "Pin this panel to a checkout" }));
+    chooseContextMenuItem("Main checkout");
+    fireEvent.click(searchPane.getByRole("button", { name: "Checkout: feat/x" }));
+    await waitFor(() => expect(searchPane.getByRole("button", { name: "Checkout: Main checkout" })).toBeTruthy());
+    // ...and the search goes with it. The chip above the box and the checkout
+    // control beside it answer the same question, so they have to agree.
+    await waitFor(() => expect(workbenchSearchText).toHaveBeenLastCalledWith(
+      expect.objectContaining({ rootPaths: ["/work/app"] })
     ));
   });
 

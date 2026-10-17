@@ -1,9 +1,8 @@
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
-import { NativeMenuSelect } from "../../components/NativeMenuSelect";
-import { Children, isValidElement, useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
-import type { WorkbenchComposerMention } from "@agent-resume/core";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { desktopApi } from "../../bridge";
 import { SegmentedControl } from "../../components/SegmentedControl";
+import { SelectRow, ToggleRow } from "../../components/SettingRows";
 import { Status, type StatusKind } from "../../components/Status";
 import { confirmAction, confirmDestructive } from "../../confirmAction";
 import { WORKBENCH_TERMINAL_THEME_IDS } from "../workbench/terminalThemes";
@@ -27,22 +26,6 @@ function terminalThemeLabelKey(id: string): string {
   return TERMINAL_THEME_LABEL_KEYS[id] || "desktop.settings.terminalThemeDefaultDark";
 }
 
-function ToggleRow({ title, description, checked, onChange }: { title: string; description?: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{title}</span>{description ? <span className="settings-row-desc">{description}</span> : null}</span><span className="settings-toggle"><input type="checkbox" role="switch" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label>;
-}
-
-function SelectRow({ title, description, value, onChange, children }: { title: string; description?: string; value: string | number; onChange: (value: string) => void; children: ReactNode }) {
-  // The caller keeps the declarative `<option>` children; read them into the
-  // value/label pairs the native menu needs.
-  const options = Children.toArray(children).flatMap((child) => {
-    if (!isValidElement(child)) return [];
-    const props = child.props as { value?: string | number; children?: ReactNode };
-    if (props.value === undefined) return [];
-    return [{ value: String(props.value), label: String(props.children ?? props.value) }];
-  });
-  return <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{title}</span>{description ? <span className="settings-row-desc">{description}</span> : null}</span><NativeMenuSelect className="settings-row-control" ariaLabel={title} title={title} value={String(value)} options={options} onChange={onChange} /></label>;
-}
-
 export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: WorkbenchDraft; setDraft: (value: WorkbenchDraft) => void; commit: (value: WorkbenchDraft) => void; t: Translate }) {
   /**
    * Immediate controls (toggles, selects, list add/remove of concrete values) commit
@@ -55,14 +38,6 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
     if (options?.commit !== false) commit(next);
   };
   const slashPhrases = draft.composerSlashPhrases ?? [];
-  const mentions = draft.composerMentions ?? [];
-  const mentionAt = (index: number, patch: Partial<WorkbenchComposerMention>): WorkbenchComposerMention[] =>
-    mentions.map((item, mentionIndex) => mentionIndex === index ? { ...item, ...patch } : item);
-  const pickMentionPath = async (title: string): Promise<string | null> => {
-    if (typeof desktopApi().pickDirectory !== "function") return null;
-    const result = await desktopApi().pickDirectory({ title });
-    return result.ok ? result.path : null;
-  };
   return <>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.newSessionGroup")}</h3><div className="settings-group-body">
       <SelectRow
@@ -120,13 +95,40 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.composerSlashGroup")}</h3><div className="settings-group-body">
       <p className="settings-footnote">{t("desktop.settings.composerSlashDesc")}</p>
-      {slashPhrases.length === 0 ? <p className="settings-footnote">{t("desktop.settings.composerSlashEmpty")}</p> : null}
+      <div className="settings-slash-presets-row">
+        <span className="settings-footnote muted" style={{ marginRight: "var(--space-1)" }}>Quick presets:</span>
+        {[
+          { trigger: "commit", description: "Draft commit message", phrase: "Review the current git changes and draft a concise conventional commit message." },
+          { trigger: "review", description: "Code review", phrase: "Review the current diff for potential bugs, performance regressions, and security issues." },
+          { trigger: "test", description: "Run tests", phrase: "Run the test suite, analyze any failures, and recommend targeted fixes." },
+          { trigger: "explain", description: "Architecture overview", phrase: "Explain the architecture, design decisions, and core workflows of this module." }
+        ].map((preset) => {
+          const exists = slashPhrases.some((p) => p.trigger.toLowerCase() === preset.trigger);
+          return (
+            <button
+              key={preset.trigger}
+              type="button"
+              className="settings-slash-preset-btn"
+              disabled={exists}
+              onClick={() => {
+                if (exists) return;
+                const next = [...slashPhrases, preset];
+                update("composerSlashPhrases", next);
+              }}
+              title={exists ? "Already added" : `Add /${preset.trigger} preset`}
+            >
+              +{`/${preset.trigger}`}
+            </button>
+          );
+        })}
+      </div>
+      {slashPhrases.length === 0 ? <p className="settings-footnote muted">{t("desktop.settings.composerSlashEmpty")}</p> : null}
       {slashPhrases.map((item, index) => (
-        <div className="settings-item" key={`slash-${index}`}>
-          <div className="settings-item-row">
-            <span className="settings-item-prefix" aria-hidden="true">/</span>
+        <div className="settings-item settings-slash-card" key={`slash-${index}`}>
+          <div className="settings-item-row settings-slash-header">
+            <span className="settings-item-prefix settings-slash-prefix" aria-hidden="true">/</span>
             <input
-              className="settings-item-name"
+              className="settings-item-name settings-slash-trigger-input"
               value={item.trigger}
               spellCheck={false}
               autoCapitalize="off"
@@ -134,13 +136,13 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
               aria-label={t("desktop.settings.composerSlashTrigger")}
               placeholder={t("desktop.settings.composerSlashTriggerPlaceholder")}
               onChange={(event) => {
-                const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, trigger: event.target.value } : phrase);
+                const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, trigger: event.target.value.replace(/^\/+/, "") } : phrase);
                 update("composerSlashPhrases", next, { commit: false });
               }}
               onBlur={() => commit(draft)}
             />
             <input
-              className="settings-item-note"
+              className="settings-item-note settings-slash-desc-input"
               value={item.description ?? ""}
               spellCheck={false}
               aria-label={t("desktop.settings.composerSlashDescription")}
@@ -159,141 +161,39 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
               onClick={() => update("composerSlashPhrases", slashPhrases.filter((_, phraseIndex) => phraseIndex !== index))}
             ><ThemeIcon name="trash" size={ICON_SIZE.dense} aria-hidden="true" /></button>
           </div>
-          <textarea
-            className="settings-item-body"
-            rows={2}
-            maxLength={4000}
-            spellCheck={false}
-            value={item.phrase}
-            aria-label={t("desktop.settings.composerSlashPhrase")}
-            placeholder={t("desktop.settings.composerSlashPhrasePlaceholder")}
-            onChange={(event) => {
-              const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, phrase: event.target.value } : phrase);
-              update("composerSlashPhrases", next, { commit: false });
-            }}
-            onBlur={() => commit(draft)}
-          />
+          <div className="settings-slash-body-wrap">
+            <textarea
+              className="settings-item-body settings-slash-textarea"
+              rows={3}
+              maxLength={4000}
+              spellCheck={false}
+              value={item.phrase}
+              aria-label={t("desktop.settings.composerSlashPhrase")}
+              placeholder={t("desktop.settings.composerSlashPhrasePlaceholder")}
+              onChange={(event) => {
+                const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, phrase: event.target.value } : phrase);
+                update("composerSlashPhrases", next, { commit: false });
+              }}
+              onBlur={() => commit(draft)}
+            />
+            <div className="settings-slash-footer">
+              <span className="settings-slash-preview-tag">
+                Composer preview: <code className="settings-slash-preview-code">/{item.trigger || "trigger"}</code>
+                {item.description ? ` (${item.description})` : ""}
+              </span>
+              <span className="settings-footnote muted" style={{ fontSize: "11px" }}>
+                {item.phrase.length} / 4000
+              </span>
+            </div>
+          </div>
         </div>
       ))}
-      <div className="settings-action-row">
+      <div className="settings-action-row" style={{ marginTop: "var(--space-1)" }}>
         <button
           type="button"
           className="tool-btn"
           onClick={() => update("composerSlashPhrases", [...slashPhrases, { trigger: "", phrase: "" }], { commit: false })}
         ><ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />{t("desktop.settings.composerSlashAdd")}</button>
-      </div>
-    </div></section>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.composerMentionsGroup")}</h3><div className="settings-group-body">
-      <p className="settings-footnote">{t("desktop.settings.composerMentionsDesc")}</p>
-      {mentions.length === 0 ? <p className="settings-footnote">{t("desktop.settings.composerMentionsEmpty")}</p> : null}
-      {mentions.map((item, index) => {
-        const references = item.roots.filter((root) => root.role === "reference");
-        return (
-          <div className="settings-item" key={`mention-${index}`}>
-            <div className="settings-item-row">
-              <input
-                className="settings-item-name"
-                value={item.id}
-                spellCheck={false}
-                autoCapitalize="off"
-                autoCorrect="off"
-                aria-label={t("desktop.settings.composerMentionsId")}
-                placeholder={t("desktop.settings.composerMentionsIdPlaceholder")}
-                onChange={(event) => update("composerMentions", mentionAt(index, { id: event.target.value }), { commit: false })}
-                onBlur={() => commit(draft)}
-              />
-              <input
-                className="settings-item-path"
-                value={item.cwd}
-                spellCheck={false}
-                aria-label={t("desktop.settings.composerMentionsCwd")}
-                placeholder={t("desktop.settings.composerMentionsCwdPlaceholder")}
-                onChange={(event) => {
-                  const cwd = event.target.value;
-                  const nextRoots = [{ path: cwd, role: "work" as const }, ...item.roots.filter((root) => root.role === "reference")];
-                  update("composerMentions", mentionAt(index, { cwd, roots: nextRoots }), { commit: false });
-                }}
-                onBlur={() => commit(draft)}
-              />
-              <button
-                type="button"
-                className="tool-btn settings-item-icon"
-                aria-label={t("desktop.settings.composerMentionsBrowse")}
-                title={t("desktop.settings.composerMentionsBrowse")}
-                onClick={() => {
-                  void pickMentionPath(t("desktop.settings.composerMentionsCwd")).then((picked) => {
-                    if (!picked) return;
-                    const nextRoots = [{ path: picked, role: "work" as const }, ...item.roots.filter((root) => root.role === "reference")];
-                    update("composerMentions", mentionAt(index, { cwd: picked, roots: nextRoots }));
-                  });
-                }}
-              ><ThemeIcon name="folder-open" size={ICON_SIZE.dense} aria-hidden="true" /></button>
-              <button
-                type="button"
-                className="tool-btn settings-item-icon"
-                aria-label={t("desktop.settings.composerMentionsRemove")}
-                title={t("desktop.settings.composerMentionsRemove")}
-                onClick={() => update("composerMentions", mentions.filter((_, mentionIndex) => mentionIndex !== index))}
-              ><ThemeIcon name="trash" size={ICON_SIZE.dense} aria-hidden="true" /></button>
-            </div>
-            {references.map((root, rootIndex) => (
-              <div className="settings-item-row settings-item-subrow" key={`mention-${index}-ref-${rootIndex}`}>
-                <ThemeIcon name="folder" className="settings-item-subrow-icon" size={ICON_SIZE.dense} aria-hidden="true" />
-                <input
-                  className="settings-item-path"
-                  value={root.path}
-                  spellCheck={false}
-                  aria-label={t("desktop.settings.composerMentionsReferences")}
-                  placeholder={t("desktop.settings.composerMentionsReferencePlaceholder")}
-                  onChange={(event) => {
-                    const nextRefs = references.map((entry, entryIndex) => entryIndex === rootIndex ? { ...entry, path: event.target.value } : entry);
-                    update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }), { commit: false });
-                  }}
-                  onBlur={() => commit(draft)}
-                />
-                <button
-                  type="button"
-                  className="tool-btn settings-item-icon"
-                  aria-label={t("desktop.settings.composerMentionsBrowse")}
-                  title={t("desktop.settings.composerMentionsBrowse")}
-                  onClick={() => {
-                    void pickMentionPath(t("desktop.settings.composerMentionsReferences")).then((picked) => {
-                      if (!picked) return;
-                      const nextRefs = references.map((entry, entryIndex) => entryIndex === rootIndex ? { ...entry, path: picked } : entry);
-                      update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }));
-                    });
-                  }}
-                ><ThemeIcon name="folder-open" size={ICON_SIZE.dense} aria-hidden="true" /></button>
-                <button
-                  type="button"
-                  className="tool-btn settings-item-icon"
-                  aria-label={t("desktop.settings.composerMentionsRemoveReference")}
-                  title={t("desktop.settings.composerMentionsRemoveReference")}
-                  onClick={() => {
-                    const nextRefs = references.filter((_, entryIndex) => entryIndex !== rootIndex);
-                    update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }));
-                  }}
-                ><ThemeIcon name="close" size={ICON_SIZE.dense} aria-hidden="true" /></button>
-              </div>
-            ))}
-            <div className="settings-action-row">
-              <button
-                type="button"
-                className="tool-btn"
-                onClick={() => update("composerMentions", mentionAt(index, {
-                  roots: [...item.roots, { path: "", role: "reference" }]
-                }), { commit: false })}
-              ><ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />{t("desktop.settings.composerMentionsAddReference")}</button>
-            </div>
-          </div>
-        );
-      })}
-      <div className="settings-action-row">
-        <button
-          type="button"
-          className="tool-btn"
-          onClick={() => update("composerMentions", [...mentions, { id: "", cwd: "", roots: [{ path: "", role: "work" }] }], { commit: false })}
-        ><ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />{t("desktop.settings.composerMentionsAdd")}</button>
       </div>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.embeddedEditorGroup")}</h3><div className="settings-group-body">
@@ -307,19 +207,7 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
       <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.transcriptFontSize")}</span><span className="settings-row-desc">{t("desktop.settings.transcriptFontSizeDesc")}</span></span><label className="settings-number-control"><input className="settings-number-input" type="number" min="11" max="24" value={draft.transcriptFontSize} onChange={(event) => update("transcriptFontSize", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} /><span aria-hidden="true">px</span></label></label>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.editorTerminal")}</h3><div className="settings-group-body">
-      <SelectRow title={t("desktop.settings.projectEditor")} description={t("desktop.settings.projectEditorDesc")} value={draft.projectEditor} onChange={(value) => update("projectEditor", value as WorkbenchDraft["projectEditor"])}><option value="auto">{t("desktop.settings.editorAuto")}</option><option value="vscode">VS Code</option><option value="vscodium">VSCodium</option><option value="cursor">Cursor</option><option value="windsurf">Windsurf</option></SelectRow>
       <SelectRow title={t("desktop.settings.terminalMode")} description={t("desktop.settings.terminalModeDesc")} value={draft.terminalMode} onChange={(value) => update("terminalMode", value as WorkbenchDraft["terminalMode"])}><option value="xterm">{t("desktop.settings.terminalXterm")}</option><option value="external-system">{t("desktop.settings.terminalExternal")}</option></SelectRow>
-      {draft.terminalMode === "xterm" ? (
-        <SelectRow
-          title={t("desktop.settings.terminalEngine")}
-          description={t("desktop.settings.terminalEngineDesc")}
-          value={draft.terminalEngine}
-          onChange={(value) => update("terminalEngine", value as WorkbenchDraft["terminalEngine"])}
-        >
-          <option value="xterm">{t("desktop.settings.terminalEngineXterm")}</option>
-          <option value="ghostty-web">{t("desktop.settings.terminalEngineGhosttyWeb")}</option>
-        </SelectRow>
-      ) : null}
       <SelectRow
         title={t("desktop.settings.terminalTheme")}
         description={t("desktop.settings.terminalThemeDesc")}

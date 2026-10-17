@@ -14,7 +14,9 @@ export interface WorkbenchSearchMatch {
 
 interface WorkbenchSearchOptions {
   /** Project roots to search; results from every root are merged into one set. */
-  rootPaths: string[];
+  rootPaths?: string[];
+  /** Single project root (shorthand for `rootPaths: [rootPath]`). */
+  rootPath?: string;
   query: string;
   matchCase?: boolean;
   wholeWord?: boolean;
@@ -860,7 +862,8 @@ export async function searchWorkbenchText(rawOptions: WorkbenchSearchOptions): P
 
   try {
     throwIfAborted(controller.signal);
-    const roots = [...new Set((rawOptions.rootPaths ?? []).map((rootPath) => resolveCwd(rootPath)))];
+    const rawRoots = rawOptions.rootPaths ?? (rawOptions.rootPath ? [rawOptions.rootPath] : []);
+    const roots = [...new Set(rawRoots.map((rootPath) => resolveCwd(rootPath)))];
     if (!roots.length) {
       return { matches: [], truncated: false, filesSearched: 0, engine: "node" };
     }

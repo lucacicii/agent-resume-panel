@@ -55,8 +55,6 @@ const messages = {
   "desktop.settings.chatModelUseDesc": "For Ask and Agent chat",
   "desktop.settings.embeddingModelUse": "Embedding",
   "desktop.settings.embeddingModelUseDesc": "For semantic search",
-  "desktop.settings.imageModelUse": "Image",
-  "desktop.settings.imageModelUseDesc": "Image generation",
   "desktop.settings.useCaseModels": "Use-case models",
   "desktop.settings.useCaseModelsFootnote": "Each feature picks a model by kind.",
   "desktop.settings.specificFeatureModels": "Feature-specific models",
@@ -69,8 +67,6 @@ const messages = {
   "desktop.settings.sessionSummaryModelUseDesc": "Session summary desc",
   "desktop.settings.reportModelUse": "Scheduled Digests",
   "desktop.settings.reportModelUseDesc": "Report desc",
-  "desktop.settings.gtdModelUse": "GTD Task Analysis",
-  "desktop.settings.gtdModelUseDesc": "GTD desc",
   "desktop.settings.translateModelUse": "Translation",
   "desktop.settings.translateModelUseDesc": "Translation desc",
   "desktop.settings.modelFollowToolDefault": "Default (Follows Tool LLM)",
@@ -104,7 +100,6 @@ const messages = {
   "desktop.settings.modelPlaceholder": "—",
   "desktop.settings.noTextModelsHint": "No text models.",
   "desktop.settings.noEmbeddingModelsHint": "No embedding models.",
-  "desktop.settings.noImageModelsHint": "No image models.",
   "desktop.settings.testConnectionKind": "Kind to test",
   "desktop.settings.disableThinkingChatDesc": "Chat thinking desc",
   "desktop.settings.appearance": "Appearance",
@@ -164,22 +159,6 @@ const messages = {
   "desktop.settings.composerSlashDescriptionPlaceholder": "Optional menu subtitle",
   "desktop.settings.composerSlashAdd": "Add phrase",
   "desktop.settings.composerSlashRemove": "Remove",
-  "desktop.settings.composerMentionsGroup": "Workspace mentions",
-  "desktop.settings.composerMentionsDesc": "Global packs",
-  "desktop.settings.composerMentionsEmpty": "No workspace mentions yet.",
-  "desktop.settings.composerMentionsId": "Id",
-  "desktop.settings.composerMentionsIdPlaceholder": "anfeng",
-  "desktop.settings.composerMentionsCwd": "Work folder",
-  "desktop.settings.composerMentionsCwdPlaceholder": "/path/to/work",
-  "desktop.settings.composerMentionsBrowse": "Browse",
-  "desktop.settings.composerMentionsReferences": "Reference folders",
-  "desktop.settings.composerMentionsReferencePlaceholder": "/path/to/reference",
-  "desktop.settings.composerMentionsAddReference": "Add reference",
-  "desktop.settings.composerMentionsRemoveReference": "Remove reference",
-  "desktop.settings.composerMentionsAdd": "Add mention",
-  "desktop.settings.composerMentionsRemove": "Remove",
-  "desktop.settings.composerMentionsWorkspace": "Workspace",
-  "desktop.settings.composerMentionsCurrentProject": "Current project",
   "desktop.settings.embeddedEditorGroup": "Embedded editor",
   "desktop.settings.editorEditable": "Editable",
   "desktop.settings.editorEditableDesc": "Editable desc",
@@ -202,17 +181,10 @@ const messages = {
   "desktop.settings.transcriptFontSize": "Transcript font size",
   "desktop.settings.transcriptFontSizeDesc": "Transcript desc",
   "desktop.settings.editorTerminal": "Editor & terminal",
-  "desktop.settings.projectEditor": "Project editor",
-  "desktop.settings.projectEditorDesc": "Project editor desc",
-  "desktop.settings.editorAuto": "Auto-detect",
   "desktop.settings.terminalMode": "Terminal mode",
   "desktop.settings.terminalModeDesc": "Terminal mode desc",
   "desktop.settings.terminalXterm": "Embedded terminal",
   "desktop.settings.terminalExternal": "System default terminal",
-  "desktop.settings.terminalEngine": "Terminal engine",
-  "desktop.settings.terminalEngineDesc": "Engine desc",
-  "desktop.settings.terminalEngineXterm": "xterm.js",
-  "desktop.settings.terminalEngineGhosttyWeb": "Ghostty",
   "desktop.settings.terminalThemeFollowApp": "Follow app",
   "desktop.settings.editorTheme": "Editor theme",
   "desktop.settings.editorThemeDesc": "Editor theme desc",
@@ -402,26 +374,20 @@ describe("SettingsPanel (window)", () => {
     expect(host.textContent).toContain("Example");
     expect(host.textContent).toContain("Ask / Chat");
     expect(host.textContent).toContain("Embedding");
-    expect(host.textContent).toContain("Image");
     expect(host.textContent).toContain("Git Commit Messages");
     expect(host.textContent).toContain("Session Auto-Rename");
     expect(host.textContent).toContain("Session Summaries");
     expect(host.textContent).toContain("Scheduled Digests");
-    expect(host.textContent).toContain("GTD Task Analysis");
     expect(host.textContent).toContain("Translation");
-    // 7 text selectors + 1 embedding selector = 8 selectors (image selector shows empty hint because pool has no image models).
-    expect(host.querySelectorAll('[data-testid^="settings-model-select-"]')).toHaveLength(8);
+    // 6 text selectors + 1 embedding selector = 7 selectors.
+    expect(host.querySelectorAll('[data-testid^="settings-model-select-"]')).toHaveLength(7);
     expect(host.querySelector('[data-testid="settings-model-select-chat"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-git-commit"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-session-rename"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-session-summary"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-report"]')).not.toBeNull();
-    expect(host.querySelector('[data-testid="settings-model-select-gtd"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-translate"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-embedding"]')).not.toBeNull();
-    // No image models in the pool → the image selector shows an empty hint instead.
-    expect(host.querySelector('[data-testid="settings-model-select-image"]')).toBeNull();
-    expect(host.textContent).toContain("No image models.");
     // Kind badges on fetched/manual model rows.
     expect(host.querySelectorAll('[data-testid^="settings-provider-model-kind-"]')).toHaveLength(2);
   });

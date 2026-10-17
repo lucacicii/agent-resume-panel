@@ -1322,11 +1322,6 @@ html[data-window-mode="task"] #react-chrome:empty {
   stroke-linejoin: round;
 }
 
-svg[data-icon-system="sf"],
-svg[data-icon-system="sf"] * {
-  stroke: none;
-}
-
 .icon-btn:hover:not(:disabled) {
   background: var(--color-fill-secondary);
   color: var(--color-label-primary);
@@ -2669,6 +2664,77 @@ svg[data-icon-system="sf"] * {
   font-weight: 500;
 }
 
+/* Settings → Thunder Daemon & Models */
+.settings-thunder-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-3-5);
+  background: var(--color-fill-secondary);
+  border-radius: var(--radius-lg);
+  border: 0.5px solid var(--color-separator);
+  margin-bottom: var(--space-3);
+  gap: var(--space-3);
+}
+.settings-thunder-hero-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  min-width: 0;
+}
+.settings-thunder-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+.settings-thunder-status-dot.online {
+  background: var(--color-success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 25%, transparent);
+}
+.settings-thunder-status-dot.offline {
+  background: var(--color-destructive);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-destructive) 25%, transparent);
+}
+.settings-thunder-hero-title {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-label-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.settings-thunder-source-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-fill-tertiary);
+  color: var(--color-label-secondary);
+}
+.settings-thunder-provider-card {
+  border: 0.5px solid var(--color-separator);
+  border-radius: var(--radius-lg);
+  background: var(--color-fill-secondary);
+  margin-bottom: var(--space-2-5);
+  overflow: hidden;
+}
+.settings-thunder-provider-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2-5) var(--space-3);
+  background: var(--color-fill-tertiary);
+  border-bottom: 0.5px solid var(--color-separator);
+  gap: var(--space-2);
+}
+.settings-thunder-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-2-5);
+  padding: var(--space-3);
+}
+
 .settings-path-display {
   flex: 1 1 auto;
   min-width: 0;
@@ -2751,6 +2817,101 @@ svg[data-icon-system="sf"] * {
 .settings-item-body {
   width: 100%;
   resize: vertical;
+}
+
+/* Slash Phrases Enhanced Styling */
+.settings-slash-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--color-fill-secondary);
+  border: 0.5px solid var(--color-separator);
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+.settings-slash-card:focus-within {
+  border-color: var(--color-accent);
+}
+.settings-slash-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.settings-slash-prefix {
+  font-family: var(--font-family-mono);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--color-accent);
+  padding-left: var(--space-1);
+  user-select: none;
+}
+.settings-slash-trigger-input {
+  flex: 0 0 160px;
+  font-family: var(--font-family-mono);
+  font-weight: 600;
+  font-size: 13px;
+}
+.settings-slash-desc-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.settings-slash-body-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.settings-slash-textarea {
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  min-height: 64px;
+  resize: vertical;
+  width: 100%;
+}
+.settings-slash-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.settings-slash-preview-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: 11px;
+  color: var(--color-label-secondary);
+  background: var(--color-fill-tertiary);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+.settings-slash-preview-code {
+  font-family: var(--font-family-mono);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+.settings-slash-presets-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+  align-items: center;
+  padding: var(--space-1) 0;
+}
+.settings-slash-preset-btn {
+  font-size: 11px;
+  font-family: var(--font-family-mono);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-fill-tertiary);
+  border: 0.5px solid var(--color-separator);
+  color: var(--color-label-secondary);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.settings-slash-preset-btn:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  background: var(--color-fill-secondary);
 }
 
 .settings-item-subrow {
@@ -2879,6 +3040,184 @@ svg[data-icon-system="sf"] * {
 
 #settingsExternalLaunchRow[hidden] {
   display: none !important;
+}
+/* Settings → Background Status */
+.settings-agent-status-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-3-5);
+  background: var(--color-fill-secondary);
+  border-radius: var(--radius-lg);
+  border: 0.5px solid var(--color-separator);
+  margin-bottom: var(--space-3);
+}
+.settings-agent-status-hero-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+}
+.settings-agent-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--color-destructive);
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-destructive) 25%, transparent);
+}
+.settings-agent-status-dot.is-on {
+  background: var(--color-success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 25%, transparent);
+}
+.settings-agent-status-title {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-label-primary);
+}
+.settings-agent-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-2-5);
+  margin-bottom: var(--space-2);
+}
+.settings-agent-status-stat-card {
+  padding: var(--space-2-5) var(--space-3);
+  background: var(--color-fill-tertiary);
+  border-radius: var(--radius-md);
+  border: 0.5px solid var(--color-separator);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.settings-agent-status-stat-label {
+  font-size: var(--font-size-caption);
+  color: var(--color-label-secondary);
+}
+.settings-agent-status-stat-value {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-label-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.settings-agent-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.settings-agent-status-badge.installed {
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  color: var(--color-success);
+}
+.settings-agent-status-badge.available {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-accent);
+}
+.settings-agent-status-badge.missing {
+  background: color-mix(in srgb, var(--color-label-secondary) 14%, transparent);
+  color: var(--color-label-secondary);
+}
+.settings-agent-status-panes-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  margin-top: var(--space-1);
+}
+.settings-agent-status-pane-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-fill-tertiary);
+  border: 0.5px solid var(--color-separator);
+  gap: var(--space-2);
+}
+.settings-agent-status-pane-row.active {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-fill-tertiary));
+}
+.settings-agent-status-pane-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+.settings-agent-status-pane-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+}
+.settings-agent-status-pane-meta {
+  font-size: var(--font-size-caption);
+  color: var(--color-label-secondary);
+}
+.settings-state-pill {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  background: var(--color-fill-secondary);
+  color: var(--color-label-primary);
+}
+.settings-agent-status-inspector {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--color-fill-secondary);
+  border: 0.5px solid var(--color-separator);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.settings-agent-status-inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings-agent-status-rule-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-caption);
+  border: 0.5px solid var(--color-separator);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.settings-agent-status-rule-table th,
+.settings-agent-status-rule-table td {
+  padding: var(--space-2) var(--space-2-5);
+  text-align: left;
+  border-bottom: 0.5px solid var(--color-separator);
+}
+.settings-agent-status-rule-table th {
+  background: var(--color-fill-tertiary);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-label-secondary);
+}
+.settings-agent-status-rule-table tr.is-match {
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  font-weight: var(--font-weight-semibold);
+}
+.settings-agent-status-screen-box {
+  background: var(--color-fill-tertiary);
+  border: 0.5px solid var(--color-separator);
+  border-radius: var(--radius-md);
+  padding: var(--space-2-5);
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 #tab-settings .settings-pane-about .settings-about-body,
@@ -5852,11 +6191,9 @@ body.is-pane-resizing-v * {
 
 .wb-detail-tool svg {
   display: block;
-}
-
-.wb-detail-tool svg[data-icon-system="lucide"] {
-  stroke: currentColor;
+  flex-shrink: 0;
   fill: none;
+  stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -6757,6 +7094,269 @@ body.is-pane-resizing-v * {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- worktrees */
+/* A checkout control: the repository's main working tree, or one of its
+   worktrees. It shares the native-menu trigger with the repository and branch
+   pickers so the three read as one family of controls. */
+
+.wb-worktree-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Unlike the git repository picker this sits beside a pane title, so it takes
+   only the room its label needs and yields when the head is crowded. */
+.wb-worktree-select {
+  flex: 0 1 auto;
+  max-width: 220px;
+  gap: var(--space-1);
+  justify-content: flex-start;
+}
+
+.wb-worktree-select.is-pinned {
+  color: var(--color-warning);
+  border-color: color-mix(in srgb, var(--color-warning) 55%, transparent);
+}
+
+.wb-worktree-pin {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-label-tertiary);
+}
+
+.wb-worktree-pin:hover {
+  background: var(--color-fill-secondary);
+  color: var(--color-label-secondary);
+}
+
+.wb-worktree-pin[aria-pressed="true"] {
+  color: var(--color-warning);
+  background: var(--color-warning-subtle);
+}
+
+/* The header says which checkout it is naming; the path alone would read as a
+   folder unrelated to the repository the task references. */
+.wb-detail-project-path-worktree,
+.wb-terminal-status-worktree {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-micro);
+  color: var(--color-label-secondary);
+}
+
+.wb-detail-project-path-worktree {
+  padding: 1px var(--space-1-5);
+  border-radius: 999px;
+  background: var(--color-fill-secondary);
+}
+
+/* The task card's badge: which worktree this workbench is looking at. */
+.wb-task-worktree {
+  appearance: none;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  padding: 1px var(--space-1-5);
+  border: 1px solid var(--color-separator);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-label-secondary);
+  font-family: inherit;
+  font-size: 10px;
+}
+
+.wb-task-worktree:hover {
+  color: var(--text);
+  background: var(--color-fill-secondary);
+}
+
+/* ---- the task settings dialog ---- */
+
+.wb-task-settings-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.wb-task-settings-title {
+  font-size: var(--font-size-title);
+  font-weight: 600;
+}
+
+.wb-task-settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.wb-task-settings-row,
+.wb-worktree-settings-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-sm);
+}
+
+.wb-task-settings-name {
+  flex: 0 0 auto;
+  font-weight: 500;
+}
+
+.wb-task-settings-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-label-tertiary);
+  font-size: var(--font-size-micro);
+}
+
+/* A path long enough to be cut is read better from its end, but bidi tricks for
+   that reorder a leading slash: the full value stays in the tooltip instead. */
+.wb-task-settings-path.is-root {
+  flex: 1 1 100%;
+  text-align: right;
+}
+
+.wb-task-settings-empty {
+  margin: 0;
+  font-size: var(--font-size-micro);
+}
+
+.wb-worktree-reminder {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin: 0;
+  color: var(--color-warning);
+}
+
+.wb-worktree-settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.wb-worktree-settings-repo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.wb-worktree-settings-repo-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.wb-worktree-settings-branch {
+  flex: 0 0 auto;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-micro);
+}
+
+.wb-worktree-state {
+  flex: 0 0 auto;
+  padding: 1px var(--space-1-5);
+  border-radius: 999px;
+  background: var(--color-fill-secondary);
+  color: var(--color-label-secondary);
+  font-size: 10px;
+}
+
+.wb-worktree-state.is-ok { color: var(--color-success); }
+.wb-worktree-state.is-warning { color: var(--color-warning); }
+.wb-worktree-state.is-missing { color: var(--color-label-tertiary); text-decoration: line-through; }
+
+/* ---- the new-worktree sheet ---- */
+
+.wb-worktree-branch-input {
+  box-sizing: border-box;
+  flex: 0 1 220px;
+  min-width: 140px;
+  max-width: 240px;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--color-control-bg, var(--bg));
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--font-size-callout);
+}
+
+.wb-worktree-branch-input:focus {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.wb-worktree-created {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.wb-worktree-created-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin: 0;
+  font-weight: 600;
+}
+
+/* Checkouts left behind by tasks that no longer exist: a warning worth acting
+   on, but not part of this task, so it sits below its own list. */
+.wb-worktree-orphans {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-separator);
+}
+
+.wb-worktree-orphan-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin: 0;
+  font-size: var(--font-size-callout);
+  font-weight: 600;
+  color: var(--color-warning);
+}
+
+.wb-worktree-error {
+  margin: 0;
+  font-size: var(--font-size-callout);
+  line-height: var(--line-height-body);
+  color: var(--color-destructive);
 }
 
 /* The label inside a native-menu select trigger; the chevron stays put. */
@@ -20418,6 +21018,10 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 .tb-composer-queued span:first-child {
+  /* Holds the queued-messages icon ahead of the count. */
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   color: var(--color-accent, #007aff);
   font-weight: 600;
 }
@@ -20494,6 +21098,10 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 .tb-metrics-speed {
+  /* Holds the rate icon ahead of the reading. */
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   font-weight: 600;
   color: var(--color-label-secondary);
 }

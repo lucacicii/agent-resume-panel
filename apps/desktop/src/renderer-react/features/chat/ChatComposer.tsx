@@ -1218,7 +1218,7 @@ export function ChatComposer({
     const items: NativeContextMenuItem[] = [
       {
         id: "finder:choose",
-        label: "📁 从 Finder 指定本地目录...",
+        label: "从 Finder 指定本地目录...",
         type: "normal"
       },
       { type: "separator" },
@@ -1422,7 +1422,7 @@ export function ChatComposer({
       {docked ?? null}
       {isStreaming && (queuedCount ?? 0) > 0 && (
         <div className="tb-composer-queued" aria-label="Queued messages">
-          <span>📥 {queuedCount} queued</span>
+          <span><ThemeIcon name="inbox" size={ICON_SIZE.inline} /> {queuedCount} queued</span>
           <span>Enter steers · ⌥Enter follows up</span>
         </div>
       )}
@@ -1620,7 +1620,7 @@ export function ChatComposer({
               <>
                 <span className="tb-metrics-pulse" />
                 <span className="tb-metrics-speed">
-                  ⚡ {typeof streamingMetrics?.tps === "number" && Number.isFinite(streamingMetrics.tps) ? streamingMetrics.tps.toFixed(1) : "0.0"} tok/s
+                  <ThemeIcon name="zap" size={ICON_SIZE.inline} /> {typeof streamingMetrics?.tps === "number" && Number.isFinite(streamingMetrics.tps) ? streamingMetrics.tps.toFixed(1) : "0.0"} tok/s
                 </span>
                 <span className="tb-metrics-divider" />
                 <span className="tb-metrics-tokens">
@@ -1637,7 +1637,7 @@ export function ChatComposer({
                 {typeof lastRunMetrics.tps === "number" && Number.isFinite(lastRunMetrics.tps) && lastRunMetrics.tps > 0 ? (
                   <>
                     <span className="tb-metrics-speed">
-                      ⚡ {lastRunMetrics.tps.toFixed(1)} tok/s
+                      <ThemeIcon name="zap" size={ICON_SIZE.inline} /> {lastRunMetrics.tps.toFixed(1)} tok/s
                     </span>
                     <span className="tb-metrics-divider" />
                   </>
@@ -1656,7 +1656,7 @@ export function ChatComposer({
                 </span>
               </>
             ) : (
-              <span className="tb-metrics-speed">⚡ Ready</span>
+              <span className="tb-metrics-speed"><ThemeIcon name="zap" size={ICON_SIZE.inline} /> Ready</span>
             )}
 
             {/* Prompt Cache 常显徽章：流式生成和空闲期间均持续显示，不再跳闪 */}
