@@ -349,7 +349,14 @@
     "desktop.workbench.worktreeRiskDetached": "This checkout is on a detached HEAD.",
     "desktop.workbench.worktreePruneConfirm": "Forget the {0} repository's records of checkouts whose folders are gone? Nothing on disk is deleted.",
     "desktop.workbench.worktreeOrphans": "{0} worktree(s) left behind by deleted tasks",
-    "desktop.workbench.worktreeOrphanHint": "Their tasks no longer exist. The folders and git's records stay until you remove them."
+    "desktop.workbench.worktreeOrphanHint": "Their tasks no longer exist. The folders and git's records stay until you remove them.",
+    "desktop.workbench.worktreeLater": "Later",
+    "desktop.workbench.worktreeDontRemind": "Don't remind me again",
+    "desktop.workbench.worktreeOpenNotice": "{0} worktree(s) of this task are still around.",
+    "desktop.workbench.worktreeDoneNotice": "Task marked done, with {0} worktree(s) still around.",
+    "desktop.workbench.worktreeCloseNotice": "Closing with {0} worktree(s) still on disk.",
+    "desktop.workbench.worktreeReview": "Show Worktrees",
+    "desktop.workbench.worktreeNothingDeleted": "Nothing is deleted — the panel only reminds you."
   },
   "ja": {
     "desktop.nav.label": "ナビゲーション",
@@ -701,7 +708,14 @@
     "desktop.workbench.worktreeRiskDetached": "このチェックアウトは detached HEAD です。",
     "desktop.workbench.worktreePruneConfirm": "フォルダが消えたチェックアウトの記録を {0} 個のリポジトリから削除しますか？ディスク上のものは削除されません。",
     "desktop.workbench.worktreeOrphans": "削除されたタスクが残したワークツリー {0} 個",
-    "desktop.workbench.worktreeOrphanHint": "元のタスクはもう存在しません。削除するまでフォルダと git の記録は残ります。"
+    "desktop.workbench.worktreeOrphanHint": "元のタスクはもう存在しません。削除するまでフォルダと git の記録は残ります。",
+    "desktop.workbench.worktreeLater": "後で",
+    "desktop.workbench.worktreeDontRemind": "今後表示しない",
+    "desktop.workbench.worktreeOpenNotice": "このタスクのワークツリーが {0} 個残っています。",
+    "desktop.workbench.worktreeDoneNotice": "タスクを完了にしましたが、ワークツリーが {0} 個残っています。",
+    "desktop.workbench.worktreeCloseNotice": "ワークツリーを {0} 個残したまま閉じます。",
+    "desktop.workbench.worktreeReview": "ワークツリーを表示",
+    "desktop.workbench.worktreeNothingDeleted": "何も削除されません — これは確認です。"
   },
   "zh-cn": {
     "desktop.nav.label": "导航",
@@ -1053,6 +1067,13 @@
     "desktop.workbench.worktreeRiskDetached": "这个 checkout 处于游离 HEAD。",
     "desktop.workbench.worktreePruneConfirm": "从 {0} 个仓库里清掉「目录已消失」的登记？磁盘上的东西不会被删。",
     "desktop.workbench.worktreeOrphans": "已删除任务遗留的 worktree（{0} 个）",
-    "desktop.workbench.worktreeOrphanHint": "它们所属的任务已经不在了。在你处理之前，目录和 git 的登记都会留着。"
+    "desktop.workbench.worktreeOrphanHint": "它们所属的任务已经不在了。在你处理之前，目录和 git 的登记都会留着。",
+    "desktop.workbench.worktreeLater": "稍后",
+    "desktop.workbench.worktreeDontRemind": "不再提醒",
+    "desktop.workbench.worktreeOpenNotice": "这个任务还有 {0} 个 worktree 在磁盘上。",
+    "desktop.workbench.worktreeDoneNotice": "任务已完成，但还有 {0} 个 worktree 在磁盘上。",
+    "desktop.workbench.worktreeCloseNotice": "关闭窗口时有 {0} 个 worktree 仍在磁盘上。",
+    "desktop.workbench.worktreeReview": "查看 worktree",
+    "desktop.workbench.worktreeNothingDeleted": "不会删除任何东西——面板只负责提醒。"
   }
 }

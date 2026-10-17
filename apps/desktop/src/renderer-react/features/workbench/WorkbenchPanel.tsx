@@ -132,6 +132,7 @@ import {
 } from "./git/GitGraphView";
 import { useTaskWorktrees, type CheckoutScope } from "./git/useTaskWorktrees";
 import { useWorktreeCleanup } from "./git/useWorktreeCleanup";
+import { useWorktreeReminders } from "./git/useWorktreeReminders";
 import { TaskSettingsSheet } from "./TaskSettingsSheet";
 import { WorktreeCreateSheet } from "./WorktreeCreateSheet";
 import { WorkbenchDetailHeader } from "./layout/WorkbenchDetailHeader";
@@ -873,6 +874,14 @@ export function WorkbenchPanel(): ReactPortal | null {
     : undefined;
   const sideRootProjects = liveTaskEarly?.projects ?? taskScope?.projects ?? EMPTY_PROJECT_PATHS;
   const worktrees = useTaskWorktrees({ noteId: taskScope?.noteId ?? null, repos: sideRootProjects });
+  const worktreeReminders = useWorktreeReminders({
+    noteId: taskScope?.noteId ?? null,
+    // The task's own column, however it was changed — from this panel's header or
+    // from the board in the main window.
+    status: taskRollup?.status ?? taskScope?.status,
+    worktrees,
+    onOpenWorktrees: () => setTaskSettingsOpen(true)
+  });
   const worktreeCleanup = useWorktreeCleanup({
     noteId: taskScope?.noteId ?? null,
     repos: sideRootProjects,
@@ -3468,8 +3477,13 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   /**
    * Closing a workbench window flushes its unsaved editor buffers first; if one
-   * cannot be saved, the window stays open rather than dropping the edit.
+   * cannot be saved, the window stays open rather than dropping the edit. The
+   * worktrees this task left behind are reported on the same pass — once, in one
+   * dialog, and only as a reminder: the close goes ahead unless the user asks to
+   * look at them first, and nothing is ever deleted on the way out.
    */
+  const worktreeRemindersRef = useRef(worktreeReminders);
+  worktreeRemindersRef.current = worktreeReminders;
   useEffect(() => {
     if (document.documentElement.dataset.windowMode !== "task") return;
     const stop = desktopApi().onTaskWindowCloseRequested?.(() => {
@@ -3479,7 +3493,10 @@ export function WorkbenchPanel(): ReactPortal | null {
           try { await saveEditorRef.current(key); } catch { /* reported by the editor status */ }
         }
         const stillDirty = editorsRef.current.some((pane) => pane.dirty);
-        await desktopApi().taskWindowCloseReady?.({ ok: !stillDirty }).catch(() => undefined);
+        // `ok: false` is main's "do not close yet", which is what a user who
+        // chose to look at the worktrees has asked for.
+        const mayClose = stillDirty ? false : await worktreeRemindersRef.current.remindBeforeClose();
+        await desktopApi().taskWindowCloseReady?.({ ok: !stillDirty && mayClose }).catch(() => undefined);
       })();
     });
     return () => stop?.();
