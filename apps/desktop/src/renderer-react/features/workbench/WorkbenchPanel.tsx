@@ -889,6 +889,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     // surface is open: the list is a few git calls and nothing changes it but a
     // deleted task.
     active: taskSettingsOpen,
+    checkoutGone: worktrees.checkoutIsGone,
     onRemoved: (target) => {
       setStatus({ text: t("desktop.workbench.worktreeDeleted", target.branchLabel), kind: "ok" });
       // The selection may have been pointing at what just went away; the hook's
@@ -5377,7 +5378,10 @@ export function WorkbenchPanel(): ReactPortal | null {
       .map((editor) => editor.path),
     onStatus: setStatus,
     onReconcileEditors: (projectPath) => { void reconcileProjectEditors(projectPath); },
-    onOpenSearchSide: () => setSide("search")
+    onOpenSearchSide: () => setSide("search"),
+    // A search reads the same roots the panes do, so a checkout removed from under
+    // it is the same story: the roots fall back and the query runs again, quietly.
+    onRootsUnreadable: (roots) => worktreesRef.current.dropVanishedCheckouts(roots)
   });
 
   useEffect(() => {

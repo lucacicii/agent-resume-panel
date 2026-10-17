@@ -40,6 +40,11 @@ export type TaskWorktrees = {
    * back on its repository's main checkout and the caller reports nothing.
    */
   dropVanishedCheckouts: (roots: readonly string[]) => Promise<boolean>;
+  /**
+   * Whether git has given up on one checkout. The settings sheet asks before it
+   * offers to remove a row, because the checkout can be gone by then.
+   */
+  checkoutIsGone: (path: string) => Promise<boolean>;
   /** The path a pane with this scope shows for a repository root. */
   rootFor: (scope: CheckoutScope, repoRoot: string) => string;
   /** The checkout a repository is diverted to for this scope, or null at its main one. */
@@ -312,12 +317,34 @@ export function useTaskWorktrees(options: { noteId: string | null; repos: string
   );
 
   /**
+   * Which of these paths git no longer has as a checkout, re-reading the
+   * checkouts first so the panel catches up with what it finds. Being on disk is
+   * not enough for a checkout to count as there: a record whose folder has gone is
+   * a record, and the settings sheet has its own way of clearing those.
+   */
+  const goneAmong = useCallback(
+    async (paths: readonly string[]): Promise<string[]> => {
+      if (!paths.length) return [];
+      const fresh = await refresh();
+      if (!fresh) return [];
+      const present = new Set(
+        fresh.repos.flatMap((repo) =>
+          repo.worktrees
+            .filter((worktree) => !worktree.missing && !worktree.prunable)
+            .map((worktree) => pathKey(worktree.path))
+        )
+      );
+      return paths.filter((path) => !present.has(pathKey(path)));
+    },
+    [refresh]
+  );
+
+  /**
    * Whether a pane that failed to read one of `roots` is looking at a checkout
    * somebody removed from under it — the agent that has just merged its branch,
-   * or Finder. Git is the authority on what exists, so the checkouts are re-read,
-   * and a checkout that is really gone is dropped from every pane at once: they
-   * fall back to the repository's main checkout, which is where the work now is.
-   * Answers true when that happened, so the caller reports no error — a folder
+   * or Finder. A checkout that is really gone is dropped from every pane at once:
+   * they fall back to the repository's main checkout, which is where the work now
+   * is. Answers true when that happened, so the caller reports no error — a folder
    * the panel itself picked and somebody else removed is not a failure worth
    * interrupting anyone for. A read that failed with the checkout still in place
    * answers false, and is reported the way it always was.
@@ -326,16 +353,7 @@ export function useTaskWorktrees(options: { noteId: string | null; repos: string
     async (roots: readonly string[]): Promise<boolean> => {
       const diverted = divertedFor(roots);
       if (!diverted.length) return false;
-      const fresh = await refresh();
-      if (!fresh) return false;
-      const present = new Set(
-        fresh.repos.flatMap((repo) =>
-          repo.worktrees
-            .filter((worktree) => !worktree.missing && !worktree.prunable)
-            .map((worktree) => pathKey(worktree.path))
-        )
-      );
-      const gone = new Set(diverted.filter((path) => !present.has(path)));
+      const gone = new Set((await goneAmong(diverted)).map(pathKey));
       if (!gone.size) return false;
       const dropped = (selection: CheckoutSelection): ReadonlySet<string> =>
         new Set(Object.entries(selection).filter(([, path]) => gone.has(pathKey(path))).map(([repoRoot]) => repoRoot));
@@ -354,7 +372,12 @@ export function useTaskWorktrees(options: { noteId: string | null; repos: string
       });
       return true;
     },
-    [divertedFor, refresh]
+    [divertedFor, goneAmong]
+  );
+
+  const checkoutIsGone = useCallback(
+    async (path: string): Promise<boolean> => (await goneAmong([path])).length > 0,
+    [goneAmong]
   );
 
   const saveState = useCallback(
@@ -376,6 +399,7 @@ export function useTaskWorktrees(options: { noteId: string | null; repos: string
     saveState,
     refresh,
     dropVanishedCheckouts,
+    checkoutIsGone,
     rootFor,
     checkoutFor,
     isPinned,
