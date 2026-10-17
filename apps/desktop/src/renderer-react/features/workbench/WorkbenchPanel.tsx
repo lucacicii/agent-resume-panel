@@ -676,6 +676,19 @@ function isWorkbenchPathWithin(value: string, root: string): boolean {
   return candidate === targetRoot || candidate.startsWith(`${targetRoot}/`);
 }
 
+/**
+ * The root an absolute path belongs to: the longest one containing it, or "" when
+ * it belongs to none. Every pane's roots are a plain list of paths — a worktree is
+ * one of them for the pane that chose it — so one function answers this for all.
+ */
+function rootOwningPath(roots: readonly string[], targetPath: string): string {
+  let best = "";
+  for (const root of roots) {
+    if (root.length > best.length && isWorkbenchPathWithin(targetPath, root)) best = root;
+  }
+  return best;
+}
+
 export function workbenchActiveFilePath(
   projectPath: string | null,
   editorPath: string | undefined,
@@ -939,6 +952,16 @@ export function WorkbenchPanel(): ReactPortal | null {
     [sideRepoRoots, worktrees.rootFor]
   );
   /**
+   * What the search reads. The search pane carries its own checkout selector, so
+   * its scope is the one that decides: a pinned Search has to search the checkout
+   * the pane says it is on, or the control would be relabelling the pane without
+   * changing a thing.
+   */
+  const searchRoots = useMemo(
+    () => sideRepoRoots.map((root) => worktrees.rootFor("search", root)),
+    [sideRepoRoots, worktrees.rootFor]
+  );
+  /**
    * Roots the explorer and git panels span. A focused project (a chip click)
    * narrows to that one; a shared task workspace shows every referenced
    * project; a plain project selection stays itself.
@@ -952,6 +975,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const sideRootsKey = sideRoots.map(projectPathKey).join("\0");
   const sideRootsRef = useRef<string[]>(sideRoots);
   sideRootsRef.current = sideRoots;
+  const searchRootsRef = useRef<string[]>(searchRoots);
+  searchRootsRef.current = searchRoots;
   const gitRootsRef = useRef<string[]>(gitRoots);
   gitRootsRef.current = gitRoots;
   /** For the callbacks that read their inputs from refs to stay stable. */
@@ -1019,13 +1044,20 @@ export function WorkbenchPanel(): ReactPortal | null {
     />
   );
   /** The root an absolute path belongs to (longest match), or "" when outside every root. */
-  const projectForPath = useCallback((targetPath: string): string => {
-    let best = "";
-    for (const root of sideRootsRef.current) {
-      if (root.length > best.length && isWorkbenchPathWithin(targetPath, root)) best = root;
-    }
-    return best;
-  }, []);
+  const projectForPath = useCallback(
+    (targetPath: string): string => rootOwningPath(sideRootsRef.current, targetPath),
+    []
+  );
+  /**
+   * The same question asked of the roots the search runs over, which are the ones
+   * a match, a replacement and an editor inside them have to be attributed to.
+   * Held stable through its ref like the one above: the search's debounce hangs
+   * off this callback's identity.
+   */
+  const searchProjectForPath = useCallback(
+    (targetPath: string): string => rootOwningPath(searchRootsRef.current, targetPath),
+    []
+  );
 
   const {
     git,
@@ -4855,6 +4887,12 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, []);
 
+  /**
+   * Bring the open editors back in line with the files on disk after something
+   * wrote to them. By containment, not by equality: an editor opened from a
+   * checkout carries that checkout, and it is still under the root it was found
+   * in when a replacement reaches it through a root one level up.
+   */
   const reconcileProjectEditors = useCallback((rootPath: string) => {
     const key = projectPathKey(rootPath);
     const existing = editorReconcilesRef.current.get(key);
@@ -4868,7 +4906,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       do {
         state.queued = false;
         await Promise.all(editorsRef.current
-          .filter((editor) => editor.projectPath === rootPath)
+          .filter((editor) => isWorkbenchPathWithin(editor.path, rootPath))
           .map((editor) => syncEditorFromDisk(editor)));
       } while (state.queued);
     };
@@ -5370,11 +5408,14 @@ export function WorkbenchPanel(): ReactPortal | null {
     toggleSearchReplace,
     resetSearchProjectMode
   } = useWorkbenchSearch({
-    projects: sideRoots,
-    projectForPath,
+    projects: searchRoots,
+    projectForPath: searchProjectForPath,
     side,
+    // A dirty file is one an editor is holding unsaved changes for. Asked by the
+    // path rather than by the project, so an editor opened in the very checkout the
+    // replacement is about to write to still blocks it.
     getDirtyEditorPaths: (projectPath) => editorsRef.current
-      .filter((editor) => editor.projectPath === projectPath && editor.dirty)
+      .filter((editor) => editor.dirty && isWorkbenchPathWithin(editor.path, projectPath))
       .map((editor) => editor.path),
     onStatus: setStatus,
     onReconcileEditors: (projectPath) => { void reconcileProjectEditors(projectPath); },
@@ -6226,8 +6267,13 @@ export function WorkbenchPanel(): ReactPortal | null {
   );
   const searchProjectResultIds = searchProjectResults.map((project) => project.id);
   const searchProjectResultSignature = searchProjectResultIds.join("\0");
+  /**
+   * What the picker marks as current. Its options are the task's repositories
+   * themselves, so the comparison is against those and not against a checkout one
+   * of the panes may have moved to.
+   */
   const searchProjectCurrentPath = taskScope
-    ? (sideRoots.length === 1 ? sideRoots[0] : "")
+    ? (sideRepoRoots.length === 1 ? sideRepoRoots[0] : "")
     : (selectedProjectMeta?.path || selectedProject || "");
   const searchProjectCurrentId = !searchProjectQuery.trim()
     ? searchProjectResults.find((project) => projectPathKey(project.path) === projectPathKey(searchProjectCurrentPath))?.id || ""
@@ -6283,10 +6329,16 @@ export function WorkbenchPanel(): ReactPortal | null {
     selectProject(project.path, { keepSide: true });
     leaveSearchProjectMode();
   };
+  /**
+   * The scope chip on the search box. It names the repository being searched —
+   * which checkout of it is not its business: that is what the checkout control in
+   * the same pane head is for, and naming it here would read as a second, rival
+   * answer to the same question.
+   */
   const searchProjectLabel = taskScope
-    ? (sideRoots.length === 1
-      ? (aliases[sideRoots[0]] || basename(sideRoots[0]))
-      : sideRoots.length > 1
+    ? (sideRepoRoots.length === 1
+      ? (aliases[sideRepoRoots[0]] || basename(sideRepoRoots[0]))
+      : sideRepoRoots.length > 1
         ? t("desktop.workbench.sharedWorkspace")
         : t("desktop.workbench.quickAccessSelectProject"))
     : selectedProjectMeta
@@ -7336,7 +7388,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           })}{terminalCreating && !currentTerminals.some((pane) => !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={ICON_SIZE.prominent} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length && !currentThunderChats.length && !currentBrowsers.length && !currentNotePanes.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
           {side === "browser" ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel"><BrowserSidePanel active={active} browsers={panelBrowsers} projectPath={panelProject} onRequestCreate={() => void openBrowser(panelProject ?? undefined)} onOpenSource={(path, line) => void openFile(path, { path, line: line ?? 1, column: 1, endColumn: 1 }, projectForPath(path) || undefined)} onSendToSession={sendProbePromptToSession} /></aside></> : side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} roots={filesRoots} headExtra={worktreeControl("files")} activePath={currentFilePath} onOpenFile={(path) => void openFile(path, undefined, projectForPath(path) || undefined)} onOpenPreview={(path) => void openFile(path, undefined, projectForPath(path) || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message, root) => root ? reportReadFailure(message, [root]) : setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /> : side === "search" ? <WorkbenchSearchSidePane
             headExtra={worktreeControl("search")}
-            selectedProject={sideRepoRoots.length ? worktrees.rootFor("search", sideRepoRoots[0]) : null}
+            selectedProject={searchRoots.length ? searchRoots[0] : null}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             searchProjectMode={searchProjectMode}
@@ -7396,7 +7448,10 @@ export function WorkbenchPanel(): ReactPortal | null {
             onReplace={(files, onlyByPath) => void performSearchReplace(files, onlyByPath)}
             onOpenMatch={(match, key) => {
               setSearchSelectedKey(key);
-              void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }, projectForPath(match.path) || undefined);
+              // The checkout the match was found in is the one this editor belongs
+              // to, even when the other panes are looking at the main checkout.
+              const matchRoot = searchProjectForPath(match.path) || projectForPath(match.path);
+              void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }, matchRoot || undefined);
             }}
           /> : <div className="wb-side-pane">
             <div className="wb-side-pane-head wb-git-pane-head">
