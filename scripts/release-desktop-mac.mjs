@@ -246,7 +246,6 @@ function uploadAssetWithCurl(version, dmgPath, dryRun) {
     execFileSync(
       "curl",
       [
-        "--http1.1",
         "--fail",
         "--retry",
         "3",
@@ -257,6 +256,8 @@ function uploadAssetWithCurl(version, dmgPath, dryRun) {
         "60",
         "--max-time",
         "7200",
+        "--limit-rate",
+        "3M",
         "-X",
         "POST",
         "-H",
@@ -265,7 +266,7 @@ function uploadAssetWithCurl(version, dmgPath, dryRun) {
         "Accept: application/vnd.github+json",
         "-H",
         "Content-Type: application/octet-stream",
-        "--upload-file",
+        "-T",
         dmgPath,
         uploadUrl
       ],
