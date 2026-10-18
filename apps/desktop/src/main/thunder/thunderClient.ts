@@ -864,6 +864,12 @@ export class ThunderClient {
      * run wants `yolo`; a read-only sweep wants `plan`.
      */
     mode?: string;
+    /**
+     * The caller has a transcript that renders ` ```mermaid ` fences as
+     * diagrams. Only the visual chat sets it; scheduled and headless runs leave
+     * it unset, so their prompt keeps the Markdown baseline.
+     */
+    renderDiagrams?: boolean;
     onEvent?: (event: ThunderObservedEvent) => void;
   }): Promise<{ finalContent?: string; finishReason: string; activePlugins?: string[] }> {
     await this.ensureRunning();
@@ -925,7 +931,11 @@ export class ThunderClient {
               attachments:
                 options.attachments && options.attachments.length > 0
                   ? options.attachments
-                  : undefined
+                  : undefined,
+              // Declared per run, never assumed: a headless or scheduled run
+              // has no transcript on screen, and the daemon's default prompt
+              // must not ask it for a diagram nobody draws.
+              render_capabilities: options.renderDiagrams ? { diagrams: true } : undefined
             },
             30_000
           );

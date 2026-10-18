@@ -218,8 +218,14 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
           );
         }
 
-        // Intercept Artifact languages: html / svg / xml
-        if (lang === "html" || lang === "svg" || (lang === "xml" && codeString.trim().startsWith("<svg"))) {
+        // Intercept Artifact languages: html / svg / xml / mermaid
+        if (
+          lang === "html" ||
+          lang === "svg" ||
+          lang === "mermaid" ||
+          lang === "mmd" ||
+          (lang === "xml" && codeString.trim().startsWith("<svg"))
+        ) {
           return (
             <ArtifactCard
               language={lang}

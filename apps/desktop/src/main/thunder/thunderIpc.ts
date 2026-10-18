@@ -292,6 +292,9 @@ export function registerThunderIpc(): void {
           thinking_level: args.thinking_level,
           mode: args.mode,
           attachments: args.attachments,
+          // This pane is the visual chat: `ArtifactMermaidViewer` draws a
+          // ` ```mermaid ` fence, so the daemon may ask for one.
+          renderDiagrams: true,
           onEvent: (event) => {
             accumulateStreamEvent(snapshot, event);
             for (const win of BrowserWindow.getAllWindows()) {

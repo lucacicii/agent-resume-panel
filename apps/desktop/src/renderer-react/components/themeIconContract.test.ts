@@ -43,10 +43,11 @@ const RETIRED_SF_REACHES = /(?:from|import|require)\s*\(?\s*["']sf-symbols-lib/;
 
 // Functional SVG (data visualisation, user content, library-rendered chrome) is
 // not an icon and is out of scope. Keep this list explicit and short.
-const FUNCTIONAL_SVG_SELECTORS = new Set([
-  ".artifact-svg-canvas svg",
-  "[data-streamdown=\"table-wrapper\"] button svg"
-]);
+const FUNCTIONAL_SVG_SELECTORS: Record<string, true> = {
+  ".artifact-svg-canvas svg": true,
+  ".artifact-mermaid-canvas svg": true,
+  "[data-streamdown=\"table-wrapper\"] button svg": true
+};
 
 const ICON_ELEMENT = /<(?:ThemeIcon|ProviderIcon)\b[^>]*?\/>/g;
 const CLASSNAME_ATTR = /className="([^"]+)"/g;
@@ -114,7 +115,7 @@ function iconCssSizeOffenders(): string[] {
   const offenders: string[] = [];
   for (const match of css.matchAll(CSS_RULE)) {
     const selector = match[1].trim().replace(/\s+/g, " ");
-    if (FUNCTIONAL_SVG_SELECTORS.has(selector)) continue;
+    if (FUNCTIONAL_SVG_SELECTORS[selector]) continue;
     if (!isIconSelector(selector, iconClasses)) continue;
     const declarations = match[2]
       .split(";")
