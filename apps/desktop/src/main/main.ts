@@ -277,13 +277,21 @@ import {
 } from "./sessionEmbeddingIndexAuto";
 import {
   exportBackup,
-  exportIcloudBackup,
+  exportStoredBackup,
   getBackupStorageTargetStatus,
   importBackup,
-  listIcloudBackups,
+  listStoredBackups,
   selectBackupForImport,
-  selectIcloudBackupForImport
+  selectStoredBackupForImport,
+  type BackupStorageTarget,
+  type ManagedBackupContext
 } from "./backupService";
+import {
+  readWebdavSettings,
+  resolveWebdavCredentials,
+  saveWebdavConfig
+} from "./webdavConfig";
+import { createWebdavSession, normalizeWebdavConfig } from "./webdavClient";
 import {
   clearAppErrors,
   installProcessErrorHandlers,
@@ -781,6 +789,7 @@ const SETTINGS_PANES = [
   "workbench",
   "notes",
   "storage",
+  "backup",
   "usage",
   "about"
 ] as const;
@@ -2499,30 +2508,59 @@ function registerIpc(): void {
 
   safeHandle("app:getVersion", async () => ({ version: getAppVersion() }));
 
-  safeHandle("backup:targetStatus", async () => getBackupStorageTargetStatus());
-  safeHandle("backup:listIcloud", async () => listIcloudBackups());
+  /**
+   * Settings plus the decrypted WebDAV credentials, built once per IPC call.
+   *
+   * A stored password that cannot be decrypted must not take the whole backup
+   * pane down: the WebDAV target then reports itself unavailable and the other
+   * targets keep working.
+   */
+  const backupContext = async (): Promise<ManagedBackupContext> => {
+    const settings = await loadSettings();
+    let webdavError: string | undefined;
+    const webdav = await Promise.resolve()
+      .then(() => resolveWebdavCredentials(settings))
+      .catch((error: unknown) => {
+        webdavError = error instanceof Error ? error.message : String(error);
+        return null;
+      });
+    return { settings, ...(webdav ? { webdav } : {}), ...(webdavError ? { webdavError } : {}) };
+  };
+
+  const backupTarget = (value: unknown): BackupStorageTarget => {
+    if (value === "local-file" || value === "icloud-drive" || value === "webdav") return value;
+    throw new Error("Unknown backup target.");
+  };
+
+  const backupProgress = (event: { sender: { send: (channel: string, payload: unknown) => void } }) =>
+    (progress: import("./backupService").BackupProgressEvent) => event.sender.send("backup:progress", progress);
+
+  safeHandle("backup:targetStatus", async () => getBackupStorageTargetStatus(await backupContext()));
+  safeHandle("backup:listStored", async (_event, args?: { target?: unknown }) => {
+    const target = backupTarget(args?.target);
+    if (target === "local-file") return [];
+    const ctx = await backupContext();
+    // An unconfigured target has nothing to list; the status callout explains why.
+    if (target === "webdav" && !ctx.webdav) return [];
+    return listStoredBackups(ctx, target);
+  });
 
   safeHandle(
     "backup:export",
-    async (event, args?: { target?: unknown; includeCredentials?: unknown; includeNativeConversations?: unknown; password?: unknown }) => {
-      const settings = await loadSettings();
-      const target = args?.target === "icloud-drive" ? "icloud-drive" : "local-file";
-      const includeCredentials = args?.includeCredentials === true;
-      const includeNativeConversations = args?.includeNativeConversations !== false;
-      const password = typeof args?.password === "string" ? args.password : undefined;
+    async (event, args?: { target?: unknown; includeNativeConversations?: unknown }) => {
+      const target = backupTarget(args?.target);
       const options = {
-        includeCredentials,
-        includeNativeConversations,
-        password,
-        onProgress: (progress: import("./backupService").BackupProgressEvent) => event.sender.send("backup:progress", progress)
+        includeNativeConversations: args?.includeNativeConversations !== false,
+        onProgress: backupProgress(event)
       };
-      if (target === "icloud-drive") return exportIcloudBackup(settings, getAppVersion(), options);
+      const ctx = await backupContext();
+      if (target !== "local-file") return exportStoredBackup(ctx, target, getAppVersion(), options);
       const selected = await dialog.showSaveDialog({
         defaultPath: `agent-resume-backup-${new Date().toISOString().slice(0, 10)}.zip`,
         filters: [{ name: "Agent Resume backup", extensions: ["zip"] }]
       });
       if (selected.canceled || !selected.filePath) return { canceled: true };
-      return exportBackup(settings, selected.filePath, getAppVersion(), options);
+      return exportBackup(ctx.settings, selected.filePath, getAppVersion(), options);
     }
   );
 
@@ -2535,16 +2573,63 @@ function registerIpc(): void {
     return selectBackupForImport(selected.filePaths[0]);
   });
 
-  safeHandle("backup:selectIcloudImport", async (_event, args?: { backupId?: unknown; password?: unknown }) => {
+  safeHandle("backup:selectStoredImport", async (event, args?: { target?: unknown; backupId?: unknown; password?: unknown }) => {
+    const target = backupTarget(args?.target);
     const backupId = typeof args?.backupId === "string" ? args.backupId : "";
-    const password = typeof args?.password === "string" ? args.password : "";
-    if (!backupId) throw new Error("An iCloud backup must be selected.");
-    return selectIcloudBackupForImport(backupId, password);
+    if (target === "local-file") throw new Error("Local files are restored from the file picker.");
+    if (!/^[a-f0-9]{32}$/i.test(backupId)) throw new Error("A valid backup id is required.");
+    // Only older encrypted backups need this; plain ZIPs ignore it.
+    const password = typeof args?.password === "string" && args.password.length ? args.password : undefined;
+    return selectStoredBackupForImport(await backupContext(), target, backupId, password, backupProgress(event));
   });
+
+  safeHandle("backup:webdav:getConfig", async () => readWebdavSettings(await loadSettings()));
+
+  safeHandle(
+    "backup:webdav:saveConfig",
+    async (_event, args?: { url?: unknown; username?: unknown; folder?: unknown; password?: unknown; clearPassword?: unknown }) => {
+      const view = await saveWebdavConfig({
+        url: args?.url,
+        username: args?.username,
+        folder: args?.folder,
+        password: args?.password,
+        clearPassword: args?.clearPassword
+      });
+      broadcastToRenderers("settings:changed", { settings: await loadSettings(), section: "backup" });
+      return view;
+    }
+  );
+
+  safeHandle(
+    "backup:webdav:test",
+    async (_event, args?: { url?: unknown; username?: unknown; folder?: unknown; password?: unknown }) => {
+      try {
+        const settings = await loadSettings();
+        const explicitPassword = typeof args?.password === "string" && args.password.length ? args.password : undefined;
+        // Draft values win over saved ones, like the provider connection test.
+        const draft = args?.url === undefined && args?.username === undefined && args?.folder === undefined
+          ? resolveWebdavCredentials(settings, explicitPassword)
+          : normalizeWebdavConfig({
+              url: args?.url,
+              username: args?.username,
+              folder: args?.folder,
+              password: explicitPassword ?? resolveWebdavCredentials(settings)?.password ?? ""
+            });
+        if (!draft) throw new Error("Enter the WebDAV server URL and username first.");
+        if (!draft.password) throw new Error("Enter the WebDAV account password.");
+        const session = createWebdavSession(draft);
+        await session.ensureFolder();
+        await session.propfind(0);
+        return { ok: true, message: session.folderUrl };
+      } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : String(error) };
+      }
+    }
+  );
 
   safeHandle(
     "backup:import",
-    async (event, args?: { importToken?: unknown; includeCredentials?: unknown; restoreNativeConversations?: unknown; password?: unknown }) => {
+    async (event, args?: { importToken?: unknown; restoreNativeConversations?: unknown; password?: unknown }) => {
       const importToken = typeof args?.importToken === "string" ? args.importToken : "";
       if (!importToken) throw new Error("A selected backup is required.");
       stopMemoryScheduler();
@@ -2554,11 +2639,11 @@ function registerIpc(): void {
       stopSessionEmbeddingIndexAuto();
       try {
         const result = await importBackup(await loadSettings(), importToken, getAppVersion(), {
-          includeCredentials: args?.includeCredentials === true,
-          password: typeof args?.password === "string" ? args.password : undefined,
+          // Only older encrypted backups use this.
+          password: typeof args?.password === "string" && args.password.length ? args.password : undefined,
           restoreNativeConversations: args?.restoreNativeConversations === true,
           recoveryDir: path.join(app.getPath("userData"), "import-recovery"),
-          onProgress: (progress: import("./backupService").BackupProgressEvent) => event.sender.send("backup:progress", progress)
+          onProgress: backupProgress(event)
         });
         invalidateNotesStore();
         const saved = await loadSettings();

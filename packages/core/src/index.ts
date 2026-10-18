@@ -42,6 +42,8 @@ export type {
   SessionTranscriptIndexSettings,
   SessionEmbeddingIndexSettings,
   DesktopSettings,
+  DesktopBackupSettings,
+  WebdavBackupSettings,
   DesktopBrowserSettings,
   DesktopBrowserPolicy,
   DesktopBrowserPartitionMode,
@@ -940,6 +942,15 @@ export type {
   NativeConversationCollection,
   CollectNativeConversationsOptions
 } from "./backup/nativeConversations";
+export {
+  collectThunderConversationFiles,
+  defaultThunderConversationsDir
+} from "./backup/thunderConversations";
+export type {
+  ThunderConversationFile,
+  ThunderConversationCollection,
+  CollectThunderConversationsOptions
+} from "./backup/thunderConversations";
 
 export type {
   ScheduleTriggerType,

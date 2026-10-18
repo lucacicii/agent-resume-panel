@@ -14122,9 +14122,21 @@ html[data-window-mode="standalone-note"] #react-workbench {
   }
 }
 
-/* Backup destinations and managed iCloud items. */
+/* Backup destinations and managed remote items. */
 .settings-backup-target {
   width: min(320px, 100%);
+}
+
+/* Server form: the group body only spaces its direct children, so the fields
+   inside this block need their own column gap. */
+.settings-backup-webdav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-lg);
+  background: var(--color-secondary-bg);
 }
 
 .settings-backup-list {
@@ -15178,6 +15190,81 @@ html[data-window-mode="browser"] #react-chrome {
   border: 1px solid rgba(14, 165, 233, 0.3);
 }
 
+.artifact-lang-badge.is-mermaid {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+/* Mermaid Viewer */
+.artifact-mermaid-viewer-container {
+  width: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.artifact-mermaid-canvas {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  min-height: inherit;
+  overflow: auto;
+  background: var(--bg-surface, #141414);
+}
+
+.artifact-mermaid-canvas svg {
+  max-width: 100%;
+  max-height: 400px;
+  height: auto;
+  display: block;
+}
+
+.artifact-mermaid-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: inherit;
+  color: var(--text-muted, rgba(255, 255, 255, 0.5));
+  font-size: var(--font-size-sm, 12px);
+}
+
+.artifact-mermaid-error {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  min-height: inherit;
+  overflow: auto;
+}
+
+.artifact-mermaid-error-label {
+  color: var(--color-label-secondary, rgba(255, 255, 255, 0.7));
+  font-size: var(--font-size-sm, 12px);
+  font-weight: 600;
+}
+
+.artifact-mermaid-error pre {
+  margin: 0;
+  padding: var(--space-3);
+  background: var(--color-fill-tertiary, rgba(255, 255, 255, 0.04));
+  border-radius: var(--radius-sm, 4px);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+.artifact-mermaid-error-detail {
+  color: var(--color-label-tertiary, rgba(255, 255, 255, 0.45));
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  word-break: break-word;
+}
+
 .artifact-card-title {
   font-size: 12px;
   font-weight: 500;
@@ -15440,6 +15527,7 @@ html[data-window-mode="browser"] #react-chrome {
 
 .artifact-card-body.is-modal-body .artifact-html-sandbox-wrap,
 .artifact-card-body.is-modal-body .artifact-svg-viewer-container,
+.artifact-card-body.is-modal-body .artifact-mermaid-viewer-container,
 .artifact-card-body.is-modal-body .artifact-code-view {
   flex: 1;
   height: 100%;

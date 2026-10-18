@@ -139,17 +139,29 @@ export interface DesktopApi {
   getPanelHome(): Promise<string>;
   getSettings(): Promise<PanelSettings>;
   backupTargetStatus(): Promise<BackupStorageTargetStatus[]>;
-  backupListIcloud(): Promise<BackupStoredItem[]>;
-  backupExport(args: { target: BackupStorageTarget; includeCredentials: boolean; includeNativeConversations: boolean; password?: string }): Promise<BackupResult>;
+  backupListStored(args: { target: BackupStorageTarget }): Promise<BackupStoredItem[]>;
+  backupExport(args: { target: BackupStorageTarget; includeNativeConversations: boolean }): Promise<BackupResult>;
   backupSelectImport(): Promise<BackupPreview | null>;
-  backupSelectIcloudImport(args: { backupId: string; password: string }): Promise<BackupPreview>;
+  /** `password` is only read for `.arbak` backups written by older releases. */
+  backupSelectStoredImport(args: { target: BackupStorageTarget; backupId: string; password?: string }): Promise<BackupPreview>;
   onBackupProgress(callback: (event: BackupProgressEvent) => void): () => void;
   backupImport(args: {
     importToken: string;
-    includeCredentials: boolean;
     restoreNativeConversations: boolean;
     password?: string;
   }): Promise<BackupResult>;
+  /** WebDAV server settings. The password itself is never returned. */
+  backupWebdavGetConfig(): Promise<{ url: string; username: string; folder: string; hasPassword: boolean }>;
+  backupWebdavSaveConfig(args: {
+    url: string;
+    username: string;
+    folder: string;
+    /** Empty or omitted keeps the stored password. */
+    password?: string;
+    clearPassword?: boolean;
+  }): Promise<{ url: string; username: string; folder: string; hasPassword: boolean }>;
+  /** Uses the draft values in the form; nothing is saved. */
+  backupWebdavTest(args: { url: string; username: string; folder: string; password?: string }): Promise<{ ok: boolean; message: string }>;
   listMcpClients(): Promise<McpClientInfo[]>;
   getMcpManualConfig(): Promise<string>;
   registerMcpClient(args: { clientId: McpClientInfo["id"]; replace?: boolean }): Promise<{ ok: boolean }>;
@@ -1691,16 +1703,19 @@ const api: DesktopApi = {
   getPanelHome: () => ipcRenderer.invoke("panel:getHome"),
   getSettings: () => ipcRenderer.invoke("settings:get"),
   backupTargetStatus: () => ipcRenderer.invoke("backup:targetStatus"),
-  backupListIcloud: () => ipcRenderer.invoke("backup:listIcloud"),
+  backupListStored: (args) => ipcRenderer.invoke("backup:listStored", args),
   backupExport: (args) => ipcRenderer.invoke("backup:export", args),
   backupSelectImport: () => ipcRenderer.invoke("backup:selectImport"),
-  backupSelectIcloudImport: (args) => ipcRenderer.invoke("backup:selectIcloudImport", args),
+  backupSelectStoredImport: (args) => ipcRenderer.invoke("backup:selectStoredImport", args),
   onBackupProgress: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, progress: BackupProgressEvent) => callback(progress);
     ipcRenderer.on("backup:progress", handler);
     return () => ipcRenderer.removeListener("backup:progress", handler);
   },
   backupImport: (args) => ipcRenderer.invoke("backup:import", args),
+  backupWebdavGetConfig: () => ipcRenderer.invoke("backup:webdav:getConfig"),
+  backupWebdavSaveConfig: (args) => ipcRenderer.invoke("backup:webdav:saveConfig", args),
+  backupWebdavTest: (args) => ipcRenderer.invoke("backup:webdav:test", args),
   listMcpClients: () => ipcRenderer.invoke("mcp:listClients"),
   getMcpManualConfig: () => ipcRenderer.invoke("mcp:manualConfig"),
   registerMcpClient: (args) => ipcRenderer.invoke("mcp:register", args),

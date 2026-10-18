@@ -299,7 +299,10 @@ export function SettingsPanel({
             <div
               className={`settings-pane${pane === "usage" || pane === "logs" ? " settings-pane-usage" : pane === "about" ? " settings-pane-about" : ""}`}
             >
-              {pane === "usage" || pane === "logs" || pane === "about" || pane === "mcp" || pane === "backup" ? body : <div className="settings-pane-body">{body}</div>}
+              {/* Panes with their own internal scroll areas opt out; everything
+                  else scrolls through `.settings-pane-body`, without which a
+                  short window clips the content instead of scrolling it. */}
+              {pane === "usage" || pane === "logs" || pane === "about" ? body : <div className="settings-pane-body">{body}</div>}
             </div>
           </div>
           {pane === "about" ? (

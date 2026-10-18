@@ -5,6 +5,10 @@ import type { PanelSettings } from "../settings/types";
 import { resolvePreviewHomes } from "../transcript/homes";
 import { candidateAgyRoots } from "../transcript/agyRoots";
 import { escapeSqlLiteral, runSqlite, runSqliteJson, runSqliteReadOnlyJson } from "../sqlite";
+import {
+  collectThunderConversationFiles,
+  defaultThunderConversationsDir
+} from "./thunderConversations";
 
 export type NativeConversationProvider =
   | "codex"
@@ -16,6 +20,7 @@ export type NativeConversationProvider =
   | "prime"
   | "omp"
   | "cursor"
+  | "thunder"
   | "cursor-ide";
 
 export interface NativeConversationFile {
@@ -49,13 +54,23 @@ export interface CollectNativeConversationsOptions {
   maxFileBytes?: number;
   maxTotalBytes?: number;
   opencodeShardTargetBytes?: number;
+  /**
+   * Thunder conversation store override (`~/.thunder/conversations` by default).
+   * Present so tests can point at a temporary store.
+   */
+  thunderConversationsDir?: string;
 }
 
 const DEFAULT_MAX_FILE_BYTES = 512 * 1024 * 1024;
 const DEFAULT_MAX_TOTAL_BYTES = 4 * 1024 * 1024 * 1024;
 const DEFAULT_OPENCODE_SHARD_TARGET_BYTES = 448 * 1024 * 1024;
+
+/** Size limits only; `thunderConversationsDir` is a location, not a limit. */
+type NativeConversationLimits = Required<
+  Pick<CollectNativeConversationsOptions, "maxFileBytes" | "maxTotalBytes" | "opencodeShardTargetBytes">
+>;
 const SUPPORTED: Array<Exclude<NativeConversationProvider, "cursor-ide">> = [
-  "codex", "claude", "agy", "grok", "opencode", "pi", "prime", "omp", "cursor"
+  "codex", "claude", "agy", "grok", "opencode", "pi", "prime", "omp", "cursor", "thunder"
 ];
 const OPEN_CODE_KEEP_DATA = new Set([
   "project", "project_directory", "workspace", "session", "session_context_epoch",
@@ -136,6 +151,7 @@ function providerLabel(provider: NativeConversationProvider): string {
   if (provider === "omp") return "OMP";
   if (provider === "cursor") return "Cursor CLI";
   if (provider === "cursor-ide") return "Cursor IDE";
+  if (provider === "thunder") return "Thunder";
   if (provider === "opencode") return "OpenCode";
   return provider[0].toUpperCase() + provider.slice(1);
 }
@@ -306,7 +322,7 @@ async function materializeOpenCodeSlices(source: string, slice: OpenCodeSlice, t
   return [];
 }
 
-async function buildOpenCodeArtifacts(home: string, destinationRoot: string, limits: Required<CollectNativeConversationsOptions>, files: NativeConversationFile[], warnings: string[]): Promise<NativeConversationProviderSummary> {
+async function buildOpenCodeArtifacts(home: string, destinationRoot: string, limits: NativeConversationLimits, files: NativeConversationFile[], warnings: string[]): Promise<NativeConversationProviderSummary> {
   const source = path.join(home, "opencode.db");
   const sourceStat = await fs.stat(source);
   const providerRoot = path.join(destinationRoot, "opencode");
@@ -362,7 +378,7 @@ async function buildOpenCodeArtifacts(home: string, destinationRoot: string, lim
  */
 export async function buildNativeConversationArtifacts(settings: PanelSettings, destinationRoot: string, options: CollectNativeConversationsOptions = {}): Promise<NativeConversationCollection> {
   const homes = resolvePreviewHomes(settings);
-  const limits: Required<CollectNativeConversationsOptions> = {
+  const limits: NativeConversationLimits = {
     maxFileBytes: options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES,
     maxTotalBytes: options.maxTotalBytes ?? DEFAULT_MAX_TOTAL_BYTES,
     opencodeShardTargetBytes: Math.min(options.opencodeShardTargetBytes ?? DEFAULT_OPENCODE_SHARD_TARGET_BYTES, options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES)
@@ -418,6 +434,39 @@ export async function buildNativeConversationArtifacts(settings: PanelSettings, 
     ...(await filesBelow(path.join(homes.cursorHome, "chats"), (relative) => relative.endsWith("meta.json"), 12).then((items) => items.map((item) => ({ absolute: item.absolute, relative: path.posix.join("chats", item.relative) })))),
     ...(await filesBelow(path.join(homes.cursorHome, "projects"), (relative) => relative.includes("agent-transcripts/") && relative.endsWith(".jsonl"), 14).then((items) => items.map((item) => ({ absolute: item.absolute, relative: path.posix.join("projects", item.relative) }))))
   ]);
+
+  // Thunder stores conversations outside the Agent homes. Only index.json and
+  // per-session conversation.json are copied; traces stay on the source machine.
+  const thunderRoot = path.join(destinationRoot, "thunder");
+  try {
+    const collected = await collectThunderConversationFiles(
+      options.thunderConversationsDir ?? defaultThunderConversationsDir(),
+      { maxFileBytes: limits.maxFileBytes }
+    );
+    const copied: Array<{ absolute: string; relative: string }> = [];
+    for (const file of collected.files) {
+      const target = path.join(thunderRoot, ...file.relative.split("/"));
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.copyFile(file.absolute, target);
+      await fs.utimes(target, new Date(file.mtimeMs), new Date(file.mtimeMs));
+      copied.push({ absolute: target, relative: file.relative });
+    }
+    await addFiles(files, "thunder", thunderRoot, copied, limits);
+    const added = files.filter((file) => file.provider === "thunder");
+    const totalBytes = added.reduce((sum, file) => sum + file.size, 0);
+    providerSummaries.set("thunder", {
+      provider: "thunder",
+      fileCount: added.length,
+      totalBytes,
+      strategy: "thunder-json-v1",
+      sourceBytes: collected.sourceBytes,
+      excludedBytes: Math.max(0, collected.sourceBytes - totalBytes)
+    });
+    warnings.push(...collected.warnings);
+  } catch (error) {
+    warnings.push(`Thunder native conversation backup skipped: ${error instanceof Error ? error.message : String(error)}`);
+    providerSummaries.set("thunder", { provider: "thunder", fileCount: 0, totalBytes: 0, strategy: "thunder-json-v1", sourceBytes: 0, excludedBytes: 0 });
+  }
 
   const providers = [...SUPPORTED.map((provider) => providerSummaries.get(provider) || { provider, fileCount: 0, totalBytes: 0 }), { provider: "cursor-ide" as const, fileCount: 0, totalBytes: 0, strategy: "excluded-v1", sourceBytes: 0, excludedBytes: 0 }];
   return { files, providers, warnings: [...new Set(warnings)] };

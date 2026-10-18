@@ -14,6 +14,7 @@ import {
   PanelSettings,
   WORKBENCH_TERMINAL_THEME_IDS,
   WORKBENCH_TERMINAL_RENDERERS,
+  type DesktopBackupSettings,
   type DesktopTheme,
   type WorkbenchComposerSlashPhrase,
   type WorkbenchTerminalRenderer,
@@ -177,6 +178,9 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ...base.desktop,
       ...(partial.desktop || {}),
       theme: normalizeDesktopTheme(partial.desktop?.theme ?? base.desktop?.theme),
+      // Backup destinations are user-configured; an empty block is dropped so
+      // "not configured" stays unambiguous in settings.desktop.json.
+      backup: normalizeDesktopBackupSettings(partial.desktop?.backup ?? base.desktop?.backup),
       browser: {
         ...DEFAULT_DESKTOP_BROWSER_SETTINGS,
         ...base.desktop?.browser,
@@ -244,6 +248,28 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
           }
         : undefined
   });
+}
+
+/**
+ * Keep only the fields the user actually set. Returns `undefined` when nothing
+ * is configured so the key disappears from settings.desktop.json.
+ */
+function normalizeDesktopBackupSettings(
+  value: DesktopBackupSettings | undefined
+): DesktopBackupSettings | undefined {
+  const webdav = value?.webdav;
+  if (!webdav) return undefined;
+  const url = webdav.url?.trim();
+  const username = webdav.username?.trim();
+  const folder = webdav.folder?.trim();
+  const passwordEncrypted = webdav.passwordEncrypted?.trim();
+  if (!url && !username && !folder && !passwordEncrypted) return undefined;
+  const output: NonNullable<DesktopBackupSettings["webdav"]> = {};
+  if (url) output.url = url;
+  if (username) output.username = username;
+  if (folder) output.folder = folder;
+  if (passwordEncrypted) output.passwordEncrypted = passwordEncrypted;
+  return { webdav: output };
 }
 
 function mergeAcpSettings(

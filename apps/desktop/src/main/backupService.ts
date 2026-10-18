@@ -7,6 +7,7 @@ import { pipeline } from "node:stream/promises";
 import type { Readable } from "node:stream";
 import {
   buildNativeConversationArtifacts,
+  defaultThunderConversationsDir,
   effectivePanelHome,
   cleanupRemovedSessionExecutionNotes,
   ensureDesktopDbSchema,
@@ -21,6 +22,8 @@ import {
   type PanelSettings
 } from "@agent-resume/core";
 import { loadPanelDbPaths } from "./panelDatabases";
+import { createWebdavSession, type WebdavEntry } from "./webdavClient";
+import { parseManagedBackupFileName, readZipEntry } from "./zipManifest";
 
 const yazl = require("yazl") as {
   ZipFile: new () => {
@@ -61,23 +64,53 @@ const MAX_ENTRY_BYTES = 512 * 1024 * 1024;
 const MANIFEST_PATH = "manifest.json";
 const PAYLOAD_ROOT = "payload";
 const NATIVE_ROOT = "native";
+/** Written by older releases only; still read so those backups can be restored. */
 const CREDENTIALS_PATH = "credentials.enc";
 const RECOVERY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const TEMP_RETENTION_MS = 24 * 60 * 60 * 1000;
 /** Transcripts keep rendering pasted clipboard images, so they outlive scratch dirs by far. */
 const CLIPBOARD_IMAGE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-const ICLOUD_RETENTION_COUNT = 10;
+const MANAGED_RETENTION_COUNT = 10;
 const SCRYPT_OPTIONS = { N: 16_384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 } as const;
 const ARBAK_MAGIC = Buffer.from("ARBAK001", "ascii");
 const ARBAK_TAG_BYTES = 16;
 const MAX_ARBAK_HEADER_BYTES = 64 * 1024;
 const NATIVE_PROVIDERS: Record<Exclude<NativeConversationProvider, "cursor-ide">, true> = {
-  codex: true, claude: true, agy: true, grok: true, opencode: true, pi: true, prime: true, omp: true, cursor: true
+  codex: true, claude: true, agy: true, grok: true, opencode: true, pi: true, prime: true, omp: true, cursor: true, thunder: true
 };
 
-export type BackupStorageTarget = "local-file" | "icloud-drive";
+/**
+ * Directories copied verbatim into the payload. `restoreRecovery` uses the same
+ * list, so a failed import rolls back exactly what it may have written.
+ *
+ * `.desktop/workspaces` holds each task's AGENTS.md / CLAUDE.md address table and
+ * any files the user put there; worktrees and runtime logs inside it are
+ * machine-local and excluded.
+ */
+const ARCHIVE_DIRECTORIES: Array<{ relative: string; exclude?: string[] }> = [
+  { relative: "notes" },
+  { relative: "acp" },
+  { relative: "templates" },
+  { relative: ".desktop/scratch" },
+  { relative: ".desktop/workspaces", exclude: [".worktrees", ".arp/run", ".arp/tmp"] }
+];
 
-type BackupProgressPhase = "preparing" | "snapshotting" | "collecting" | "archiving" | "validating" | "merging" | "finalizing" | "complete";
+/**
+ * Rebuildable indexes. They are large (they dominate desktop.db) and the
+ * background indexers regenerate them, so they stay out of the archive and out
+ * of the restore merge.
+ */
+const DERIVED_INDEX_TABLES = [
+  "session_transcript_chunks",
+  "session_embeddings",
+  "note_chunks",
+  "note_vector_index",
+  "session_transcript_index"
+];
+
+export type BackupStorageTarget = "local-file" | "icloud-drive" | "webdav";
+
+type BackupProgressPhase = "preparing" | "snapshotting" | "collecting" | "archiving" | "validating" | "merging" | "uploading" | "downloading" | "finalizing" | "complete";
 
 export interface BackupProgressEvent {
   operation: "export" | "import";
@@ -87,14 +120,12 @@ export interface BackupProgressEvent {
 
 interface BackupCreateOptions {
   target: BackupStorageTarget;
-  includeCredentials: boolean;
   includeNativeConversations?: boolean;
-  password?: string;
   onProgress?: (event: BackupProgressEvent) => void;
 }
 
 interface BackupImportOptions {
-  includeCredentials: boolean;
+  /** Only used for backups written by older releases (encrypted `.arbak` / `credentials.enc`). */
   password?: string;
   restoreNativeConversations?: boolean;
   recoveryDir: string;
@@ -115,18 +146,41 @@ export interface BackupStoredItem {
   appVersion: string;
   fileName: string;
   totalBytes: number;
+  /** True only for backups written by older releases as `.arbak`. */
   encrypted: boolean;
+  /** False when the remote server would not serve the bytes needed to read the manifest. */
+  metadataComplete: boolean;
   nativeConversationFileCount: number;
   nativeConversationBytes: number;
   providers: NativeConversationProviderSummary[];
 }
 
+/** WebDAV credentials resolved in the main process; never persisted here. */
+export interface WebdavCredentials {
+  url: string;
+  username: string;
+  password: string;
+  folder: string;
+}
+
+export interface ManagedBackupContext {
+  settings: PanelSettings;
+  webdav?: WebdavCredentials;
+  /** Why `webdav` is absent, when the user had configured it but it could not be used. */
+  webdavError?: string;
+}
+
 interface BackupStorageProvider {
   target: BackupStorageTarget;
   status(): Promise<BackupStorageTargetStatus>;
-  publish(options: { fileName: string; write: (partialPath: string) => Promise<void> }): Promise<string>;
+  publish(options: {
+    fileName: string;
+    write: (partialPath: string) => Promise<void>;
+    onProgress?: (event: BackupProgressEvent) => void;
+  }): Promise<{ file: string; item: BackupStoredItem }>;
   list(): Promise<BackupStoredItem[]>;
-  read(backupId: string): Promise<string>;
+  read(backupId: string, onProgress?: (event: BackupProgressEvent) => void): Promise<string>;
+  remove(backupId: string): Promise<void>;
 }
 
 type BackupFile = {
@@ -199,6 +253,20 @@ type PendingImport = { root: string; manifest: BackupManifest; expiresAt: number
 type ArchiveBuild = { result: BackupResult; manifest: BackupManifest };
 const pendingImports = new Map<string, PendingImport>();
 let operation: Promise<unknown> | null = null;
+/**
+ * Test seam: Thunder stores conversations in the user's home, which a unit test
+ * must not touch. Production leaves this unset.
+ */
+let thunderConversationsDirOverride: string | undefined;
+
+/** Point Thunder collection and restore at another directory. Tests only. */
+export function setThunderConversationsDirForTests(dir?: string): void {
+  thunderConversationsDirOverride = dir;
+}
+
+function thunderConversationsDir(): string {
+  return thunderConversationsDirOverride ?? defaultThunderConversationsDir();
+}
 
 const CATALOG_UPDATED_TABLES: Record<string, { keys: string[]; timestamp: string }> = {
   sessions: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },
@@ -207,7 +275,15 @@ const CATALOG_UPDATED_TABLES: Record<string, { keys: string[]; timestamp: string
   session_gtd: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },
   note_gtd: { keys: ["note_id"], timestamp: "updated_at_ms" },
   session_notes: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },
-  project_notes: { keys: ["project_path"], timestamp: "updated_at_ms" }
+  project_notes: { keys: ["project_path"], timestamp: "updated_at_ms" },
+  // Notes are rebuilt from Markdown by `reconcileNotesIndex`, but the index row
+  // still has to arrive so a restore is usable before the first reconcile.
+  notes: { keys: ["note_id"], timestamp: "updated_at_ms" },
+  note_work: { keys: ["note_id"], timestamp: "updated_at_ms" },
+  // Parent/child links and archive state exist only in the database.
+  note_links: { keys: ["child_note_id"], timestamp: "created_at_ms" },
+  note_archive: { keys: ["note_id"], timestamp: "archived_at_ms" },
+  work_item_sessions: { keys: ["work_item_note_id", "provider", "agent_session_id"], timestamp: "created_at_ms" }
 };
 const CATALOG_APPEND_TABLES: Record<string, string[]> = {};
 const DESKTOP_UPDATED_TABLES: Record<string, { keys: string[]; timestamp: string }> = {
@@ -216,18 +292,21 @@ const DESKTOP_UPDATED_TABLES: Record<string, { keys: string[]; timestamp: string
   workbench_session_folder_items: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },
   task_workbenches: { keys: ["workbench_id"], timestamp: "updated_at_ms" },
   task_workbench_sessions: { keys: ["workbench_id", "provider", "agent_session_id"], timestamp: "updated_at_ms" },
-  note_chunks: { keys: ["chunk_id"], timestamp: "updated_at_ms" },
-  note_vector_index: { keys: ["note_id"], timestamp: "indexed_at_ms" },
-  session_embeddings: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },
-  session_transcript_chunks: { keys: ["chunk_id"], timestamp: "updated_at_ms" },
-  session_transcript_index: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" }
+  task_templates: { keys: ["template_id"], timestamp: "updated_at_ms" },
+  task_template_links: { keys: ["note_id"], timestamp: "updated_at_ms" },
+  selection_actions: { keys: ["action_id"], timestamp: "updated_at_ms" },
+  thunder_schedules: { keys: ["id"], timestamp: "updated_at_ms" }
+  // Derived indexes (session_transcript_chunks, session_embeddings, note_chunks,
+  // note_vector_index, session_transcript_index) are intentionally absent: they
+  // are excluded from the archive and must never be overwritten by an old copy.
 };
 const DESKTOP_APPEND_TABLES: Record<string, string[]> = {
   report_entries: ["id"],
   gtd_ai_audit: ["id"],
   llm_usage_events: ["id"],
   schedule_run_logs: ["id"],
-  workbench_composer_sends: ["id"]
+  workbench_composer_sends: ["id"],
+  thunder_schedule_runs: ["id"]
 };
 
 function sql(value: string): string {
@@ -298,10 +377,24 @@ function stripCredentials(value: unknown): unknown {
     .map(([key, child]) => [key, stripCredentials(child)]));
 }
 
-async function snapshotDatabase(source: string, destination: string): Promise<void> {
+/**
+ * Consistent SQLite copy via `VACUUM INTO`. `omitTables` drops rebuildable
+ * indexes after the snapshot so the archive stays small; the source database is
+ * never touched.
+ */
+async function snapshotDatabase(source: string, destination: string, omitTables: string[] = []): Promise<void> {
   if (!(await exists(source))) return;
   await fsp.mkdir(path.dirname(destination), { recursive: true });
   await runSqlite(source, `VACUUM INTO ${sql(destination)};`);
+  if (!omitTables.length) return;
+  const present = new Set(
+    (await runSqliteJson<{ name: string }>(destination, "SELECT name FROM sqlite_master WHERE type = 'table';"))
+      .map((row) => row.name)
+  );
+  const statements = omitTables.filter((table) => present.has(table)).map((table) => `DELETE FROM ${quoteIdentifier(table)};`);
+  if (!statements.length) return;
+  // VACUUM afterwards hands the freed pages back instead of leaving them in the file.
+  await runSqlite(destination, `${statements.join("\n")}\nVACUUM;`);
 }
 
 async function deriveBackupKey(password: string, salt: Buffer): Promise<Buffer> {
@@ -313,15 +406,6 @@ async function deriveBackupKey(password: string, salt: Buffer): Promise<Buffer> 
   });
 }
 
-async function encryptCredentials(value: Record<string, unknown>, password: string): Promise<Buffer> {
-  const salt = randomBytes(16);
-  const iv = randomBytes(12);
-  const key = await deriveBackupKey(password, salt);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  const ciphertext = Buffer.concat([cipher.update(JSON.stringify(value), "utf8"), cipher.final()]);
-  return Buffer.from(JSON.stringify({ version: 2, salt: salt.toString("base64"), iv: iv.toString("base64"), tag: cipher.getAuthTag().toString("base64"), ciphertext: ciphertext.toString("base64") }), "utf8");
-}
-
 async function decryptCredentials(value: Buffer, password: string): Promise<Record<string, unknown>> {
   const payload = JSON.parse(value.toString("utf8")) as { salt: string; iv: string; tag: string; ciphertext: string };
   const key = await deriveBackupKey(password, Buffer.from(payload.salt, "base64"));
@@ -331,7 +415,13 @@ async function decryptCredentials(value: Buffer, password: string): Promise<Reco
 }
 
 function preserveCredentials(next: unknown, current: unknown): unknown {
-  if (Array.isArray(next) || !next || typeof next !== "object") return next;
+  // Arrays are merged positionally: provider pools and similar lists store the
+  // key inside the element, so an early return would drop every local key.
+  if (Array.isArray(next)) {
+    if (!Array.isArray(current)) return next;
+    return next.map((value, index) => preserveCredentials(value, current[index]));
+  }
+  if (!next || typeof next !== "object") return next;
   const nextRecord = { ...(next as Record<string, unknown>) };
   const currentRecord = current && typeof current === "object" && !Array.isArray(current)
     ? current as Record<string, unknown>
@@ -343,14 +433,13 @@ function preserveCredentials(next: unknown, current: unknown): unknown {
   return nextRecord;
 }
 
-async function writeZip(destination: string, files: Array<{ absolute: string; archivePath: string }>, manifest: BackupManifest, credentials?: Buffer): Promise<void> {
+async function writeZip(destination: string, files: Array<{ absolute: string; archivePath: string }>, manifest: BackupManifest): Promise<void> {
   await fsp.mkdir(path.dirname(destination), { recursive: true });
   const partial = `${destination}.${randomBytes(6).toString("hex")}.partial`;
   const zip = new yazl.ZipFile();
   try {
     for (const file of files) zip.addFile(file.absolute, file.archivePath);
     zip.addBuffer(Buffer.from(JSON.stringify(manifest, null, 2), "utf8"), MANIFEST_PATH);
-    if (credentials) zip.addBuffer(credentials, CREDENTIALS_PATH);
     const output = fs.createWriteStream(partial, { flags: "w", mode: 0o600 });
     const done = pipeline(zip.outputStream as Readable, output);
     zip.end();
@@ -379,7 +468,8 @@ function validateArchiveEntries(entries: Array<{ absolute: string; relative: str
 async function copyNativeConversations(settings: PanelSettings, payload: string): Promise<NativeConversationManifest> {
   const collected = await buildNativeConversationArtifacts(settings, path.join(payload, NATIVE_ROOT), {
     maxFileBytes: MAX_ENTRY_BYTES,
-    maxTotalBytes: MAX_EXPANDED_BYTES
+    maxTotalBytes: MAX_EXPANDED_BYTES,
+    ...(thunderConversationsDirOverride ? { thunderConversationsDir: thunderConversationsDirOverride } : {})
   });
   return {
     artifactVersion: 2,
@@ -390,6 +480,46 @@ async function copyNativeConversations(settings: PanelSettings, payload: string)
   };
 }
 
+/** Segment-wise match against exclusions like `.worktrees` or `.arp/run`. */
+function isExcludedPath(segments: string[], excluded: Set<string>): boolean {
+  for (let index = 0; index < segments.length; index += 1) {
+    if (excluded.has(segments[index])) return true;
+    if (index > 0 && excluded.has(`${segments[index - 1]}/${segments[index]}`)) return true;
+  }
+  return false;
+}
+
+/**
+ * Copy one archive directory between two roots, honouring its exclusions.
+ *
+ * `fs.cp` filters receive absolute paths, so the relative path is derived from
+ * the source root and matched segment-wise against the exclusion list. An
+ * excluded directory is never descended into.
+ */
+async function copyArchiveEntry(
+  sourceRoot: string,
+  targetRoot: string,
+  entry: { relative: string; exclude?: string[] }
+): Promise<void> {
+  const source = path.join(sourceRoot, ...entry.relative.split("/"));
+  if (!(await exists(source))) return;
+  const target = path.join(targetRoot, ...entry.relative.split("/"));
+  const excluded = new Set(entry.exclude ?? []);
+  const filter = excluded.size
+    ? (candidate: string): boolean => {
+        const relative = path.relative(source, candidate);
+        if (!relative) return true;
+        return !isExcludedPath(relative.split(path.sep), excluded);
+      }
+    : undefined;
+  await fsp.cp(source, target, { recursive: true, dereference: false, ...(filter ? { filter } : {}) });
+}
+
+/** Panel home → backup payload. */
+async function copyArchiveDirectories(home: string, payload: string): Promise<void> {
+  for (const entry of ARCHIVE_DIRECTORIES) await copyArchiveEntry(home, payload, entry);
+}
+
 async function createArchive(settings: PanelSettings, destination: string, appVersion: string, options: Omit<BackupCreateOptions, "target">): Promise<ArchiveBuild> {
   reportProgress(options.onProgress, "export", "preparing", 2);
   const home = effectivePanelHome(settings);
@@ -398,21 +528,15 @@ async function createArchive(settings: PanelSettings, destination: string, appVe
   try {
     const payload = path.join(stage, PAYLOAD_ROOT);
     await snapshotDatabase(paths.catalogDb, path.join(payload, "catalog.db"));
-    await snapshotDatabase(paths.desktopDb, path.join(payload, ".desktop", "desktop.db"));
+    await snapshotDatabase(paths.desktopDb, path.join(payload, ".desktop", "desktop.db"), DERIVED_INDEX_TABLES);
     reportProgress(options.onProgress, "export", "snapshotting", 25);
-    for (const rel of ["notes", "acp", ".desktop/scratch"]) {
-      const source = path.join(home, rel);
-      const target = path.join(payload, rel);
-      if (await exists(source)) await fsp.cp(source, target, { recursive: true, dereference: false });
-    }
-    const originals: Record<string, unknown> = {};
+    await copyArchiveDirectories(home, payload);
     for (const name of ["settings.json", "settings.desktop.json"]) {
       const source = path.join(home, name);
       if (!(await exists(source))) continue;
       const raw = await fsp.readFile(source, "utf8");
       try {
         const parsed = JSON.parse(raw) as unknown;
-        originals[name] = parsed;
         await fsp.mkdir(payload, { recursive: true });
         await fsp.writeFile(path.join(payload, name), `${JSON.stringify(stripCredentials(parsed), null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
       } catch {
@@ -434,12 +558,11 @@ async function createArchive(settings: PanelSettings, destination: string, appVe
       createdAtMs: Date.now(),
       sourceMachineId: await getMachineId(),
       appVersion,
-      credentialsEncrypted: options.includeCredentials,
+      credentialsEncrypted: false,
       nativeConversations,
       files
     };
-    const credentials = options.includeCredentials ? await encryptCredentials(originals, options.password || "") : undefined;
-    await writeZip(destination, entries.map((entry) => ({ absolute: entry.absolute, archivePath: `${PAYLOAD_ROOT}/${entry.relative}` })), manifest, credentials);
+    await writeZip(destination, entries.map((entry) => ({ absolute: entry.absolute, archivePath: `${PAYLOAD_ROOT}/${entry.relative}` })), manifest);
     reportProgress(options.onProgress, "export", "finalizing", 95);
     return {
       manifest,
@@ -536,10 +659,24 @@ function openZipEntry(zip: ZipReader, entry: ZipEntry): Promise<Readable> {
   });
 }
 
-function arbakPrefix(header: Buffer): Buffer {
-  const size = Buffer.allocUnsafe(4);
-  size.writeUInt32BE(header.length, 0);
-  return Buffer.concat([ARBAK_MAGIC, size, header]);
+/**
+ * Validate an `.arbak` header from its raw bytes.
+ *
+ * Backups are no longer written encrypted, but files produced by older
+ * releases still exist on iCloud / WebDAV, so this stays for reading them.
+ */
+function parseArbakHeader(raw: Buffer): ArbakHeader {
+  const header = JSON.parse(raw.toString("utf8")) as ArbakHeader;
+  if (
+    header.formatVersion !== 1 || !header.backupId || !header.sourceMachineId ||
+    header.kdf?.name !== "scrypt" || header.kdf.N !== SCRYPT_OPTIONS.N ||
+    header.kdf.r !== SCRYPT_OPTIONS.r || header.kdf.p !== SCRYPT_OPTIONS.p ||
+    Buffer.from(header.salt || "", "base64").length !== 16 ||
+    Buffer.from(header.iv || "", "base64").length !== 12
+  ) {
+    throw new Error("Encrypted backup header is unsupported.");
+  }
+  return header;
 }
 
 async function readArbakHeader(file: string): Promise<{ header: ArbakHeader; raw: Buffer; ciphertextOffset: number; isArbak: boolean }> {
@@ -556,51 +693,16 @@ async function readArbakHeader(file: string): Promise<{ header: ArbakHeader; raw
     const raw = Buffer.alloc(headerBytes);
     const body = await handle.read(raw, 0, raw.length, initial.length);
     if (body.bytesRead !== raw.length) throw new Error("Encrypted backup header is incomplete.");
-    const header = JSON.parse(raw.toString("utf8")) as ArbakHeader;
-    if (
-      header.formatVersion !== 1 || !header.backupId || !header.sourceMachineId ||
-      header.kdf?.name !== "scrypt" || header.kdf.N !== SCRYPT_OPTIONS.N ||
-      header.kdf.r !== SCRYPT_OPTIONS.r || header.kdf.p !== SCRYPT_OPTIONS.p ||
-      Buffer.from(header.salt || "", "base64").length !== 16 ||
-      Buffer.from(header.iv || "", "base64").length !== 12
-    ) {
-      throw new Error("Encrypted backup header is unsupported.");
-    }
-    return { header, raw, ciphertextOffset: initial.length + raw.length, isArbak: true };
+    return { header: parseArbakHeader(raw), raw, ciphertextOffset: initial.length + raw.length, isArbak: true };
   } finally {
     await handle.close();
-  }
-}
-
-async function encryptArbak(sourceZip: string, destination: string, details: Omit<ArbakHeader, "salt" | "iv" | "kdf" | "formatVersion">, password: string): Promise<void> {
-  const salt = randomBytes(16);
-  const iv = randomBytes(12);
-  const header: ArbakHeader = {
-    formatVersion: 1,
-    ...details,
-    salt: salt.toString("base64"),
-    iv: iv.toString("base64"),
-    kdf: { name: "scrypt", N: SCRYPT_OPTIONS.N, r: SCRYPT_OPTIONS.r, p: SCRYPT_OPTIONS.p }
-  };
-  const raw = Buffer.from(JSON.stringify(header), "utf8");
-  const key = await deriveBackupKey(password, salt);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  cipher.setAAD(raw);
-  await fsp.mkdir(path.dirname(destination), { recursive: true });
-  try {
-    await fsp.writeFile(destination, arbakPrefix(raw), { mode: 0o600 });
-    await pipeline(fs.createReadStream(sourceZip), cipher, fs.createWriteStream(destination, { flags: "a", mode: 0o600 }));
-    await fsp.appendFile(destination, cipher.getAuthTag());
-  } catch (error) {
-    await fsp.rm(destination, { force: true });
-    throw error;
   }
 }
 
 async function decryptArbak(file: string, password: string): Promise<string> {
   const info = await readArbakHeader(file);
   if (!info.isArbak) throw new Error("The selected backup is not an encrypted Agent Resume backup.");
-  if (!password) throw new Error("A password is required for this encrypted iCloud backup.");
+  if (!password) throw new Error("This is an older encrypted backup. Enter the password that was used when it was created.");
   const stat = await fsp.stat(file);
   if (stat.size > MAX_ARCHIVE_BYTES) throw new Error("Encrypted backup exceeds the 2 GB limit.");
   if (stat.size <= info.ciphertextOffset + ARBAK_TAG_BYTES) throw new Error("Encrypted backup is incomplete.");
@@ -654,10 +756,75 @@ function storedItemFromHeader(fileName: string, header: ArbakHeader): BackupStor
     fileName,
     totalBytes: header.plaintextBytes,
     encrypted: true,
+    metadataComplete: true,
     nativeConversationFileCount: header.nativeConversationFileCount,
     nativeConversationBytes: header.nativeConversationBytes,
     providers: header.providers
   };
+}
+
+function storedItemFromManifest(fileName: string, manifest: BackupManifest): BackupStoredItem {
+  const native = manifest.nativeConversations;
+  return {
+    backupId: manifest.backupId ?? parseManagedBackupFileName(fileName)?.backupId ?? "",
+    createdAtMs: manifest.createdAtMs,
+    sourceMachineId: manifest.sourceMachineId ?? parseManagedBackupFileName(fileName)?.sourceMachineId ?? "",
+    appVersion: manifest.appVersion,
+    fileName,
+    totalBytes: manifest.files.reduce((sum, file) => sum + file.size, 0),
+    encrypted: false,
+    metadataComplete: true,
+    nativeConversationFileCount: native?.fileCount ?? 0,
+    nativeConversationBytes: native?.totalBytes ?? 0,
+    providers: native?.providers ?? []
+  };
+}
+
+/** Filename-only fallback for servers that will not serve ranged reads. */
+function storedItemFromFileName(fileName: string): BackupStoredItem | undefined {
+  const parsed = parseManagedBackupFileName(fileName);
+  if (!parsed) return undefined;
+  return {
+    backupId: parsed.backupId,
+    createdAtMs: parsed.createdAtMs,
+    sourceMachineId: parsed.sourceMachineId,
+    appVersion: "",
+    fileName,
+    totalBytes: 0,
+    encrypted: fileName.endsWith(".arbak"),
+    metadataComplete: false,
+    nativeConversationFileCount: 0,
+    nativeConversationBytes: 0,
+    providers: []
+  };
+}
+
+/** Managed backup filenames: `<prefix>-<id>.zip` (new) or `.arbak` (older releases). */
+function managedBackupFileName(fileName: string, backupId: string): boolean {
+  return fileName.endsWith(`-${backupId}.zip`) || fileName.endsWith(`-${backupId}.arbak`);
+}
+
+async function readZipManifestFromFile(file: string): Promise<BackupManifest | null> {
+  const handle = await fsp.open(file, "r");
+  try {
+    const stat = await handle.stat();
+    const source = {
+      size: stat.size,
+      read: async (start: number, end: number): Promise<Buffer> => {
+        const length = end - start + 1;
+        const buffer = Buffer.alloc(length);
+        const { bytesRead } = await handle.read(buffer, 0, length, start);
+        return buffer.subarray(0, bytesRead);
+      }
+    };
+    const raw = await readZipEntry(source, MANIFEST_PATH);
+    if (!raw) return null;
+    return JSON.parse(raw.toString("utf8")) as BackupManifest;
+  } catch {
+    return null;
+  } finally {
+    await handle.close();
+  }
 }
 
 class IcloudDriveBackupStorageProvider implements BackupStorageProvider {
@@ -675,36 +842,49 @@ class IcloudDriveBackupStorageProvider implements BackupStorageProvider {
     }
   }
 
-  async publish(options: { fileName: string; write: (partialPath: string) => Promise<void> }): Promise<string> {
+  async publish(options: { fileName: string; write: (partialPath: string) => Promise<void> }): Promise<{ file: string; item: BackupStoredItem }> {
     const status = await this.status();
     if (!status.available || !status.location) throw new Error(status.reason || "iCloud Drive is unavailable.");
-    if (!/^[A-Za-z0-9._-]+\.arbak$/.test(options.fileName)) throw new Error("Invalid managed iCloud backup filename.");
+    if (!/^[A-Za-z0-9._-]+\.zip$/.test(options.fileName)) throw new Error("Invalid managed iCloud backup filename.");
     await fsp.mkdir(status.location, { recursive: true });
     const destination = path.join(status.location, options.fileName);
     const partial = `${destination}.${randomBytes(6).toString("hex")}.partial`;
     try {
       await options.write(partial);
       await fsp.rename(partial, destination);
-      return destination;
+      const manifest = await readZipManifestFromFile(destination);
+      if (!manifest) throw new Error("The backup could not be read after it was written.");
+      return { file: destination, item: storedItemFromManifest(options.fileName, manifest) };
     } catch (error) {
       await fsp.rm(partial, { force: true });
       throw error;
     }
   }
 
-  async list(): Promise<BackupStoredItem[]> {
+  /** Both the current `.zip` format and `.arbak` files from older releases. */
+  private async managedFiles(): Promise<Array<{ name: string; path: string }>> {
     const status = await this.status();
     if (!status.available || !status.location) return [];
     const rows = await fsp.readdir(status.location, { withFileTypes: true }).catch(() => [] as import("node:fs").Dirent[]);
+    return rows
+      .filter((row) => row.isFile() && !row.name.includes(".partial") && (row.name.endsWith(".zip") || row.name.endsWith(".arbak")))
+      .map((row) => ({ name: row.name, path: path.join(status.location!, row.name) }));
+  }
+
+  async list(): Promise<BackupStoredItem[]> {
     const items: BackupStoredItem[] = [];
-    for (const row of rows) {
-      if (!row.isFile() || !row.name.endsWith(".arbak") || row.name.includes(".partial")) continue;
-      try {
-        const parsed = await readArbakHeader(path.join(status.location, row.name));
-        if (parsed.isArbak) items.push(storedItemFromHeader(row.name, parsed.header));
-      } catch {
-        // Damaged or unrelated files remain untouched and are not offered as managed backups.
+    for (const file of await this.managedFiles()) {
+      if (file.name.endsWith(".arbak")) {
+        try {
+          const parsed = await readArbakHeader(file.path);
+          if (parsed.isArbak) items.push(storedItemFromHeader(file.name, parsed.header));
+        } catch {
+          // Damaged or unrelated files remain untouched and are not offered as managed backups.
+        }
+        continue;
       }
+      const manifest = await readZipManifestFromFile(file.path);
+      if (manifest) items.push(storedItemFromManifest(file.name, manifest));
     }
     return items.sort((left, right) => right.createdAtMs - left.createdAtMs);
   }
@@ -713,45 +893,206 @@ class IcloudDriveBackupStorageProvider implements BackupStorageProvider {
     if (!/^[a-f0-9]{32}$/i.test(id)) throw new Error("Invalid iCloud backup id.");
     const status = await this.status();
     if (!status.available || !status.location) throw new Error(status.reason || "iCloud Drive is unavailable.");
-    const rows = await fsp.readdir(status.location, { withFileTypes: true }).catch(() => [] as import("node:fs").Dirent[]);
-    for (const row of rows) {
-      if (!row.isFile() || !row.name.endsWith(".arbak") || row.name.includes(".partial")) continue;
-      const candidate = path.join(status.location, row.name);
-      try {
-        const parsed = await readArbakHeader(candidate);
-        if (parsed.isArbak && parsed.header.backupId === id) return candidate;
-      } catch {
-        // Do not offer damaged backups.
+    for (const file of await this.managedFiles()) {
+      if (!managedBackupFileName(file.name, id)) continue;
+      if (file.name.endsWith(".arbak")) {
+        try {
+          const parsed = await readArbakHeader(file.path);
+          if (parsed.isArbak && parsed.header.backupId === id) return file.path;
+        } catch {
+          // Do not offer damaged backups.
+        }
+        continue;
       }
+      const manifest = await readZipManifestFromFile(file.path);
+      if (manifest?.backupId === id) return file.path;
     }
     throw new Error("The selected iCloud backup is no longer available.");
+  }
+
+  async remove(id: string): Promise<void> {
+    const file = await this.read(id);
+    await fsp.rm(file, { force: true });
   }
 }
 
 class LocalFileBackupStorageProvider implements BackupStorageProvider {
   readonly target = "local-file" as const;
   async status(): Promise<BackupStorageTargetStatus> { return { target: this.target, available: true }; }
-  async publish(): Promise<string> { throw new Error("Local backups are written through the user-selected save location."); }
+  async publish(): Promise<{ file: string; item: BackupStoredItem }> { throw new Error("Local backups are written through the user-selected save location."); }
   async list(): Promise<BackupStoredItem[]> { return []; }
   async read(): Promise<string> { throw new Error("Local backups are selected through the file picker."); }
+  async remove(): Promise<void> { throw new Error("Local backups are deleted by the user."); }
 }
 
-const storageProviders: Record<BackupStorageTarget, BackupStorageProvider> = {
-  "local-file": new LocalFileBackupStorageProvider(),
-  "icloud-drive": new IcloudDriveBackupStorageProvider()
-};
+/**
+ * WebDAV target.
+ *
+ * Uploads land as `<name>.partial` and are renamed with MOVE, so a dropped
+ * connection can never leave a half-written file that looks restorable.
+ */
+class WebdavBackupStorageProvider implements BackupStorageProvider {
+  readonly target = "webdav" as const;
 
-async function pruneIcloudBackups(provider: BackupStorageProvider, machineId: string): Promise<void> {
+  constructor(private readonly credentials: WebdavCredentials) {}
+
+  private session(): ReturnType<typeof createWebdavSession> {
+    return createWebdavSession(this.credentials);
+  }
+
+  async status(): Promise<BackupStorageTargetStatus> {
+    return { target: this.target, available: true, location: this.session().folderUrl };
+  }
+
+  async publish(options: {
+    fileName: string;
+    write: (partialPath: string) => Promise<void>;
+    onProgress?: (event: BackupProgressEvent) => void;
+  }): Promise<{ file: string; item: BackupStoredItem }> {
+    if (!/^[A-Za-z0-9._-]+\.zip$/.test(options.fileName)) throw new Error("Invalid managed WebDAV backup filename.");
+    const session = this.session();
+    await session.ensureFolder();
+    const staging = await fsp.mkdtemp(path.join(os.tmpdir(), "agent-resume-webdav-"));
+    const local = path.join(staging, options.fileName);
+    try {
+      await options.write(local);
+      const partialName = `${options.fileName}.partial`;
+      reportProgress(options.onProgress, "export", "uploading", 90);
+      // Upload occupies the last stretch of the bar (90–99) so the byte count
+      // shows movement instead of sitting still until the transfer finishes.
+      await session.putFile(local, partialName, (sent, total) => {
+        if (total > 0) reportProgress(options.onProgress, "export", "uploading", 90 + Math.min(9, (sent / total) * 9));
+      });
+      await session.moveFile(partialName, options.fileName);
+      const manifest = await readZipManifestFromFile(local);
+      if (!manifest) throw new Error("The backup could not be read after it was written.");
+      return {
+        file: `${session.folderUrl}/${encodeURIComponent(options.fileName)}`,
+        item: storedItemFromManifest(options.fileName, manifest)
+      };
+    } finally {
+      await fsp.rm(staging, { recursive: true, force: true });
+    }
+  }
+
+  async list(): Promise<BackupStoredItem[]> {
+    const session = this.session();
+    const entries = await session.propfind(1);
+    const candidates = entries.filter((entry) =>
+      !entry.isCollection &&
+      (entry.name.endsWith(".zip") || entry.name.endsWith(".arbak")) &&
+      !entry.name.includes(".partial")
+    );
+
+    // Metadata needs the end of each archive; do a few at a time rather than
+    // opening one connection per backup.
+    const items: BackupStoredItem[] = [];
+    const queue = [...candidates];
+    const worker = async (): Promise<void> => {
+      for (let next = queue.shift(); next; next = queue.shift()) {
+        // A server that will not serve ranges still yields a usable entry from
+        // the filename, so the backup stays restorable without full metadata.
+        const item = await this.describe(session, next.name, next.size).catch(() => storedItemFromFileName(next.name));
+        if (item) items.push(item);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, candidates.length) }, worker));
+    await this.sweepPartials(session, entries);
+    return items.sort((left, right) => right.createdAtMs - left.createdAtMs);
+  }
+
+  private async describe(
+    session: ReturnType<typeof createWebdavSession>,
+    name: string,
+    size: number
+  ): Promise<BackupStoredItem | undefined> {
+    if (name.endsWith(".arbak")) {
+      const head = await session.readRange(name, 0, MAX_ARBAK_HEADER_BYTES);
+      if (head?.body.length) {
+        const magic = head.body.subarray(0, ARBAK_MAGIC.length);
+        if (magic.equals(ARBAK_MAGIC) && head.body.length >= ARBAK_MAGIC.length + 4) {
+          const headerBytes = head.body.readUInt32BE(ARBAK_MAGIC.length);
+          if (headerBytes > 0 && head.body.length >= ARBAK_MAGIC.length + 4 + headerBytes) {
+            const raw = head.body.subarray(ARBAK_MAGIC.length + 4, ARBAK_MAGIC.length + 4 + headerBytes);
+            return storedItemFromHeader(name, parseArbakHeader(raw));
+          }
+        }
+      }
+      return storedItemFromFileName(name);
+    }
+
+    const source = {
+      size,
+      read: async (start: number, end: number): Promise<Buffer> => {
+        const range = await session.readRange(name, start, end);
+        if (!range) throw new Error("range-unsupported");
+        return range.body;
+      }
+    };
+    try {
+      const raw = await readZipEntry(source, MANIFEST_PATH);
+      if (raw) return storedItemFromManifest(name, JSON.parse(raw.toString("utf8")) as BackupManifest);
+    } catch {
+      // Fall through to the filename fallback below.
+    }
+    return storedItemFromFileName(name);
+  }
+
+  /** A `.partial` older than the temp retention window is a dead upload. */
+  private async sweepPartials(session: ReturnType<typeof createWebdavSession>, entries: WebdavEntry[]): Promise<void> {
+    const cutoff = Date.now() - TEMP_RETENTION_MS;
+    for (const entry of entries) {
+      if (entry.isCollection || !entry.name.endsWith(".partial")) continue;
+      if (!entry.mtimeMs || entry.mtimeMs > cutoff) continue;
+      await session.deleteFile(entry.name).catch(() => undefined);
+    }
+  }
+
+  async read(id: string, onProgress?: (event: BackupProgressEvent) => void): Promise<string> {
+    if (!/^[a-f0-9]{32}$/i.test(id)) throw new Error("Invalid WebDAV backup id.");
+    const session = this.session();
+    const entries = await session.propfind(1);
+    const match = entries.find((entry) => !entry.isCollection && managedBackupFileName(entry.name, id));
+    if (!match) throw new Error("The selected WebDAV backup is no longer available.");
+    const staging = await fsp.mkdtemp(path.join(os.tmpdir(), "agent-resume-webdav-"));
+    const destination = path.join(staging, match.name);
+    try {
+      await session.getToFile(match.name, destination, (received, total) => {
+        if (total > 0) reportProgress(onProgress, "import", "downloading", Math.min(90, (received / total) * 90));
+      });
+      return destination;
+    } catch (error) {
+      await fsp.rm(staging, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
+  async remove(id: string): Promise<void> {
+    const session = this.session();
+    const entries = await session.propfind(1);
+    const match = entries.find((entry) => !entry.isCollection && managedBackupFileName(entry.name, id));
+    if (match) await session.deleteFile(match.name);
+  }
+}
+
+function storageProvider(target: BackupStorageTarget, ctx: ManagedBackupContext): BackupStorageProvider {
+  if (target === "local-file") return new LocalFileBackupStorageProvider();
+  if (target === "icloud-drive") return new IcloudDriveBackupStorageProvider();
+  if (!ctx.webdav) throw new Error(ctx.webdavError ?? "Add a WebDAV server URL, username, and password to enable WebDAV backups.");
+  return new WebdavBackupStorageProvider(ctx.webdav);
+}
+
+/** Keep the newest backups this machine created; older ones are deleted remotely. */
+async function pruneManagedBackups(provider: BackupStorageProvider, machineId: string): Promise<void> {
   const items = (await provider.list()).filter((item) => item.sourceMachineId === machineId).sort((left, right) => right.createdAtMs - left.createdAtMs);
-  for (const item of items.slice(ICLOUD_RETENTION_COUNT)) {
-    const file = await provider.read(item.backupId).catch(() => undefined);
-    if (file) await fsp.rm(file, { force: true });
+  for (const item of items.slice(MANAGED_RETENTION_COUNT)) {
+    await provider.remove(item.backupId).catch(() => undefined);
   }
 }
 
 /** Temp files the app owns in os.tmpdir(), each with the age it must reach to be swept. */
 const TEMPORARY_ARTIFACTS: Array<{ name: RegExp; retentionMs: number }> = [
-  { name: /^(agent-resume-(?:backup|import|decrypt|native-journal)-)/, retentionMs: TEMP_RETENTION_MS },
+  { name: /^(agent-resume-(?:backup|import|decrypt|native-journal|webdav)-)/, retentionMs: TEMP_RETENTION_MS },
   { name: /^agent-resume-clipboard-.*\.png$/, retentionMs: CLIPBOARD_IMAGE_RETENTION_MS }
 ];
 
@@ -853,12 +1194,14 @@ async function mergeAcp(source: string, destination: string, manifest: BackupMan
   await mergeTree(path.join(source, "attachments"), path.join(destination, "attachments"), manifest, `${PAYLOAD_ROOT}/acp/attachments`);
 }
 
-async function maybeApplySettings(home: string, root: string, manifest: BackupManifest, importCredentials: boolean, password?: string): Promise<void> {
-  let credentialFiles: Record<string, unknown> = {};
-  if (importCredentials && manifest.credentialsEncrypted) {
-    if (!password) throw new Error("A password is required to import API keys.");
-    credentialFiles = await decryptCredentials(await fsp.readFile(path.join(root, CREDENTIALS_PATH)), password);
-  }
+/**
+ * Apply the archived settings files.
+ *
+ * Backups no longer carry API keys, so this never imports credentials: the
+ * exported JSON has them stripped, and `preserveCredentials` keeps whatever the
+ * local machine already has.
+ */
+async function maybeApplySettings(home: string, root: string, manifest: BackupManifest): Promise<void> {
   for (const name of ["settings.json", "settings.desktop.json"]) {
     const source = path.join(root, PAYLOAD_ROOT, name);
     if (!(await exists(source))) continue;
@@ -866,11 +1209,6 @@ async function maybeApplySettings(home: string, root: string, manifest: BackupMa
     const target = path.join(home, name);
     const targetStat = await fsp.stat(target).catch(() => undefined);
     if (targetStat && metadata && targetStat.mtimeMs > metadata.mtimeMs) continue;
-    const original = credentialFiles[name];
-    if (original) {
-      await fsp.writeFile(target, `${JSON.stringify(original, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-      continue;
-    }
     try {
       const imported = JSON.parse(await fsp.readFile(source, "utf8")) as unknown;
       const existing = await fsp.readFile(target, "utf8").then((raw) => JSON.parse(raw) as unknown).catch(() => undefined);
@@ -891,6 +1229,30 @@ async function replaceFile(source: string, destination: string): Promise<void> {
   await fsp.rename(temp, destination);
 }
 
+/**
+ * Delete what the backup would have written, leaving excluded subtrees alone.
+ * Rolling back must not take a task's worktrees with it.
+ */
+async function clearArchiveDirectory(destination: string, exclude: string[] = []): Promise<void> {
+  if (!(await exists(destination))) return;
+  const rows = await fsp.readdir(destination, { withFileTypes: true });
+  const excluded = new Set(exclude);
+  for (const row of rows) {
+    if (isExcludedPath([row.name], excluded)) continue;
+    const target = path.join(destination, row.name);
+    if (excluded.size && row.isDirectory()) {
+      const nested = exclude
+        .filter((entry) => entry.startsWith(`${row.name}/`))
+        .map((entry) => entry.slice(row.name.length + 1));
+      if (nested.length) {
+        await clearArchiveDirectory(target, nested);
+        continue;
+      }
+    }
+    await fsp.rm(target, { recursive: true, force: true });
+  }
+}
+
 async function restoreRecovery(settings: PanelSettings, recoveryFile: string): Promise<void> {
   const extracted = await extractArchive(recoveryFile);
   try {
@@ -899,11 +1261,11 @@ async function restoreRecovery(settings: PanelSettings, recoveryFile: string): P
     const payload = path.join(extracted.root, PAYLOAD_ROOT);
     await replaceFile(path.join(payload, "catalog.db"), paths.catalogDb);
     await replaceFile(path.join(payload, ".desktop", "desktop.db"), paths.desktopDb);
-    for (const relative of ["notes", "acp", ".desktop/scratch"]) {
-      const source = path.join(payload, relative);
-      const destination = path.join(home, relative);
-      await fsp.rm(destination, { recursive: true, force: true });
-      if (await exists(source)) await fsp.cp(source, destination, { recursive: true, dereference: false });
+    for (const entry of ARCHIVE_DIRECTORIES) {
+      // Clear with the same exclusions the archive used, then copy back through
+      // the same filter so a rollback never restores an excluded subtree.
+      await clearArchiveDirectory(path.join(home, ...entry.relative.split("/")), entry.exclude);
+      await copyArchiveEntry(payload, home, entry);
     }
   } finally {
     await fsp.rm(extracted.root, { recursive: true, force: true });
@@ -1143,9 +1505,83 @@ function isCompactGrokFile(relative: string): boolean {
   return name === "summary.json" || name === "chat_history.jsonl";
 }
 
+/** `updated_at_ms` from a Thunder conversation or index entry; 0 when absent. */
+function thunderTimestamp(value: unknown): number {
+  if (!value || typeof value !== "object") return 0;
+  const raw = (value as { updated_at_ms?: unknown }).updated_at_ms;
+  const parsed = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function readJsonFile(file: string): Promise<unknown> {
+  try {
+    return JSON.parse(await fsp.readFile(file, "utf8")) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Thunder conversations are whole-file JSON documents, so newer wins by the
+ * document's own `updated_at_ms` rather than by file mtime.
+ */
+async function mergeThunderConversation(source: string, destination: string, journal: NativeRecoveryJournal, warnings: string[]): Promise<void> {
+  const incoming = await readJsonFile(source);
+  if (!incoming || typeof incoming !== "object") {
+    warnings.push(`Skipped an unreadable Thunder conversation: ${path.basename(path.dirname(destination))}.`);
+    return;
+  }
+  const existing = await readJsonFile(destination);
+  if (existing && thunderTimestamp(existing) > thunderTimestamp(incoming)) {
+    warnings.push(`Kept newer local Thunder conversation: ${path.basename(path.dirname(destination))}.`);
+    return;
+  }
+  await journal.capture(destination);
+  await copyAtomically(source, destination);
+}
+
+/**
+ * `index.json` is an id → summary map. Merge as a union: keep local-only
+ * sessions, and take whichever side has the newer `updated_at_ms` per id.
+ */
+async function mergeThunderIndex(source: string, destination: string, journal: NativeRecoveryJournal): Promise<void> {
+  const incoming = await readJsonFile(source);
+  const existing = await readJsonFile(destination);
+  const incomingMap = normalizeThunderIndex(incoming);
+  const existingMap = normalizeThunderIndex(existing);
+  if (!incomingMap) return;
+  const merged: Record<string, unknown> = { ...(existingMap ?? {}) };
+  for (const [id, entry] of Object.entries(incomingMap)) {
+    const current = merged[id];
+    if (!current || thunderTimestamp(entry) >= thunderTimestamp(current)) merged[id] = entry;
+  }
+  const output = `${JSON.stringify(merged, null, 2)}\n`;
+  const currentText = existingMap ? await fsp.readFile(destination, "utf8").catch(() => "") : "";
+  if (currentText && JSON.stringify(existingMap, null, 2) + "\n" === output) return;
+  if (!Object.keys(merged).length) return;
+  await journal.capture(destination);
+  await fsp.mkdir(path.dirname(destination), { recursive: true });
+  await fsp.writeFile(destination, output, { encoding: "utf8", mode: 0o600 });
+}
+
+/** Accept both the map form and the array form seen in older Thunder builds. */
+function normalizeThunderIndex(value: unknown): Record<string, unknown> | undefined {
+  if (Array.isArray(value)) {
+    const output: Record<string, unknown> = {};
+    for (const entry of value) {
+      const id = (entry as { id?: unknown })?.id;
+      if (typeof id === "string" && id) output[id] = entry;
+    }
+    return output;
+  }
+  if (value && typeof value === "object") return { ...(value as Record<string, unknown>) };
+  return undefined;
+}
+
 async function mergeNativeConversations(settings: PanelSettings, root: string, manifest: BackupManifest, journal: NativeRecoveryJournal): Promise<string[]> {
   if (!manifest.nativeConversations?.fileCount) return [];
   const homes = resolvePreviewHomes(settings);
+  const thunderRoot = thunderConversationsDir();
   const providerHomes: Record<Exclude<NativeConversationProvider, "cursor-ide">, string> = {
     codex: homes.codexHome,
     claude: homes.claudeHome,
@@ -1155,7 +1591,8 @@ async function mergeNativeConversations(settings: PanelSettings, root: string, m
     pi: homes.piHome,
     prime: homes.primeHome,
     omp: homes.ompHome,
-    cursor: homes.cursorHome
+    cursor: homes.cursorHome,
+    thunder: thunderRoot
   };
   const warnings: string[] = [...manifest.nativeConversations.warnings];
   const openCodeSources: string[] = [];
@@ -1166,11 +1603,22 @@ async function mergeNativeConversations(settings: PanelSettings, root: string, m
     const source = path.join(root, ...metadata.path.split("/"));
     if (!(await exists(source))) throw new Error(`Native conversation file is missing: ${metadata.path}`);
     const home = providerHomes[parsed.provider];
-    const destination = path.join(home, ...parsed.relative.split("/"));
+    // Thunder's archive groups sessions under `sessions/`; the live store keeps
+    // `<id>/conversation.json` directly under the conversations root.
+    const liveRelative = parsed.provider === "thunder"
+      ? parsed.relative.replace(/^sessions\//, "")
+      : parsed.relative;
+    const destination = path.join(home, ...liveRelative.split("/"));
     assertPathWithin(home, destination);
     if (parsed.provider === "opencode") {
       if (parsed.relative === "opencode.db" || /^shards\/\d{4}\.db$/.test(parsed.relative)) openCodeSources.push(source);
       else warnings.push("Skipped an unsupported OpenCode native file.");
+    } else if (parsed.provider === "thunder") {
+      // Only the two collected shapes are valid; anything else is ignored so a
+      // hand-crafted archive cannot write arbitrary files into the store.
+      if (parsed.relative === "index.json") await mergeThunderIndex(source, destination, journal);
+      else if (/^sessions\/[^/]+\/conversation\.json$/.test(parsed.relative)) await mergeThunderConversation(source, destination, journal, warnings);
+      else warnings.push("Skipped an unsupported Thunder native file.");
     } else if (parsed.provider === "grok" && !isCompactGrokFile(parsed.relative)) {
       ignoredLegacyGrokHistory = true;
     } else if (parsed.provider === "codex" && parsed.relative === "session_index.jsonl") {
@@ -1222,16 +1670,30 @@ async function prepareBackupForImport(file: string, password?: string): Promise<
   return previewFromManifest(token, extracted.manifest);
 }
 
-export async function getBackupStorageTargetStatus(): Promise<BackupStorageTargetStatus[]> {
-  return Promise.all(Object.values(storageProviders).map((provider) => provider.status()));
+/** Status of every target. A WebDAV target is only "available" once configured. */
+export async function getBackupStorageTargetStatus(ctx: ManagedBackupContext): Promise<BackupStorageTargetStatus[]> {
+  const targets: BackupStorageTarget[] = ["local-file", "icloud-drive", "webdav"];
+  return Promise.all(targets.map(async (target) => {
+    // "Not configured" is a normal state the UI has its own wording for; only a
+    // stored configuration that cannot be used carries a reason.
+    if (target === "webdav" && !ctx.webdav) {
+      return { target, available: false, ...(ctx.webdavError ? { reason: ctx.webdavError } : {}) };
+    }
+    try {
+      return await storageProvider(target, ctx).status();
+    } catch (error) {
+      return { target, available: false, reason: error instanceof Error ? error.message : String(error) };
+    }
+  }));
 }
 
-export async function listIcloudBackups(): Promise<BackupStoredItem[]> {
-  return storageProviders["icloud-drive"].list();
+/** Backups stored by a managed target. `local-file` has no list. */
+export async function listStoredBackups(ctx: ManagedBackupContext, target: BackupStorageTarget): Promise<BackupStoredItem[]> {
+  if (target === "local-file") return [];
+  return storageProvider(target, ctx).list();
 }
 
 export async function exportBackup(settings: PanelSettings, destination: string, appVersion: string, options: Omit<BackupCreateOptions, "target">): Promise<BackupResult> {
-  if (options.includeCredentials && !options.password) throw new Error("A password is required when including API keys.");
   return withExclusive(async () => {
     await cleanupTemporaryBackups();
     const result = (await createArchive(settings, destination, appVersion, options)).result;
@@ -1240,39 +1702,37 @@ export async function exportBackup(settings: PanelSettings, destination: string,
   });
 }
 
-export async function exportIcloudBackup(settings: PanelSettings, appVersion: string, options: Omit<BackupCreateOptions, "target">): Promise<BackupResult> {
-  if (!options.password) throw new Error("A password is required for an encrypted iCloud backup.");
+/**
+ * Build an archive and hand it to a managed target (iCloud Drive or WebDAV).
+ *
+ * The archive is a plain ZIP: backups are no longer encrypted, so no password is
+ * involved. Old `.arbak` files stay readable through `selectStoredBackupForImport`.
+ */
+export async function exportStoredBackup(
+  ctx: ManagedBackupContext,
+  target: Exclude<BackupStorageTarget, "local-file">,
+  appVersion: string,
+  options: Omit<BackupCreateOptions, "target">
+): Promise<BackupResult> {
   return withExclusive(async () => {
     await cleanupTemporaryBackups();
-    const provider = storageProviders["icloud-drive"];
-    const stage = await fsp.mkdtemp(path.join(os.tmpdir(), "agent-resume-icloud-"));
+    const provider = storageProvider(target, ctx);
+    const stage = await fsp.mkdtemp(path.join(os.tmpdir(), "agent-resume-managed-"));
     try {
       const zip = path.join(stage, "backup.zip");
-      const built = await createArchive(settings, zip, appVersion, options);
-      reportProgress(options.onProgress, "export", "archiving", 88);
-      const stat = await fsp.stat(zip);
-      const native = built.manifest.nativeConversations;
+      const built = await createArchive(ctx.settings, zip, appVersion, options);
+      reportProgress(options.onProgress, "export", "archiving", 85);
       const sourceMachineId = built.manifest.sourceMachineId || await getMachineId();
       const itemId = built.manifest.backupId || backupId();
-      const fileName = `agent-resume-${utcFileTime(new Date(built.manifest.createdAtMs))}-${sourceMachineId}-${itemId}.arbak`;
-      const storedPath = await provider.publish({
+      const fileName = `agent-resume-${utcFileTime(new Date(built.manifest.createdAtMs))}-${sourceMachineId}-${itemId}.zip`;
+      const published = await provider.publish({
         fileName,
-        write: (partial) => encryptArbak(zip, partial, {
-          backupId: itemId,
-          createdAtMs: built.manifest.createdAtMs,
-          sourceMachineId,
-          appVersion: built.manifest.appVersion,
-          plaintextBytes: stat.size,
-          fileCount: built.manifest.files.length,
-          nativeConversationFileCount: native?.fileCount ?? 0,
-          nativeConversationBytes: native?.totalBytes ?? 0,
-          providers: native?.providers ?? []
-        }, options.password || "")
+        write: (partial) => fsp.copyFile(zip, partial),
+        onProgress: options.onProgress
       });
-      await pruneIcloudBackups(provider, sourceMachineId);
-      const header = await readArbakHeader(storedPath);
+      await pruneManagedBackups(provider, sourceMachineId);
       reportProgress(options.onProgress, "export", "complete", 100);
-      return { ...built.result, file: storedPath, storedItem: storedItemFromHeader(path.basename(storedPath), header.header) };
+      return { ...built.result, file: published.file, storedItem: published.item };
     } finally {
       await fsp.rm(stage, { recursive: true, force: true });
     }
@@ -1283,10 +1743,30 @@ export async function selectBackupForImport(file: string, password?: string): Pr
   return withExclusive(async () => prepareBackupForImport(file, password));
 }
 
-export async function selectIcloudBackupForImport(backupIdValue: string, password: string): Promise<BackupPreview> {
+/**
+ * Download a managed backup and stage it for import. `password` is only needed
+ * for `.arbak` files written by older releases.
+ */
+export async function selectStoredBackupForImport(
+  ctx: ManagedBackupContext,
+  target: Exclude<BackupStorageTarget, "local-file">,
+  backupIdValue: string,
+  password?: string,
+  onProgress?: (event: BackupProgressEvent) => void
+): Promise<BackupPreview> {
+  if (!/^[a-f0-9]{32}$/i.test(backupIdValue)) throw new Error("A valid backup id is required.");
   return withExclusive(async () => {
-    const file = await storageProviders["icloud-drive"].read(backupIdValue);
-    return prepareBackupForImport(file, password);
+    const provider = storageProvider(target, ctx);
+    const file = await provider.read(backupIdValue, onProgress);
+    try {
+      return await prepareBackupForImport(file, password);
+    } finally {
+      // WebDAV downloads into a temp directory; iCloud returns the stored file
+      // itself, which must survive. Only sweep paths this process created.
+      if (path.resolve(file).startsWith(`${path.resolve(os.tmpdir())}${path.sep}`)) {
+        await fsp.rm(path.dirname(file), { recursive: true, force: true });
+      }
+    }
   });
 }
 
@@ -1301,7 +1781,7 @@ export async function importBackup(settings: PanelSettings, importToken: string,
     const home = effectivePanelHome(settings);
     const recoveryFile = path.join(options.recoveryDir, `before-import-${new Date().toISOString().replaceAll(":", "-")}.zip`);
     await fsp.mkdir(options.recoveryDir, { recursive: true });
-    const recovery = await createArchive(settings, recoveryFile, appVersion, { includeCredentials: false, includeNativeConversations: false });
+    const recovery = await createArchive(settings, recoveryFile, appVersion, { includeNativeConversations: false });
     reportProgress(options.onProgress, "import", "snapshotting", 20);
     const originalSettings = new Map<string, Buffer>();
     for (const name of ["settings.json", "settings.desktop.json"]) {
@@ -1320,9 +1800,13 @@ export async function importBackup(settings: PanelSettings, importToken: string,
       await mergeTree(path.join(payload, "notes"), path.join(home, "notes"), pending.manifest, `${PAYLOAD_ROOT}/notes`);
       await cleanupRemovedSessionExecutionNotes({ ...paths, panelHome: home, sourceDesktopDbs: [path.join(payload, ".desktop", "desktop.db")] });
       await mergeTree(path.join(payload, ".desktop", "scratch"), path.join(home, ".desktop", "scratch"), pending.manifest, `${PAYLOAD_ROOT}/.desktop/scratch`);
+      await mergeTree(path.join(payload, "templates"), path.join(home, "templates"), pending.manifest, `${PAYLOAD_ROOT}/templates`);
+      // The payload never contains the excluded runtime subtrees, so a plain
+      // merge cannot bring `.worktrees` or `.arp/{run,tmp}` across.
+      await mergeTree(path.join(payload, ".desktop", "workspaces"), path.join(home, ".desktop", "workspaces"), pending.manifest, `${PAYLOAD_ROOT}/.desktop/workspaces`);
       await mergeAcp(path.join(payload, "acp"), path.join(home, "acp"), pending.manifest);
       reportProgress(options.onProgress, "import", "merging", 65);
-      await maybeApplySettings(home, pending.root, pending.manifest, options.includeCredentials, options.password);
+      await maybeApplySettings(home, pending.root, pending.manifest);
       reportProgress(options.onProgress, "import", "collecting", 75);
       const warnings = options.restoreNativeConversations ? await mergeNativeConversations(settings, pending.root, pending.manifest, journal) : pending.manifest.nativeConversations?.fileCount ? ["Native Agent conversations were not restored."] : [];
       reportProgress(options.onProgress, "import", "finalizing", 92);

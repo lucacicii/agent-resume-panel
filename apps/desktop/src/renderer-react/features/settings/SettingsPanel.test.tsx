@@ -562,6 +562,20 @@ describe("SettingsPanel (window)", () => {
     expect(host.querySelector("select.settings-row-control")).toBeNull();
   });
 
+  it("scrolls the Backup pane inside the pane body so a short window can reach the bottom", async () => {
+    const { host } = renderWindowSettings("backup", {
+      backupTargetStatus: vi.fn(async () => [{ target: "local-file", available: true }]),
+      backupWebdavGetConfig: vi.fn(async () => ({ url: "", username: "", folder: "", hasPassword: false }))
+    });
+    await waitFor(() => expect(host.querySelector(".react-settings-panel")).not.toBeNull());
+    // Without this wrapper the pane clips its content instead of scrolling it.
+    const body = host.querySelector(".settings-pane-body");
+    expect(body).not.toBeNull();
+    expect(body!.querySelector(".settings-group")).not.toBeNull();
+    // The pane itself stays a non-scrolling flex column; the body owns the scroll.
+    expect(host.querySelector(".settings-pane")).not.toBeNull();
+  });
+
   it("reorders selection actions from the Selection settings list", async () => {
     const actions = [
       {
