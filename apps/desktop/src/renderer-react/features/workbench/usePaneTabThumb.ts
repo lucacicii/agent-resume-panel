@@ -13,9 +13,15 @@ const HIDDEN_THUMB: PaneTabThumb = { x: 0, width: 0, visible: false };
  */
 export function usePaneTabThumb(
   activeKey: string,
-  tabCount: number
+  tabCount: number,
+  /**
+   * When the caller owns the list ref (so only a small child re-renders on
+   * every measured frame), hand it in instead of using the internal one.
+   */
+  externalListRef?: RefObject<HTMLDivElement | null>
 ): { listRef: RefObject<HTMLDivElement | null>; thumb: PaneTabThumb } {
-  const listRef = useRef<HTMLDivElement | null>(null);
+  const ownListRef = useRef<HTMLDivElement | null>(null);
+  const listRef = externalListRef ?? ownListRef;
   const [thumb, setThumb] = useState<PaneTabThumb>(HIDDEN_THUMB);
 
   const measure = useCallback(() => {

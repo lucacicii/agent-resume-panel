@@ -190,11 +190,10 @@
   --wb-terminal-surface: rgba(245, 245, 247, 0.88);
   --wb-terminal-tab-active-label: rgba(0, 0, 0, 0.88);
 
-  /* Recessed tab-group track: a top inner shadow for the well and a bottom
-     highlight where the well meets the strip surface. */
-  --wb-tab-track-base: rgba(0, 0, 0, 0.1);
-  --wb-tab-track-inset: inset 0 2px 4px rgba(0, 0, 0, 0.22);
-  --wb-tab-track-edge: inset 0 -1px 0 rgba(255, 255, 255, 0.85);
+  /* Flat tab-group surface: only a hue tint and a same-hue hairline, no depth.
+     Percentages so each group's --wb-tab-accent decides the actual colour. */
+  --wb-tab-tint: 12%;
+  --wb-tab-line: 30%;
 
   /* Workbench git graph lanes */
   --wb-git-lane-0: #007aff;
@@ -260,9 +259,8 @@
   --shadow-segment-thumb: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
   --wb-terminal-surface: rgba(245, 245, 247, 0.88);
   --wb-terminal-tab-active-label: rgba(0, 0, 0, 0.88);
-  --wb-tab-track-base: rgba(0, 0, 0, 0.1);
-  --wb-tab-track-inset: inset 0 2px 4px rgba(0, 0, 0, 0.22);
-  --wb-tab-track-edge: inset 0 -1px 0 rgba(255, 255, 255, 0.85);
+  --wb-tab-tint: 12%;
+  --wb-tab-line: 30%;
 
   /* Markdown Typography & Element Colors (Light Mode) */
   --color-md-h1: #111827;
@@ -331,9 +329,8 @@
   --shadow-segment-thumb: 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
   --wb-terminal-surface: rgba(30, 30, 30, 0.88);
   --wb-terminal-tab-active-label: rgba(255, 255, 255, 0.88);
-  --wb-tab-track-base: rgba(0, 0, 0, 0.38);
-  --wb-tab-track-inset: inset 0 2px 5px rgba(0, 0, 0, 0.65);
-  --wb-tab-track-edge: inset 0 -1px 0 rgba(255, 255, 255, 0.12);
+  --wb-tab-tint: 18%;
+  --wb-tab-line: 40%;
 
   /* Markdown Typography & Element Colors (Dark Mode) */
   --color-md-h1: #ffffff;
@@ -483,9 +480,8 @@ html[data-theme="dark"][data-task-accent] {
     --shadow-segment-thumb: 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
     --wb-terminal-surface: rgba(30, 30, 30, 0.88);
     --wb-terminal-tab-active-label: rgba(255, 255, 255, 0.88);
-    --wb-tab-track-base: rgba(0, 0, 0, 0.38);
-    --wb-tab-track-inset: inset 0 2px 5px rgba(0, 0, 0, 0.65);
-    --wb-tab-track-edge: inset 0 -1px 0 rgba(255, 255, 255, 0.12);
+    --wb-tab-tint: 18%;
+    --wb-tab-line: 40%;
 
     /* Markdown Typography & Element Colors (Dark Mode system preference) */
     --color-md-h1: #ffffff;
@@ -9171,12 +9167,14 @@ body.is-pane-resizing-v * {
   display: none;
 }
 
-/* Each group is one hue-tinted, recessed well holding its action label,
-   optional worktree control, and tabs. The active tab is the only raised
-   segment inside it. The well is 30px tall with a 3px inset, so the inner
-   shadow and bottom highlight have room to read as depth. */
+/* Each group is one hue-tinted, completely flat surface holding its action
+   label, optional worktree control, and tabs: a tint plus a same-hue hairline,
+   with no inner shadow or highlight. Inactive tabs are narrower than their
+   titles and expand on hover, so the group carries the two width bounds. */
 .wb-terminal-tabs {
   --wb-tab-accent: var(--color-label-secondary);
+  --wb-tab-collapsed-w: 112px;
+  --wb-tab-expanded-w: 240px;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -9185,10 +9183,8 @@ body.is-pane-resizing-v * {
   padding: 3px;
   border-bottom: none;
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--wb-tab-accent) 16%, var(--wb-tab-track-base));
-  box-shadow: var(--wb-tab-track-inset),
-              var(--wb-tab-track-edge),
-              inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 30%, transparent);
+  background: color-mix(in srgb, var(--wb-tab-accent) var(--wb-tab-tint), transparent);
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) var(--wb-tab-line), transparent);
   overflow: hidden;
   flex-shrink: 0;
   transition: background var(--duration-fast) var(--ease-out),
@@ -9237,13 +9233,11 @@ body.is-pane-resizing-v * {
   --wb-tab-accent: var(--color-teal);
 }
 
-/* The well holding the active pane gains tint; the depth shadows stay so the
-   group keeps reading as inset. The label itself stays flat. */
+/* The group holding the active pane gains tint and a firmer hairline; it still
+   stays flat. The label itself is untouched. */
 .wb-terminal-tabs:has(.wb-terminal-tab.active) {
-  background: color-mix(in srgb, var(--wb-tab-accent) 22%, var(--wb-tab-track-base));
-  box-shadow: var(--wb-tab-track-inset),
-              var(--wb-tab-track-edge),
-              inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 42%, transparent);
+  background: color-mix(in srgb, var(--wb-tab-accent) calc(var(--wb-tab-tint) + 6%), transparent);
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) calc(var(--wb-tab-line) + 12%), transparent);
 }
 
 .wb-pane-tab-group-count {
@@ -9317,9 +9311,8 @@ body.is-pane-resizing-v * {
   left: 0;
   height: 100%;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--wb-tab-accent) 10%, var(--color-control-bg));
-  box-shadow: var(--shadow-segment-thumb),
-              inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--wb-tab-accent) 8%, var(--color-control-bg));
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 34%, transparent);
   pointer-events: none;
   z-index: 0;
   will-change: transform;
@@ -9330,8 +9323,11 @@ body.is-pane-resizing-v * {
   .wb-terminal-tabs,
   .wb-pane-tab-thumb,
   .wb-terminal-tab,
+  .wb-terminal-tab-close,
+  .wb-tab-preview,
   button.wb-pane-tab-group-label {
     transition: none;
+    animation: none;
   }
 }
 
@@ -9374,14 +9370,17 @@ button.wb-pane-tab-group-label.is-busy {
   pointer-events: none;
 }
 
-/* Tab item; the slider painted by .wb-pane-tab-thumb carries the fill. */
+/* Tab item; the slider painted by .wb-pane-tab-thumb carries the fill.
+   An inactive tab is capped below its natural width so its title ellipsizes;
+   hover, focus or activation expands it. width:max-content cannot be
+   interpolated, so the cap is what animates. */
 .wb-terminal-tab {
   display: flex;
   align-items: center;
   gap: 0;
   min-width: 0;
   width: max-content;
-  max-width: 200px;
+  max-width: var(--wb-tab-collapsed-w);
   height: 100%;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -9389,11 +9388,21 @@ button.wb-pane-tab-group-label.is-busy {
   position: relative;
   z-index: 1;
   flex-shrink: 0;
-  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+  transition: max-width var(--duration-normal) var(--ease-out),
+              background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
 }
 
+.wb-terminal-tab.active,
+.wb-terminal-tab:hover,
+.wb-terminal-tab:has(.wb-terminal-tab-label:focus-visible) {
+  max-width: var(--wb-tab-expanded-w);
+}
+
+/* Chrome-like hover: a neutral wash tinted with the group hue, so it stays
+   distinguishable from the slider under the active tab. */
 .wb-terminal-tab:hover:not(.active) {
-  background: color-mix(in srgb, var(--wb-tab-accent) 9%, transparent);
+  background: color-mix(in srgb, var(--wb-tab-accent) 10%, var(--color-fill-secondary));
 }
 
 .wb-terminal-tab.active {
@@ -9417,12 +9426,20 @@ button.wb-pane-tab-group-label.is-busy {
   font-size: var(--font-size-body);
   line-height: 1;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1 1 auto;
   min-width: 0;
   text-align: left;
-  display: block;
+}
+
+/* The label is inline-flex (see the alignment rule further down), which cannot
+   ellipsize text itself; the title span is the block that does. */
+.wb-terminal-tab-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wb-terminal-tab-label svg,
@@ -9459,11 +9476,11 @@ button.wb-pane-tab-group-label.is-busy {
 .wb-terminal-tab-close {
   appearance: none;
   color: var(--color-label-tertiary);
-  width: 24px;
-  min-width: 24px;
+  width: 0;
+  min-width: 0;
   height: 24px;
   align-self: center;
-  margin-right: var(--space-0-5);
+  margin-right: 0;
   border: none;
   background: transparent;
   border-radius: var(--radius-sm);
@@ -9473,22 +9490,30 @@ button.wb-pane-tab-group-label.is-busy {
   display: grid;
   place-items: center;
   padding: 0;
-  transition: opacity var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+  overflow: hidden;
+  transition: width var(--duration-fast) var(--ease-out),
+              min-width var(--duration-fast) var(--ease-out),
+              margin-right var(--duration-fast) var(--ease-out),
+              opacity var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
 }
 
+/* The action stays in the DOM at zero width so tests and keyboard users keep
+   it; it only takes room while the tab is showing its full title. */
 .wb-terminal-tab:hover .wb-terminal-tab-close,
-.wb-terminal-tab.active .wb-terminal-tab-close {
+.wb-terminal-tab.active .wb-terminal-tab-close,
+.wb-terminal-tab:has(.wb-terminal-tab-label:focus-visible) .wb-terminal-tab-close,
+.wb-terminal-tab-close:focus-visible {
+  width: 24px;
+  min-width: 24px;
+  margin-right: var(--space-0-5);
   opacity: 1;
 }
 
 .wb-terminal-tab-close:hover {
   background: var(--color-fill-secondary);
   color: var(--color-label-primary);
-}
-
-.wb-terminal-tab:hover .wb-terminal-tab-close,
-.wb-terminal-tab.active .wb-terminal-tab-close {
-  opacity: 1;
 }
 
 .wb-terminal-tab.active .wb-terminal-tab-close {
@@ -9520,6 +9545,130 @@ button.wb-pane-tab-group-label.is-busy {
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* Delayed hover snapshot for an inactive pane tab. Portaled to the body, so
+   neither the strip's overflow nor the detail body's can clip it. The top
+   padding is a transparent bridge to the tab, keeping the pointer inside. */
+.wb-tab-preview {
+  position: fixed;
+  z-index: 400;
+  width: 340px;
+  pointer-events: auto;
+  padding-top: 6px;
+  animation: mac-popover-enter var(--duration-fast) var(--ease-out);
+}
+
+.wb-tab-preview.is-above {
+  padding-top: 0;
+  padding-bottom: 6px;
+}
+
+.wb-tab-preview-inner {
+  display: flex;
+  flex-direction: column;
+  max-height: 280px;
+  padding: var(--space-2) 0 0;
+  border-radius: var(--radius-lg);
+  background: var(--color-elevated-bg);
+  box-shadow: var(--shadow-popover);
+  color: var(--color-label-primary);
+  font-size: var(--font-size-body);
+  overflow: hidden;
+}
+
+.wb-tab-preview-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-width: 0;
+  padding: 0 var(--space-3) var(--space-1-5);
+  border-bottom: 0.5px solid var(--color-separator);
+}
+
+.wb-tab-preview-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wb-tab-accent, var(--color-accent));
+}
+
+.wb-tab-preview-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: var(--font-weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-tab-preview-meta {
+  flex: 0 1 auto;
+  max-width: 46%;
+  font-size: var(--font-size-micro);
+  color: var(--color-label-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-tab-preview-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--space-2) var(--space-3) var(--space-3);
+}
+
+.wb-tab-preview-screen {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre;
+  overflow: hidden;
+  color: var(--color-label-primary);
+}
+
+.wb-tab-preview-msg {
+  display: flex;
+  gap: var(--space-1-5);
+  margin-bottom: var(--space-1-5);
+}
+
+.wb-tab-preview-role {
+  flex: 0 0 auto;
+  font-size: var(--font-size-micro);
+  color: var(--color-label-tertiary);
+}
+
+.wb-tab-preview-text {
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
+
+.wb-tab-preview-counts {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+}
+
+.wb-tab-preview-counts .is-add {
+  color: var(--color-success);
+}
+
+.wb-tab-preview-counts .is-del {
+  color: var(--color-destructive);
+}
+
+.wb-tab-preview-empty {
+  color: var(--color-label-tertiary);
 }
 
 .wb-terminal-stack {
