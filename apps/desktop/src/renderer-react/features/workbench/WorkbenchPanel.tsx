@@ -133,7 +133,9 @@ import {
   WorktreeSelector
 } from "./git/GitGraphView";
 import { useTaskWorktrees, type CheckoutScope } from "./git/useTaskWorktrees";
-import { usePaneTabThumb } from "./usePaneTabThumb";
+import { PaneTabThumb } from "./PaneTabThumb";
+import { useTabPreview } from "./tabPreview/useTabPreview";
+import type { TabPreviewTarget } from "./tabPreview/types";
 import { useWorktreeCleanup } from "./git/useWorktreeCleanup";
 import { useWorktreeReminders } from "./git/useWorktreeReminders";
 import { TaskSettingsSheet } from "./TaskSettingsSheet";
@@ -622,6 +624,87 @@ function sessionTabTitle(
 function sessionTabDot(status: SessionDotStatus | undefined): ReactNode {
   if (!status || status === "open") return null;
   return <span className={`session-dot${sessionDotStatusClass(status)}`} aria-hidden="true" />;
+}
+
+/** Hover-preview targets. Built at render time; live data is fetched lazily. */
+function sessionPreviewTarget(pane: TerminalPane, title: string): TabPreviewTarget {
+  const identity = sessionIdentityFromKey(pane.sessionKey);
+  return {
+    kind: "screen",
+    key: pane.key,
+    title,
+    meta: [identity?.provider, basename(pane.projectPath)].filter(Boolean).join(" · ") || undefined,
+    accent: "session",
+    ptyId: pane.ptyId,
+    session: identity ? { provider: identity.provider, id: identity.sessionId } : undefined
+  };
+}
+
+function terminalPreviewTarget(pane: TerminalPane): TabPreviewTarget {
+  return {
+    kind: "screen",
+    key: pane.key,
+    title: pane.title,
+    meta: basename(pane.cwd),
+    accent: "terminal",
+    ptyId: pane.ptyId
+  };
+}
+
+function acpPreviewTarget(pane: AcpChatPane, title: string): TabPreviewTarget {
+  return {
+    kind: "acp",
+    key: pane.key,
+    title,
+    meta: [pane.provider, basename(pane.projectPath)].filter(Boolean).join(" · ") || undefined,
+    accent: "session",
+    recordId: pane.recordId
+  };
+}
+
+function thunderPreviewTarget(pane: ThunderChatPane, title: string): TabPreviewTarget {
+  return {
+    kind: "thunder",
+    key: pane.key,
+    title,
+    meta: basename(pane.projectPath),
+    accent: "session",
+    sessionId: pane.sessionId
+  };
+}
+
+function editorPreviewTarget(pane: EditorPane): TabPreviewTarget {
+  return {
+    kind: "text",
+    key: pane.key,
+    title: `${pane.dirty ? "* " : ""}${basename(pane.path)}`,
+    meta: basename(pane.projectPath),
+    accent: "code",
+    text: pane.content,
+    mono: true
+  };
+}
+
+function diffPreviewTarget(pane: DiffPane): TabPreviewTarget {
+  return {
+    kind: "diff",
+    key: pane.key,
+    title: basename(pane.path),
+    meta: basename(pane.projectPath),
+    accent: "code",
+    oldText: pane.oldText,
+    newText: pane.newText
+  };
+}
+
+function notePreviewTarget(pane: NotePane, title: string): TabPreviewTarget {
+  return {
+    kind: "note",
+    key: pane.key,
+    title,
+    accent: "note",
+    noteId: pane.noteId
+  };
 }
 
 function formatDateTime(timestamp: number): string {
@@ -6592,19 +6675,20 @@ export function WorkbenchPanel(): ReactPortal | null {
   const terminalTabCount = currentShellTerminals.length;
   const codeTabCount = currentEditors.length + currentDiffs.length;
   const noteTabCount = currentNotePanes.length;
-  const sessionTabThumb = usePaneTabThumb(activePane, sessionTabCount);
-  const terminalTabThumb = usePaneTabThumb(activePane, terminalTabCount);
-  const codeTabThumb = usePaneTabThumb(activePane, codeTabCount);
-  const noteTabThumb = usePaneTabThumb(activePane, noteTabCount);
+  const sessionTabListRef = useRef<HTMLDivElement | null>(null);
+  const terminalTabListRef = useRef<HTMLDivElement | null>(null);
+  const codeTabListRef = useRef<HTMLDivElement | null>(null);
+  const noteTabListRef = useRef<HTMLDivElement | null>(null);
+  const tabPreview = useTabPreview();
 
   const paneTabGroups = <div className="wb-pane-tab-groups">
     <div className="wb-terminal-tabs is-session-group" data-pane-group="session">
       <button ref={newSessionButtonRef} type="button" className={`wb-pane-tab-group-label${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} aria-haspopup="menu" onClick={() => void newSession()}>{terminalCreating ? <ThemeIcon name="loader" className="spin" size={ICON_SIZE.dense} aria-hidden="true" /> : <ThemeIcon name="bot" size={ICON_SIZE.dense} aria-hidden="true" />}{sessionTabCount > 0 ? <span className="wb-pane-tab-group-count" aria-hidden="true">{sessionTabCount}</span> : null}</button>
-      <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupSession")} ref={sessionTabThumb.listRef}>
-        {sessionTabThumb.thumb.visible ? <span className="wb-pane-tab-thumb" aria-hidden="true" style={{ transform: `translateX(${sessionTabThumb.thumb.x}px)`, width: sessionTabThumb.thumb.width }} /> : null}
-        {currentSessionTerminals.map((pane) => <div className={`wb-terminal-tab is-session${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => sessionTabMenu(event, terminalSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ProviderIcon provider={sessionIdentityFromKey(pane.sessionKey)?.provider || ""} size={ICON_SIZE.dense} aria-hidden="true" />{sessionTabDot(sessionRuntimeByPaneKey.get(pane.key)?.status)}{sessionTabTitle(pane, sessionTitles)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
-        {currentAcpChats.map((pane) => <div className={`wb-terminal-tab is-session is-acp${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => sessionTabMenu(event, acpSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ProviderIcon provider={pane.provider} size={ICON_SIZE.dense} aria-hidden="true" />{sessionTabDot(sessionRuntimeByPaneKey.get(pane.key)?.status)}{sessionTabTitle(pane, sessionTitles)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeAcpChat")} onClick={() => closeAcpChat(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
-        {currentThunderChats.map((pane) => <div className={`wb-terminal-tab is-session is-thunder${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.uid}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ProviderIcon provider="thunder" size={ICON_SIZE.dense} aria-hidden="true" />{sessionTabDot(sessionRuntimeByPaneKey.get(pane.key)?.status)}{sessionTitles.get(pane.key)?.trim() || pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeThunderChat")} onClick={() => closeThunderChat(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
+      <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupSession")} ref={sessionTabListRef}>
+        <PaneTabThumb listRef={sessionTabListRef} activeKey={activePane} tabCount={sessionTabCount} />
+        {currentSessionTerminals.map((pane) => <div className={`wb-terminal-tab is-session${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} {...tabPreview.bind(activePane === pane.key ? null : sessionPreviewTarget(pane, sessionTabTitle(pane, sessionTitles)))} onContextMenu={(event) => sessionTabMenu(event, terminalSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ProviderIcon provider={sessionIdentityFromKey(pane.sessionKey)?.provider || ""} size={ICON_SIZE.dense} aria-hidden="true" />{sessionTabDot(sessionRuntimeByPaneKey.get(pane.key)?.status)}<span className="wb-terminal-tab-title">{sessionTabTitle(pane, sessionTitles)}</span></button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
+        {currentAcpChats.map((pane) => <div className={`wb-terminal-tab is-session is-acp${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} {...tabPreview.bind(activePane === pane.key ? null : acpPreviewTarget(pane, sessionTabTitle(pane, sessionTitles)))} onContextMenu={(event) => sessionTabMenu(event, acpSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ProviderIcon provider={pane.provider} size={ICON_SIZE.dense} aria-hidden="true" />{sessionTabDot(sessionRuntimeByPaneKey.get(pane.key)?.status)}<span className="wb-terminal-tab-title">{sessionTabTitle(pane, sessionTitles)}</span></button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeAcpChat")} onClick={() => closeAcpChat(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
+        {currentThunderChats.map((pane) => <div className={`wb-terminal-tab is-session is-thunder${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.uid} {...tabPreview.bind(activePane === pane.key ? null : thunderPreviewTarget(pane, sessionTitles.get(pane.key)?.trim() || pane.title))}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ProviderIcon provider="thunder" size={ICON_SIZE.dense} aria-hidden="true" />{sessionTabDot(sessionRuntimeByPaneKey.get(pane.key)?.status)}<span className="wb-terminal-tab-title">{sessionTitles.get(pane.key)?.trim() || pane.title}</span></button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeThunderChat")} onClick={() => closeThunderChat(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
       </div>
     </div>
     <div className="wb-terminal-tabs is-terminal-group" data-pane-group="terminal">
@@ -6612,24 +6696,24 @@ export function WorkbenchPanel(): ReactPortal | null {
       {/* Beside the new-terminal button, because that is what it decides: the
           folder the next terminal — and the next session — starts in. */}
       {worktreeControl("terminal", t("desktop.workbench.worktreeNewTerminalHint"))}
-      <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupTerminal")} ref={terminalTabThumb.listRef}>
-        {terminalTabThumb.thumb.visible ? <span className="wb-pane-tab-thumb" aria-hidden="true" style={{ transform: `translateX(${terminalTabThumb.thumb.x}px)`, width: terminalTabThumb.thumb.width }} /> : null}
-        {currentShellTerminals.map((pane) => <div className={`wb-terminal-tab is-terminal${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="terminal" size={ICON_SIZE.dense} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
+      <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupTerminal")} ref={terminalTabListRef}>
+        <PaneTabThumb listRef={terminalTabListRef} activeKey={activePane} tabCount={terminalTabCount} />
+        {currentShellTerminals.map((pane) => <div className={`wb-terminal-tab is-terminal${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} {...tabPreview.bind(activePane === pane.key ? null : terminalPreviewTarget(pane))}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="terminal" size={ICON_SIZE.dense} aria-hidden="true" /><span className="wb-terminal-tab-title">{pane.title}</span></button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
       </div>
     </div>
     {currentEditors.length || currentDiffs.length ? <div className="wb-terminal-tabs is-code-group" data-pane-group="code">
       <div className="wb-pane-tab-group-label" aria-label={t("desktop.workbench.tabGroupCode")} title={t("desktop.workbench.tabGroupCode")}><ThemeIcon name="file-code" size={ICON_SIZE.dense} aria-hidden="true" /><span className="wb-pane-tab-group-count" aria-hidden="true">{codeTabCount}</span></div>
-      <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupCode")} ref={codeTabThumb.listRef}>
-        {codeTabThumb.thumb.visible ? <span className="wb-pane-tab-thumb" aria-hidden="true" style={{ transform: `translateX(${codeTabThumb.thumb.x}px)`, width: codeTabThumb.thumb.width }} /> : null}
-        {currentEditors.map((pane) => <div className={`wb-terminal-tab is-editor${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => editorTabMenu(event, pane)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-code" size={ICON_SIZE.dense} aria-hidden="true" />{pane.dirty ? "* " : ""}{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeFile")} onClick={() => closeEditor(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
-        {currentDiffs.map((pane) => <div className={`wb-terminal-tab is-diff${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-diff" size={ICON_SIZE.dense} aria-hidden="true" />{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeDiff")} onClick={() => closeDiff(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
+      <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupCode")} ref={codeTabListRef}>
+        <PaneTabThumb listRef={codeTabListRef} activeKey={activePane} tabCount={codeTabCount} />
+        {currentEditors.map((pane) => <div className={`wb-terminal-tab is-editor${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} {...tabPreview.bind(activePane === pane.key ? null : editorPreviewTarget(pane))} onContextMenu={(event) => editorTabMenu(event, pane)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-code" size={ICON_SIZE.dense} aria-hidden="true" /><span className="wb-terminal-tab-title">{pane.dirty ? "* " : ""}{basename(pane.path)}</span></button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeFile")} onClick={() => closeEditor(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
+        {currentDiffs.map((pane) => <div className={`wb-terminal-tab is-diff${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} {...tabPreview.bind(activePane === pane.key ? null : diffPreviewTarget(pane))}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-diff" size={ICON_SIZE.dense} aria-hidden="true" /><span className="wb-terminal-tab-title">{basename(pane.path)}</span></button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeDiff")} onClick={() => closeDiff(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
       </div>
     </div> : null}
     <div className="wb-terminal-tabs is-note-group" data-pane-group="note">
       <button type="button" className="wb-pane-tab-group-label" aria-label={t("desktop.notes.newLinkedChild")} title={t("desktop.notes.newLinkedChild")} onClick={() => void addChildNote()}><ThemeIcon name="file-plus" size={ICON_SIZE.dense} aria-hidden="true" />{noteTabCount > 0 ? <span className="wb-pane-tab-group-count" aria-hidden="true">{noteTabCount}</span> : null}</button>
-      <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.notes.allNotes")} ref={noteTabThumb.listRef}>
-        {noteTabThumb.thumb.visible ? <span className="wb-pane-tab-thumb" aria-hidden="true" style={{ transform: `translateX(${noteTabThumb.thumb.x}px)`, width: noteTabThumb.thumb.width }} /> : null}
-        {currentNotePanes.map((pane) => <div className={`wb-terminal-tab is-note${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-text" size={ICON_SIZE.dense} aria-hidden="true" />{pane.dirty ? "* " : ""}{pane.title || t("desktop.common.loading")}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.common.close")} onClick={() => closeNotePane(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
+      <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.notes.allNotes")} ref={noteTabListRef}>
+        <PaneTabThumb listRef={noteTabListRef} activeKey={activePane} tabCount={noteTabCount} />
+        {currentNotePanes.map((pane) => <div className={`wb-terminal-tab is-note${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} {...tabPreview.bind(activePane === pane.key ? null : notePreviewTarget(pane, pane.title || t("desktop.common.loading")))}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-text" size={ICON_SIZE.dense} aria-hidden="true" /><span className="wb-terminal-tab-title">{pane.dirty ? "* " : ""}{pane.title || t("desktop.common.loading")}</span></button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.common.close")} onClick={() => closeNotePane(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
       </div>
     </div>
   </div>;
@@ -7888,5 +7972,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       onOpenFile={openQuickAccessFile}
       onOpenDirectory={openQuickAccessDirectory}
     />
+    {active ? tabPreview.card : null}
   </>, host);
 }
