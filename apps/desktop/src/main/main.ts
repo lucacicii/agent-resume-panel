@@ -158,6 +158,13 @@ import { currentAccentColor, subscribeAccentColorChange } from "./systemAccent";
 import { attachDefaultContextMenu, sanitizeContextMenuItems, showContextMenu } from "./contextMenu";
 import { confirmDialogOptions } from "./confirmDialog";
 import { loadStoredTaskWindows, saveStoredTaskWindows, taskWindowStatePath } from "./taskWindowStore";
+import { activationTarget } from "./activationTarget";
+import {
+  lastActiveWindowStatePath,
+  loadStoredActiveWindow,
+  saveStoredActiveWindow,
+  type StoredActiveWindow
+} from "./lastActiveWindowStore";
 import {
   disposeBrowserController,
   disposeBrowserMcpServer,
@@ -647,6 +654,12 @@ function applyAppIcon(): void {
 let mainWindow: BrowserWindow | null = null;
 let mainWindowReadyToShow = false;
 let mainWindowRendererReady = false;
+/** The window that last had focus, so a reopen can return to it instead of the board. */
+let lastActiveWindow: BrowserWindow | null = null;
+/** The window that was in front when the user left the app. */
+let windowBeforeDeactivation: BrowserWindow | null = null;
+/** The window the app focused on launch by itself, until restore finishes. */
+let launchFocusedWindow: BrowserWindow | null = null;
 let sessionDotsTray: Tray | null = null;
 let disposeAccentSubscription: (() => void) | null = null;
 /** Last settings read, so context menus and the menu bar share one locale. */
@@ -1036,6 +1049,43 @@ function revealMainWindow(): BrowserWindow | null {
   mainWindow.show();
   mainWindow.focus();
   return mainWindow;
+}
+
+/**
+ * The persisted identity of a window, or null for kinds that a launch does not
+ * restore (floating notes, standalone browser windows).
+ */
+function activationKeyForWindow(win: BrowserWindow): StoredActiveWindow | null {
+  if (win === mainWindow) return { kind: "board" };
+  const state = taskWindowStateForSender(win.webContents);
+  return state ? { kind: "task", workbenchId: state.workbenchId } : null;
+}
+
+/** Remember `win` for the next launch; kinds without an identity are ignored. */
+function persistLastActiveWindow(win: BrowserWindow): void {
+  // A workbench window opened by a session event shows itself without the user
+  // choosing it; restoring focus there next launch would override their choice.
+  if (win === launchFocusedWindow) return;
+  const key = activationKeyForWindow(win);
+  if (!key) return;
+  void loadPanelDbPaths()
+    .then((paths) => saveStoredActiveWindow(lastActiveWindowStatePath(paths.desktopDb), key))
+    .catch(() => undefined);
+}
+
+/**
+ * Bring `target` forward the way macOS expects a reopen to behave. A destroyed
+ * window falls back to the board, and the board itself goes through
+ * `revealMainWindow()` so a hidden board is recreated rather than shown dead.
+ */
+function revealWindow(target: BrowserWindow | null): void {
+  if (!target || target.isDestroyed() || target === mainWindow) {
+    revealMainWindow();
+    return;
+  }
+  if (target.isMinimized()) target.restore();
+  target.show();
+  target.focus();
 }
 
 /**
@@ -2221,6 +2271,9 @@ function persistOpenTaskWindows(): void {
 async function restoreTaskWindows(): Promise<void> {
   try {
     const paths = await loadPanelDbPaths();
+    // Read the remembered window before any restore: opening a window focuses it,
+    // which would overwrite the file with the wrong answer.
+    const lastActive = await loadStoredActiveWindow(lastActiveWindowStatePath(paths.desktopDb));
     const stored = await loadStoredTaskWindows(taskWindowStatePath(paths.desktopDb));
     for (const entry of stored) {
       if (openTaskWindowCount() >= MAX_TASK_WINDOWS) break;
@@ -2232,6 +2285,13 @@ async function restoreTaskWindows(): Promise<void> {
       // Stagger window restoration so Chromium processes do not compete for resources on startup
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
+    // Every restored window focuses itself once it is ready, so the last one opened
+    // would end up in front. Put back the window the user actually left.
+    const focused = BrowserWindow.getFocusedWindow();
+    const focusIsFromRestore = focused != null && listTaskWindows().some((state) => state.window === focused);
+    if (!focusIsFromRestore) return;
+    if (lastActive?.kind === "task" && focusTaskWindow(lastActive.workbenchId)) return;
+    revealMainWindow();
   } catch (error) {
     void recordAppError({ source: "task-window", message: "Could not restore workbench windows.", error });
   }
@@ -4110,6 +4170,23 @@ function registerIpc(): void {
 
 }
 
+/**
+ * Track which window the user is actually in, so a reopen can return there.
+ *
+ * The deactivation snapshot is taken rather than read live from `getFocusedWindow`
+ * because macOS may hand focus to a window on its own while the app becomes
+ * active again, which would answer "which window was in front before I left?"
+ * with the wrong one.
+ */
+app.on("browser-window-focus", (_event, win) => {
+  if (win.isDestroyed()) return;
+  lastActiveWindow = win;
+  persistLastActiveWindow(win);
+});
+app.on("did-resign-active", () => {
+  windowBeforeDeactivation = lastActiveWindow;
+});
+
 // Fail closed: never open a GUI instance when an outdated MCP client still passes
 // the removed --agent-resume-mcp flag (that path used to spawn Dock icons).
 if (process.argv.includes("--agent-resume-mcp")) {
@@ -4180,7 +4257,13 @@ app.whenReady().then(async () => {
   createWindow();
   void loadWorkbenchMeta();
   syncSessionDotsTray();
-  setTimeout(() => void restoreTaskWindows(), 1_000);
+  // A workbench window that launches unfocused (a session event opened it) must not
+  // be remembered as the last window — that would overwrite what the user left.
+  launchFocusedWindow = BrowserWindow.getFocusedWindow();
+  setTimeout(() => {
+    launchFocusedWindow = null;
+    void restoreTaskWindows();
+  }, 1_000);
   nativeTheme.on("updated", () => {
     syncSessionDotsTray();
     applyWindowBackgrounds();
@@ -4293,7 +4376,7 @@ app.whenReady().then(async () => {
       });
     }
   })();
-  app.on("activate", () => {
+  app.on("activate", (_event, hasVisibleWindows) => {
     if (!mainWindow || mainWindow.isDestroyed()) {
       createWindow();
       syncSessionDotsTray();
@@ -4305,7 +4388,12 @@ app.whenReady().then(async () => {
       void refreshMemorySchedulerFromSettings();
       return;
     }
-    revealMainWindow();
+    // A Dock click while the app runs is a reopen: return to the window the user
+    // left in front. The deactivation snapshot wins because macOS may focus a
+    // window on its own while the app becomes active again.
+    revealWindow(
+      activationTarget(windowBeforeDeactivation ?? lastActiveWindow, mainWindow, hasVisibleWindows)
+    );
     void refreshMemorySchedulerFromSettings();
   });
 });
@@ -4320,6 +4408,10 @@ app.on("browser-window-created", (_event, win) => {
   // space and swallows clicks along the top edge.
   win.on("enter-full-screen", () => report(true));
   win.on("leave-full-screen", () => report(false));
+  win.on("closed", () => {
+    if (lastActiveWindow === win) lastActiveWindow = null;
+    if (windowBeforeDeactivation === win) windowBeforeDeactivation = null;
+  });
   // The Window menu lists the open windows, so it is rebuilt when that set changes.
   const refreshMenu = () => void installApplicationMenu().catch(() => undefined);
   win.on("closed", refreshMenu);
