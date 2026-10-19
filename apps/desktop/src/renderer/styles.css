@@ -9134,16 +9134,18 @@ body.is-pane-resizing-v * {
   position: relative;
 }
 
-/* Workbench unified single-row tab strip with type-specific sections. */
+/* Workbench unified single-row tab strip of color-coded pill groups. */
 .wb-pane-tab-groups {
   display: flex;
   flex-direction: row;
-  align-items: stretch;
+  align-items: center;
+  gap: var(--space-1-5);
   flex: 0 0 32px;
   height: 32px;
   min-height: 32px;
   max-height: 32px;
   min-width: 0;
+  padding: 0 var(--space-2);
   background: var(--color-pane-bg);
   border-bottom: 0.5px solid var(--color-separator);
   overflow-x: auto;
@@ -9155,10 +9157,11 @@ body.is-pane-resizing-v * {
   display: none;
 }
 
-/* Safari/Finder style segmented tab bar */
+/* Each group is a color-coded capsule plus its pill tabs. */
 .wb-terminal-tabs {
   display: inline-flex;
-  align-items: stretch;
+  align-items: center;
+  gap: var(--space-1);
   min-height: 32px;
   height: 32px;
   padding: 0;
@@ -9167,15 +9170,19 @@ body.is-pane-resizing-v * {
   flex-shrink: 0;
 }
 
-.wb-pane-tab-group-label {
+.wb-terminal-tabs .wb-pane-tab-group-label {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 32px;
-  min-width: 32px;
-  padding: 0;
-  border-right: 0.5px solid var(--color-separator);
-  color: var(--color-label-secondary);
+  gap: var(--space-1);
+  flex: 0 0 auto;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 var(--space-1-5);
+  border: none;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--wb-tab-accent) 12%, transparent);
+  color: color-mix(in srgb, var(--wb-tab-accent) 82%, var(--color-label-primary));
   font-size: var(--font-size-micro);
   font-weight: var(--font-weight-medium);
   line-height: 1;
@@ -9186,20 +9193,38 @@ body.is-pane-resizing-v * {
   flex: 0 0 auto;
 }
 
-.is-session-group .wb-pane-tab-group-label svg {
-  color: var(--color-accent);
+/* One hue per group: the capsule, the active-tab slider, and hover derives
+   from it, so the four groups stay distinguishable without raw colours. */
+.is-session-group {
+  --wb-tab-accent: var(--color-accent);
 }
 
-.is-terminal-group .wb-pane-tab-group-label svg {
-  color: var(--color-success);
+.is-terminal-group {
+  --wb-tab-accent: var(--color-success);
 }
 
-.is-code-group .wb-pane-tab-group-label svg {
-  color: var(--color-warning);
+.is-code-group {
+  --wb-tab-accent: var(--color-warning);
 }
 
-.is-note-group .wb-pane-tab-group-label svg {
-  color: var(--color-accent);
+.is-note-group {
+  --wb-tab-accent: var(--color-teal);
+}
+
+/* The group holding the active pane wears the stronger capsule. */
+.wb-terminal-tabs:has(.wb-terminal-tab.active) > .wb-pane-tab-group-label {
+  background: color-mix(in srgb, var(--wb-tab-accent) 20%, transparent);
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 38%, transparent);
+}
+
+.wb-pane-tab-group-count {
+  font-size: var(--font-size-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-label-secondary);
+}
+
+.wb-terminal-tabs:has(.wb-terminal-tab.active) > .wb-pane-tab-group-label .wb-pane-tab-group-count {
+  color: var(--color-label-primary);
 }
 
 .wb-note-pane {
@@ -9228,17 +9253,43 @@ body.is-pane-resizing-v * {
 }
 
 .wb-terminal-tabs-list {
+  position: relative;
   display: flex;
-  align-items: stretch;
-  gap: 0;
+  align-items: center;
+  gap: var(--space-0-5);
   flex: 1 1 auto;
   min-width: 0;
+  height: 32px;
   overflow-x: auto;
   scrollbar-width: none;
 }
 
 .wb-terminal-tabs-list::-webkit-scrollbar {
   display: none;
+}
+
+/* The measured slider that travels between a group's tabs. It is a child of
+   the scroller, so it moves with the content without a scroll listener. */
+.wb-pane-tab-thumb {
+  position: absolute;
+  top: var(--space-0-5);
+  left: 0;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--wb-tab-accent) 18%, transparent);
+  box-shadow: var(--shadow-segment-thumb), inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 40%, transparent);
+  pointer-events: none;
+  z-index: 0;
+  will-change: transform;
+  transition: transform var(--duration-normal) var(--ease-out), width var(--duration-normal) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-pane-tab-thumb,
+  .wb-terminal-tab,
+  button.wb-pane-tab-group-label {
+    transition: none;
+  }
 }
 
 /* Normalize tab-strip buttons against their local flat surface */
@@ -9256,19 +9307,21 @@ body.is-pane-resizing-v * {
 
 button.wb-pane-tab-group-label {
   appearance: none;
-  border-right: 0.5px solid var(--color-separator);
+  border: none;
 
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
-button.wb-pane-tab-group-label:focus-visible {
+.wb-terminal-tabs button.wb-pane-tab-group-label:focus-visible,
+.wb-terminal-tabs:has(.wb-terminal-tab.active) > .wb-pane-tab-group-label:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--color-focus-ring);
+  /* An outer ring is clipped by the strip's overflow-y; keep it inside. */
+  box-shadow: inset 0 0 0 2px var(--color-focus-ring);
 }
 
 button.wb-pane-tab-group-label:hover:not(:disabled) {
-  background: var(--color-fill-secondary);
-  color: var(--color-label-primary);
+  background: color-mix(in srgb, var(--wb-tab-accent) 20%, transparent);
+  color: color-mix(in srgb, var(--wb-tab-accent) 82%, var(--color-label-primary));
 }
 
 button.wb-pane-tab-group-label:disabled,
@@ -9278,46 +9331,35 @@ button.wb-pane-tab-group-label.is-busy {
   pointer-events: none;
 }
 
-/* Native Safari/Finder styled tab item */
+/* Pill tab item; the slider painted by .wb-pane-tab-thumb carries the fill. */
 .wb-terminal-tab {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 0;
   min-width: 0;
   width: max-content;
   max-width: 200px;
-  height: 100%;
-  border-radius: 0;
+  height: calc(100% - var(--space-1));
+  border-radius: var(--radius-full);
   background: transparent;
-  border-right: 0.5px solid var(--color-separator);
+  border-right: none;
   position: relative;
-  z-index: 0;
+  z-index: 1;
   flex-shrink: 0;
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
 .wb-terminal-tab:hover:not(.active) {
-  background: var(--color-fill-secondary);
+  background: color-mix(in srgb, var(--wb-tab-accent) 9%, transparent);
 }
 
 .wb-terminal-tab.active {
-  z-index: 1;
-  background: var(--color-sidebar-bg);
-  border-bottom: 0.5px solid var(--color-sidebar-bg);
-  margin-bottom: -0.5px;
+  z-index: 2;
+  background: transparent;
 }
 
-.wb-terminal-tab.is-session.active {
-  box-shadow: inset 0 2px 0 var(--color-accent);
-}
-
-.wb-terminal-tab.is-terminal.active {
-  box-shadow: inset 0 2px 0 var(--color-success);
-}
-
-.wb-terminal-tab.is-editor.active,
-.wb-terminal-tab.is-diff.active {
-  box-shadow: inset 0 2px 0 var(--color-warning);
+.wb-terminal-tab:has(.wb-terminal-tab-label:focus-visible) {
+  box-shadow: inset 0 0 0 2px var(--color-focus-ring);
 }
 
 .wb-terminal-tab-label {
@@ -9325,12 +9367,12 @@ button.wb-pane-tab-group-label.is-busy {
   border: none;
   box-shadow: none;
   color: var(--color-label-secondary);
-  padding: 0 var(--space-2) 0 var(--space-3);
+  padding: 0 var(--space-1) 0 var(--space-2-5);
   height: 100%;
   align-self: stretch;
 
   font-size: var(--font-size-body);
-  line-height: 32px;
+  line-height: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -9378,10 +9420,10 @@ button.wb-pane-tab-group-label.is-busy {
   min-width: 24px;
   height: 24px;
   align-self: center;
-  margin-right: var(--space-1);
+  margin-right: var(--space-0-5);
   border: none;
   background: transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
 
   flex-shrink: 0;
   opacity: 0;
