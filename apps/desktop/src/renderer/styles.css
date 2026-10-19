@@ -5564,6 +5564,7 @@ code {
   flex: 1 1 auto;
   min-height: 0;
   flex-direction: column;
+  position: relative;
 }
 
 /* The active terminal is the only terminal pane allowed to consume the editor
@@ -5688,12 +5689,94 @@ code {
   top: 8px;
   right: 14px;
   z-index: 10;
-  opacity: 0.82;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  opacity: 0.85;
   transition: opacity 0.15s ease;
 }
 
 .wb-terminal-fullscreen-bar:hover {
   opacity: 1;
+}
+
+/* Floating cd switcher: a shared-workspace terminal offers the task's
+   repositories as one-click `cd` targets (top-right, over the xterm). */
+.wb-terminal-project-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--color-separator);
+  background: color-mix(in srgb, var(--color-elevated-bg, #222) 92%, #000);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(8px);
+  color: var(--color-label-primary);
+  font-size: 11px;
+  user-select: none;
+}
+
+.wb-terminal-project-switcher-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--color-label-secondary);
+  font-weight: 600;
+  font-size: 11px;
+  margin-right: 2px;
+}
+
+.wb-terminal-project-switcher-list {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  flex-wrap: wrap;
+}
+
+.wb-terminal-project-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: var(--color-control-bg, rgba(255, 255, 255, 0.06));
+  color: var(--color-label-primary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  white-space: nowrap;
+}
+
+.wb-terminal-project-chip:hover {
+  background: var(--color-secondary-bg, rgba(255, 255, 255, 0.14));
+  border-color: var(--color-separator);
+}
+
+.wb-terminal-project-chip.is-active {
+  background: color-mix(in srgb, var(--color-accent, #3b82f6) 18%, transparent);
+  border-color: var(--color-accent, #3b82f6);
+  color: var(--color-accent, #3b82f6);
+}
+
+.wb-terminal-project-chip.is-workspace {
+  color: var(--color-label-secondary);
+}
+
+.wb-terminal-project-chip.is-workspace:hover {
+  color: var(--color-label-primary);
+}
+
+.wb-terminal-project-chip-worktree {
+  font-size: 10px;
+  opacity: 0.8;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .wb-terminal-mode-toggle-btn {

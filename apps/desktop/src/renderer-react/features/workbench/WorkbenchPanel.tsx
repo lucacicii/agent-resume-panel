@@ -57,6 +57,7 @@ import type { BrowserSessionState } from "../../../shared/browserTypes";
 import type { WorkbenchFocusSessionRequest, WorkbenchSendSelectionRequest } from "../../../shared/workbenchSelection";
 import { collectActiveSessionDots, type ActiveSessionDot } from "./activeSessionDots";
 import { rollupDot } from "./sessionStatus/taskRollup";
+import { shellQuotePath } from "./workbenchDnd";
 import { sessionDotStatusClass } from "./sessionStatus/dotStatus";
 import {
   useAcpStatus,
@@ -3249,7 +3250,25 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (terminalCreating) return;
     setTerminalCreating(true);
     try {
-      const base = targetProject || selectedProject || await desktopApi().createScratchDir();
+      // A task with several repositories opens its terminal in the shared
+      // workspace: that is where the project switcher can cd anywhere from.
+      // An explicit target or single-project task keeps the old behaviour.
+      let base = targetProject;
+      if (!base && taskScopeRef.current) {
+        if (sessionTargetRef.current) {
+          base = sessionTargetRef.current;
+        } else if (scopeProjectsRef.current.length === 1) {
+          base = scopeProjectsRef.current[0];
+        } else if (typeof desktopApi().notesEnsureTaskWorkspace === "function") {
+          try {
+            const { dir } = await desktopApi().notesEnsureTaskWorkspace({ noteId: taskScopeRef.current.noteId });
+            if (dir) base = dir;
+          } catch {
+            /* fall through to the plain project selection */
+          }
+        }
+      }
+      base = base || selectedProject || await desktopApi().createScratchDir();
       // Where the terminal scope points decides this, so ⌘T lands in the checkout
       // you are working in rather than always in the main one.
       const cwd = worktreesRef.current.rootFor("terminal", base);
@@ -6446,7 +6465,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       disabledReason: noProjectReason,
       run: () => {
         openWorkbenchView();
-        void openBlankTerminal(sessionTarget || sideRoots[0]);
+        void openBlankTerminal(sessionTarget || (taskScope && scopeProjects.length > 1 ? undefined : sideRoots[0]));
       }
     },
     // 5. Side Panels / 侧栏面板
@@ -7164,19 +7183,100 @@ export function WorkbenchPanel(): ReactPortal | null {
               );
             }
 
+            // The floating cd switcher belongs on a terminal that started in the
+            // task's shared workspace: from there every referenced repository is
+            // one cd away, which is the whole point of the control.
+            const isSharedTerminal = Boolean(
+              taskScope
+              && scopeProjects.length > 0
+              && (
+                (taskWorkspaceDir && projectPathKey(pane.cwd) === projectPathKey(taskWorkspaceDir))
+                || (
+                  pane.group === "terminal"
+                  && (!pane.projectPath || (taskWorkspaceDir && projectPathKey(pane.projectPath) === projectPathKey(taskWorkspaceDir)))
+                )
+                || (pane.group === "terminal" && scopeProjects.length > 1)
+              )
+            );
+
+            const cdTerminalTo = (targetPath: string) => {
+              if (pane.ptyId == null) return;
+              const targetCwd = worktrees.rootFor("terminal", targetPath) || targetPath;
+              void desktopApi().terminalInput({ id: pane.ptyId, data: `cd ${shellQuotePath(targetCwd)}\r` });
+              onTerminalInput(pane.key);
+              window.requestAnimationFrame(() => {
+                terminalRefs.current.get(pane.ptyId!)?.focus();
+              });
+            };
+
+            const handleCdToProject = (projectPath: string) => {
+              cdTerminalTo(projectPath);
+              setSessionTarget(projectPath);
+              selectProject(projectPath, { keepSessionKey: true, keepSide: true });
+            };
+
+            const handleCdToSharedWorkspace = () => {
+              if (!taskWorkspaceDir) return;
+              cdTerminalTo(taskWorkspaceDir);
+              setSessionTarget(null);
+            };
+
             return (
               <div key={pane.key} className="wb-terminal-pane-wrap">
-                {isSession ? (
+                {isSession || isSharedTerminal ? (
                   <div className="wb-terminal-fullscreen-bar">
-                    <button
-                      type="button"
-                      className="wb-terminal-mode-toggle-btn"
-                      onClick={toggleSessionViewMode}
-                      title={t("desktop.workbench.splitViewMode")}
-                    >
-                      <ThemeIcon name="file-text" size={ICON_SIZE.dense} />
-                      <span>{t("desktop.workbench.splitViewMode")}</span>
-                    </button>
+                    {isSharedTerminal ? (
+                      <div className="wb-terminal-project-switcher" role="toolbar" aria-label={t("desktop.workbench.terminalSwitchProject")}>
+                        <span className="wb-terminal-project-switcher-label" title={t("desktop.workbench.terminalSwitchProject")}>
+                          <ThemeIcon name="folder" size={ICON_SIZE.dense} aria-hidden="true" />
+                          <span>cd:</span>
+                        </span>
+                        <div className="wb-terminal-project-switcher-list">
+                          {scopeProjects.map((path) => {
+                            const label = aliases[path] || basename(path);
+                            const targetCwd = worktrees.rootFor("terminal", path) || path;
+                            const checkout = worktrees.checkouts.find((option) => !option.isMain && projectPathKey(option.path) === projectPathKey(targetCwd));
+                            const isActiveProject = sessionTarget && projectPathKey(sessionTarget) === projectPathKey(path);
+                            return (
+                              <button
+                                key={path}
+                                type="button"
+                                className={`wb-terminal-project-chip${isActiveProject ? " is-active" : ""}`}
+                                title={`${t("desktop.workbench.terminalCdActionTitle", label)} (${targetCwd})`}
+                                aria-label={t("desktop.workbench.terminalCdProject", label)}
+                                onClick={() => handleCdToProject(path)}
+                              >
+                                <span className="wb-terminal-project-chip-label">{label}</span>
+                                {checkout ? <span className="wb-terminal-project-chip-worktree" title={checkout.path}>⌥ {checkout.branchLabel}</span> : null}
+                              </button>
+                            );
+                          })}
+                          {taskWorkspaceDir ? (
+                            <button
+                              type="button"
+                              className={`wb-terminal-project-chip is-workspace${!sessionTarget ? " is-active" : ""}`}
+                              title={`${t("desktop.workbench.terminalCdActionTitle", t("desktop.workbench.terminalCdSharedWorkspace"))} (${taskWorkspaceDir})`}
+                              aria-label={t("desktop.workbench.terminalCdProject", t("desktop.workbench.terminalCdSharedWorkspace"))}
+                              onClick={handleCdToSharedWorkspace}
+                            >
+                              <ThemeIcon name="folder-tree" size={ICON_SIZE.dense} aria-hidden="true" />
+                              <span className="wb-terminal-project-chip-label">{t("desktop.workbench.terminalCdSharedWorkspace")}</span>
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+                    {isSession ? (
+                      <button
+                        type="button"
+                        className="wb-terminal-mode-toggle-btn"
+                        onClick={toggleSessionViewMode}
+                        title={t("desktop.workbench.splitViewMode")}
+                      >
+                        <ThemeIcon name="file-text" size={ICON_SIZE.dense} />
+                        <span>{t("desktop.workbench.splitViewMode")}</span>
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
                 <TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} engineType={terminalEngine} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} />
