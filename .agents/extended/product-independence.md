@@ -7,7 +7,7 @@ This monorepo ships **two independent products** plus a shared library. Treat th
 | Product | Workspace | Version file | Primary deliverable |
 | --- | --- | --- | --- |
 | VS Code extension | `agent-resume-panel` (`apps/extension/`) | `apps/extension/package.json` | `.vsix` → VS Marketplace / Open VSX |
-| Electron desktop | `@agent-resume/desktop` (`apps/desktop/`) | `apps/desktop/package.json` | `.dmg` → `lucacicii/agent-resume-panel` GitHub Releases |
+| Electron desktop | `@agent-resume/desktop` (`apps/desktop/`) | `apps/desktop/package.json` | `.dmg` (macOS) / `.zip` + optional `-setup.exe` (Windows) → `lucacicii/agent-resume-panel` GitHub Releases |
 | Shared core | `@agent-resume/core` (`packages/core/`) | `packages/core/package.json` | pnpm workspace library (not published standalone) |
 
 Versions, release cadence, and changelogs are **independent**. Bumping the extension does not bump desktop, and vice versa.
@@ -36,7 +36,7 @@ Versions, release cadence, and changelogs are **independent**. Bumping the exten
 - Desktop settings — `settings.desktop.json` under panel home.
 - Desktop-private runtime — `.desktop/` (`desktop.db`, workbench scratch).
 - Desktop i18n — `apps/desktop/locales/{en,zh-cn,ja}.json`; keys are `desktop.*` only.
-- Desktop packaging — `pnpm run pack:desktop`, `release:desktop:mac`.
+- Desktop packaging — `pnpm run pack:desktop` (dispatches to `pack-mac.mjs` or `pack-win.mjs` on the host), plus explicit `pack:desktop:mac` / `pack:desktop:win`; release with `release:desktop`.
 
 ## i18n Separation
 
@@ -60,7 +60,7 @@ Rules:
 | Surface | Design language | Policy doc |
 | --- | --- | --- |
 | VS Code extension | VS Code platform (native tree views, webviews) | `.agents/extended/ui-policy.md` § VS Code |
-| Electron desktop | macOS HIG (windows, menus, dialogs, appearance) | `.agents/extended/ui-policy.md` § Electron Desktop |
+| Electron desktop | macOS HIG (windows, menus, dialogs, appearance); Windows uses native Windows conventions where they differ (standard title bar, auto-hidden menu bar, notification-area tray) | `.agents/extended/ui-policy.md` § Electron Desktop |
 
 Do not apply desktop visual tokens to extension webviews, or VS Code patterns to the desktop renderer.
 
@@ -82,11 +82,11 @@ Before editing, identify the target product:
 | User-facing strings | `pnpm run i18n:check` on extension locales | `pnpm run i18n:check` + `merge:desktop-i18n` if catalog changed |
 | Translation audit | `pnpm run i18n:check:translations` | same (covers both) |
 | Menu contributions | `pnpm run test:menus`, `install:local`, reload VS Code | — |
-| Pack / release smoke | — | `pnpm run pack:desktop` or `release:desktop:mac` |
+| Pack / release smoke | — | `pnpm run pack:desktop` (or `pack:desktop:mac` / `pack:desktop:win`) then `release:desktop` |
 
 ## Release Pipelines
 
 - **Extension** — update `apps/extension/CHANGELOG.md`, then workspace scripts in `apps/extension/package.json`; publish via Marketplace / Open VSX tooling.
-- **Desktop** — update `apps/desktop/CHANGELOG.md`, then `pnpm run release:desktop:mac -- --build`; user docs live in `docs/desktop/`.
+- **Desktop** — update `apps/desktop/CHANGELOG.md`, then `pnpm run release:desktop -- --build`; user docs live in `docs/desktop/`. Artifacts are per host: DMGs on macOS, portable zips (plus an optional NSIS installer) on Windows.
 
 A desktop release does not require an extension release, and the reverse is also true.

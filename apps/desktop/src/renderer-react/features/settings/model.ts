@@ -11,6 +11,7 @@ import {
   type WorkbenchTerminalThemeId
 } from "../workbench/terminalThemes";
 import { isModelKind, normalizeBaseUrl, resolveSelectedModel } from "./providerPool";
+import { rendererPlatform } from "../../platform";
 
 const COMPOSER_SLASH_TRIGGER = /^[A-Za-z0-9_-]{1,40}$/;
 const COMPOSER_SLASH_PHRASE_MAX = 4000;
@@ -192,8 +193,10 @@ export interface ThunderDraft {
   tuiPath?: string;
 }
 
-export function formatShortcutForDisplay(value: string, platform = typeof navigator === "undefined" ? "" : navigator.platform): string {
-  const isMac = /mac/i.test(platform);
+export function formatShortcutForDisplay(value: string, platform: string = rendererPlatform()): string {
+  // Accepts both a `process.platform` value ("darwin"/"win32") and the legacy
+  // `navigator.platform` strings ("MacIntel"/"Win32"), which tests still pass.
+  const isMac = /mac|darwin/i.test(platform);
   const parts = value.split("+").filter(Boolean);
   if (!parts.length) return "";
   if (isMac) {

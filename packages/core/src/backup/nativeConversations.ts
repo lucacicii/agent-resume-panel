@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
 import type { PanelSettings } from "../settings/types";
+import { isPathInside } from "../platform";
 import { resolvePreviewHomes } from "../transcript/homes";
 import { candidateAgyRoots } from "../transcript/agyRoots";
 import { escapeSqlLiteral, runSqlite, runSqliteJson, runSqliteReadOnlyJson } from "../sqlite";
@@ -124,7 +125,7 @@ async function filesBelow(root: string, include: (relativePath: string) => boole
       if (row.isSymbolicLink()) continue;
       const absolute = path.join(directory, row.name);
       const relative = prefix ? path.posix.join(prefix, row.name) : row.name;
-      if (!path.resolve(absolute).startsWith(`${rootResolved}${path.sep}`) && path.resolve(absolute) !== rootResolved) throw new Error("Native conversation file escaped its configured Agent home.");
+      if (!isPathInside(rootResolved, path.resolve(absolute))) throw new Error("Native conversation file escaped its configured Agent home.");
       if (row.isDirectory()) await visit(absolute, relative, depth + 1);
       else if (row.isFile() && include(relative)) output.push({ absolute, relative: toPortableRelative(relative) });
     }

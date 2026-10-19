@@ -1,6 +1,6 @@
-import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
 import * as path from "node:path";
-import { browserMcpEndpointPath, resolvePanelHome } from "@agent-resume/core";
+import { browserMcpEndpointPath, renamePathWithRetry, resolvePanelHome } from "@agent-resume/core";
 import type { BrowserMcpServerHandle } from "./mcpServer";
 
 type BrowserMcpEndpointFile = {
@@ -33,7 +33,7 @@ export async function publishBrowserMcpEndpoint(
   };
   const temporary = `${target}.${process.pid}.tmp`;
   await writeFile(temporary, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-  await rename(temporary, target);
+  await renamePathWithRetry(temporary, target);
   return target;
 }
 

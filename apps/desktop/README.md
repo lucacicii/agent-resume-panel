@@ -2,11 +2,11 @@
 
 Languages: [English](#english) | [简体中文](#简体中文)
 
-Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A over your work history, and an embedded **Workbench** terminal. Shares the same local data as the [Agent Resume Panel VS Code extension](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2).
+Standalone **macOS & Windows Session OS + Memory** app — calendar digests, Agent Q&A over your work history, and an embedded **Workbench** terminal. Shares the same local data as the [Agent Resume Panel VS Code extension](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2).
 
 | | Link |
 |---|------|
-| **Download** | [Latest DMG](https://github.com/lucacicii/agent-resume-panel/releases/latest) |
+| **Download** | [Latest release (DMG / .zip)](https://github.com/lucacicii/agent-resume-panel/releases/latest) |
 | **User docs** | [docs/desktop](../../docs/desktop/README.md) |
 | **Report issues** | [Issues](https://github.com/lucacicii/agent-resume-panel/issues) |
 | **VS Code extension** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) |
@@ -14,7 +14,7 @@ Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A ove
 > **No cloud · Local-first**  
 > Session index, notes, and reports are stored on your machine under **`~/.agent-resume-panel`** (shared with the VS Code extension).  
 > Optional LLM features only contact a third-party API you configure.  
-> Backups to iCloud Drive or WebDAV happen only when you press the button, and they are unencrypted ZIPs — keep the destination private.
+> Backups to iCloud Drive (macOS), WebDAV, or a local folder happen only when you press the button, and they are unencrypted ZIPs — keep the destination private.
 
 ---
 
@@ -49,24 +49,26 @@ The service exposes 32 tools across Notes, Reports, Sessions, Projects, and Tags
 
 ### Requirements
 
-- macOS 12 or later
-- Apple Silicon or Intel (universal build)
+- macOS 12 or later (Apple Silicon or Intel universal build), or Windows 10/11 (x64 or arm64)
+- PowerShell 7 is optional on Windows; the terminal falls back to `powershell.exe` / `cmd.exe`
 
 ### Install
 
-1. Download the latest `Agent Resume-<version>.dmg` from [Releases](https://github.com/lucacicii/agent-resume-panel/releases/latest).
-2. Open the DMG and drag **Agent Resume** to **Applications**.
+1. Download the latest `Agent Resume-<version>-<arch>.dmg` (macOS) or `Agent Resume-<version>-win32-<arch>.zip` (Windows) from [Releases](https://github.com/lucacicii/agent-resume-panel/releases/latest); Windows releases may also include a `-setup.exe`.
+2. macOS: open the DMG and drag **Agent Resume** to **Applications**. Windows: extract the zip and run `Agent Resume.exe`, or run the setup installer.
 3. If macOS blocks the app on first launch, right-click → **Open** once, or run:
 
    ```bash
    xattr -cr "/Applications/Agent Resume.app"
    ```
 
+   Unsigned Windows builds may be flagged by SmartScreen; continue only if the artifact came from the official Releases page.
+
 ---
 
 ## 简体中文
 
-独立 **macOS Session OS + Memory** 应用：日历回顾、基于报告的 **Agent** 问答、内嵌 **Workbench** 终端。与 [Agent Resume Panel VS Code 扩展](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) 共用同一份本机数据。
+独立 **macOS & Windows Session OS + Memory** 应用：日历回顾、基于报告的 **Agent** 问答、内嵌 **Workbench** 终端。与 [Agent Resume Panel VS Code 扩展](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) 共用同一份本机数据。
 
 ### 主要视图
 
@@ -94,15 +96,17 @@ The service exposes 32 tools across Notes, Reports, Sessions, Projects, and Tags
 
 ### 系统要求
 
-- macOS 12 或更高
-- Apple Silicon 或 Intel（通用构建）
+- macOS 12 或更高（Apple Silicon 或 Intel 通用构建），或 Windows 10/11（x64 或 arm64）
+- Windows 上 PowerShell 7 可选；终端会回退到 `powershell.exe` / `cmd.exe`
 
 ### 安装
 
-1. 从 [Releases](https://github.com/lucacicii/agent-resume-panel/releases/latest) 下载最新 `Agent Resume-<version>.dmg`。
-2. 打开 DMG，将 **Agent Resume** 拖入 **应用程序**。
+1. 从 [Releases](https://github.com/lucacicii/agent-resume-panel/releases/latest) 下载最新 `Agent Resume-<version>-<arch>.dmg`（macOS）或 `Agent Resume-<version>-win32-<arch>.zip`（Windows）；Windows 发布页也可能提供 `-setup.exe`。
+2. macOS：打开 DMG，将 **Agent Resume** 拖入 **应用程序**。Windows：解压 zip 后运行 `Agent Resume.exe`，或运行 setup 安装包。
 3. 若首次启动被系统拦截，可右键 → **打开** 一次，或执行：
 
    ```bash
    xattr -cr "/Applications/Agent Resume.app"
    ```
+
+   未签名的 Windows 构建可能触发 SmartScreen；请仅在产物来自官方 Releases 页面时继续。

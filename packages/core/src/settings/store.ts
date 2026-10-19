@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { atomicWriteFile } from "../atomicWrite";
 import {
   DEFAULT_PANEL_HOME,
   desktopSettingsPath,
@@ -346,7 +347,7 @@ async function migrateLegacySharedSettings(home: string): Promise<Partial<PanelS
     panelHome: merged.panelHome || DEFAULT_PANEL_HOME,
     agentHomes: sanitizeAgentHomes(merged.agentHomes)
   };
-  await fs.writeFile(desktopFile, `${JSON.stringify(toWrite, null, 2)}\n`, "utf8");
+  await atomicWriteFile(desktopFile, `${JSON.stringify(toWrite, null, 2)}\n`);
   return legacy;
 }
 
@@ -387,7 +388,7 @@ export async function saveSettings(settings: PanelSettings, panelHomeHint?: stri
     panelHome: merged.panelHome || DEFAULT_PANEL_HOME,
     agentHomes: sanitizeAgentHomes(merged.agentHomes)
   };
-  await fs.writeFile(file, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  await atomicWriteFile(file, `${JSON.stringify(payload, null, 2)}\n`);
   return file;
 }
 

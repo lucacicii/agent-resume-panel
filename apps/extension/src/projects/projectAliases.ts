@@ -1,3 +1,4 @@
+import * as os from "node:os";
 import * as path from "node:path";
 import { toPortableKey } from "@agent-resume/core/extension";
 import { basenameOrPath } from "../history/pathUtils";
@@ -22,16 +23,16 @@ export function projectGroupKey(session: Pick<AgentSession, "projectPath" | "pro
   if (id) {
     return `id:${id}`;
   }
-  const raw = session.projectPath?.trim() || process.env.HOME || "";
+  const raw = session.projectPath?.trim() || os.homedir();
   return `key:${toPortableKey(raw)}`;
 }
 
 /** Prefer a stable display path for a group of sessions. */
 export function pickProjectDisplayPath(sessions: AgentSession[]): string {
   if (!sessions.length) {
-    return process.env.HOME || "";
+    return os.homedir();
   }
   // Prefer most recently updated session path
   const sorted = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
-  return path.resolve(sorted[0].projectPath || process.env.HOME || "");
+  return path.resolve(sorted[0].projectPath || os.homedir());
 }

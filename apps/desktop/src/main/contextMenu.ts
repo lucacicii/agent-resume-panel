@@ -87,6 +87,9 @@ function debugMenus(label: string, items: readonly ContextMenuItemSpec[] | reado
  * the specified item is positioned at the specified location"), so a
  * bottom-anchored popup must lift its anchor by one row for the menu's lower
  * edge to land on the caller's point.
+ *
+ * `positioningItem` is macOS-only, so Windows uses the same row-height lift
+ * plus the popup's own screen-edge handling.
  */
 const ESTIMATED_MENU_ITEM_HEIGHT = 22;
 
@@ -120,7 +123,9 @@ export function showContextMenu(
       ...(win ? { window: win } : {}),
       x: Math.max(0, Math.round(point.x)),
       y,
-      ...(anchor === "bottom" ? { positioningItem: menu.items.length - 1 } : {}),
+      ...(anchor === "bottom" && process.platform === "darwin"
+        ? { positioningItem: menu.items.length - 1 }
+        : {}),
       callback: () => resolve(selected)
     });
   });
@@ -203,21 +208,35 @@ export function defaultContextMenuTemplate(
       { type: "separator" },
       { role: "cut", enabled: target.editFlags.canCut },
       { role: "copy", enabled: target.editFlags.canCopy },
-      { role: "paste", enabled: target.editFlags.canPaste },
-      { role: "pasteAndMatchStyle", enabled: target.editFlags.canPaste },
-      { role: "delete", enabled: target.editFlags.canDelete },
-      { role: "selectAll", enabled: target.editFlags.canSelectAll },
-      { type: "separator" },
-      { role: "toggleSpellChecker" },
-      { role: "showSubstitutions" }
+      { role: "paste", enabled: target.editFlags.canPaste }
     );
+    // `pasteAndMatchStyle`, spelling and substitutions are macOS menu items;
+    // Electron defines them as darwin-only roles, so Windows gets the plain
+    // editing set instead of silently dead rows.
+    if (process.platform === "darwin") {
+      items.push(
+        { role: "pasteAndMatchStyle", enabled: target.editFlags.canPaste },
+        { role: "delete", enabled: target.editFlags.canDelete },
+        { role: "selectAll", enabled: target.editFlags.canSelectAll },
+        { type: "separator" },
+        { role: "toggleSpellChecker" },
+        { role: "showSubstitutions" }
+      );
+    } else {
+      items.push(
+        { role: "delete", enabled: target.editFlags.canDelete },
+        { role: "selectAll", enabled: target.editFlags.canSelectAll }
+      );
+    }
   } else if (target.selectionText) {
-    items.push(
-      { role: "copy", enabled: target.editFlags.canCopy },
-      { type: "separator" },
-      { role: "startSpeaking", enabled: true },
-      { role: "stopSpeaking", enabled: true }
-    );
+    items.push({ role: "copy", enabled: target.editFlags.canCopy });
+    if (process.platform === "darwin") {
+      items.push(
+        { type: "separator" },
+        { role: "startSpeaking", enabled: true },
+        { role: "stopSpeaking", enabled: true }
+      );
+    }
   }
 
   if (process.platform === "darwin") {

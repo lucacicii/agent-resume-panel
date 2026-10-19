@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { defaultShellKind } from "@agent-resume/core";
 import { AgentProvider } from "../../history";
 import { HandoffDeliverer } from "./types";
 import { writeHandoffFile } from "./handoffFileWriter";
@@ -26,7 +27,9 @@ export const cliHandoffDeliverer: HandoffDeliverer = {
       provider,
       input.projectPath,
       input.composedMessage,
-      filePath
+      filePath,
+      // The terminal VS Code opens runs the user's shell, not ours.
+      defaultShellKind()
     );
 
     const terminal = vscode.window.createTerminal({

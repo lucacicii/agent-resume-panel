@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { atomicWriteFile } from "@agent-resume/core";
 
 /**
  * The window that was in front when the app was last left, so a relaunch can put
@@ -43,9 +44,7 @@ export async function loadStoredActiveWindow(file: string): Promise<StoredActive
 export async function saveStoredActiveWindow(file: string, target: StoredActiveWindow): Promise<void> {
   try {
     await fs.mkdir(path.dirname(file), { recursive: true });
-    const temp = `${file}.tmp`;
-    await fs.writeFile(temp, `${JSON.stringify(target, null, 2)}\n`, "utf8");
-    await fs.rename(temp, file);
+    await atomicWriteFile(file, `${JSON.stringify(target, null, 2)}\n`);
   } catch {
     /* window state is best-effort */
   }

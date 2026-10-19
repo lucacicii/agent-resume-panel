@@ -80,19 +80,44 @@ function parseReleaseTag(tagName: string | undefined): string | null {
   return normalizeSemver(version) ? version : null;
 }
 
-function pickDmgDownloadUrl(assets: GithubReleaseAsset[] | undefined): string | null {
+/**
+ * The release asset a user on this platform should download.
+ *
+ * macOS ships DMGs (`Agent Resume-<version>-<arch>.dmg`); Windows ships a
+ * portable zip per arch (`Agent Resume-<version>-win32-<arch>.zip`) and an
+ * optional NSIS installer (`…-setup.exe`). Prefer the installer when the
+ * release has one, otherwise the zip for this arch, otherwise any Windows
+ * asset, and finally the release page.
+ */
+export function pickDownloadUrl(
+  assets: GithubReleaseAsset[] | undefined,
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch
+): string | null {
   if (!Array.isArray(assets)) {
     return null;
   }
-  const dmgs = assets.filter(
+  const named = assets.filter(
     (asset) =>
       typeof asset.name === "string" &&
-      asset.name.endsWith(".dmg") &&
       typeof asset.browser_download_url === "string"
   );
-  const preferred = dmgs.find((asset) => asset.name?.startsWith("Agent Resume-"));
-  const chosen = preferred ?? dmgs[0];
-  return chosen?.browser_download_url ?? null;
+  const pick = (predicate: (name: string) => boolean): string | null => {
+    const preferred = named.find((asset) => asset.name?.startsWith("Agent Resume-") && predicate(asset.name));
+    return (preferred ?? named.find((asset) => predicate(asset.name ?? "")))?.browser_download_url ?? null;
+  };
+
+  if (platform === "win32") {
+    return (
+      pick((name) => name.endsWith(`-win32-${arch}-setup.exe`))
+      ?? pick((name) => name.endsWith(`-win32-${arch}.zip`))
+      ?? pick((name) => name.endsWith(".exe") || name.endsWith(".zip"))
+    );
+  }
+  if (platform === "darwin") {
+    return pick((name) => name.endsWith(".dmg"));
+  }
+  return pick((name) => name.endsWith(".AppImage") || name.endsWith(".deb") || name.endsWith(".zip"));
 }
 
 function parseGithubRelease(payload: unknown): {
@@ -112,7 +137,7 @@ function parseGithubRelease(payload: unknown): {
   return {
     latestVersion,
     releaseUrl,
-    downloadUrl: pickDmgDownloadUrl(release.assets)
+    downloadUrl: pickDownloadUrl(release.assets)
   };
 }
 

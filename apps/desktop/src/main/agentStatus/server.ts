@@ -1,11 +1,11 @@
 /**
- * Unix socket transport for the agent-status daemon.
+ * Transport for the agent-status daemon.
  *
  * Framing is newline-delimited JSON in both directions: one request per line in,
  * one response line per request out, plus unsolicited `{ event, data }` lines for
- * subscribers. A unix socket is used instead of a loopback port on purpose — a
- * TCP listener on 127.0.0.1 is reachable from any browser page, a socket file is
- * not.
+ * subscribers. A unix socket (a named pipe on Windows) is used instead of a
+ * loopback port on purpose — a TCP listener on 127.0.0.1 is reachable from any
+ * browser page, a local endpoint is not.
  */
 
 import { chmod, rm } from "node:fs/promises";
@@ -17,6 +17,14 @@ import type { AgentStatusEvent } from "./types";
  * above a normal request but still bounds a hostile or buggy writer.
  */
 const MAX_LINE_BYTES = 1_000_000;
+
+/**
+ * True for a Windows named pipe, which is not a file: it cannot be unlinked,
+ * chmodded, or statted. `net` creates it on listen and destroys it on close.
+ */
+function isNamedPipe(endpoint: string): boolean {
+  return endpoint.startsWith("\\\\");
+}
 
 export type RequestContext = {
   /** Mark this connection as a push subscriber. */
@@ -51,9 +59,11 @@ export async function startAgentStatusServer(input: {
   const subscribers = new Set<net.Socket>();
   const connections = new Set<net.Socket>();
 
+  const namedPipe = isNamedPipe(input.socketPath);
   // A previous crash can leave the socket file behind; binding would fail with
-  // EADDRINUSE even though nobody is listening.
-  await rm(input.socketPath, { force: true });
+  // EADDRINUSE even though nobody is listening. A named pipe disappears with
+  // its process, and unlinking one would be a no-op on a non-path.
+  if (!namedPipe) await rm(input.socketPath, { force: true });
 
   const server = net.createServer((socket) => {
     connections.add(socket);
@@ -141,7 +151,7 @@ export async function startAgentStatusServer(input: {
     });
   });
 
-  await chmod(input.socketPath, 0o600);
+  if (!namedPipe) await chmod(input.socketPath, 0o600);
 
   return {
     socketPath: input.socketPath,
@@ -160,7 +170,7 @@ export async function startAgentStatusServer(input: {
       connections.clear();
       subscribers.clear();
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      await rm(input.socketPath, { force: true });
+      if (!namedPipe) await rm(input.socketPath, { force: true });
     }
   };
 }

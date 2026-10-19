@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { StreamdownRenderer } from "../../components/StreamdownRenderer";
+import { toFileUrl } from "../../components/markdownImage";
 import { ThinkingState } from "./ThinkingState";
 import { ToolCallsState } from "./ToolCallsState";
 import type { ActiveToolInfo, LiveSegment, RenderedChatMessage } from "./useThunderChat";
@@ -270,7 +271,7 @@ export function ChatMessageItem({
                       ? p.data
                       : `data:${p.mimeType};base64,${p.data}`
                     : p.path
-                      ? `file://${p.path}`
+                      ? toFileUrl(p.path)
                       : "";
                   if (!src) return null;
                   return (

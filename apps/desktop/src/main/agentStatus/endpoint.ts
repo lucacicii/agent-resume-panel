@@ -6,7 +6,8 @@
  * still restricted to the owning user.
  */
 
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm } from "node:fs/promises";
+import { atomicWriteFile } from "@agent-resume/core";
 import type { AgentStatusPaths } from "./paths";
 
 export type AgentStatusEndpoint = {
@@ -24,15 +25,17 @@ const DIR_MODE = 0o700;
 export async function ensureAgentStatusDir(paths: AgentStatusPaths): Promise<void> {
   await mkdir(paths.dir, { recursive: true, mode: DIR_MODE });
   // mkdir ignores mode on an existing directory, and umask can shave it off a
-  // fresh one — assert it either way.
-  await chmod(paths.dir, DIR_MODE);
+  // fresh one — assert it either way. Windows has no mode bits; the file lives
+  // under the user's profile, which is the access boundary there.
+  if (process.platform !== "win32") {
+    await chmod(paths.dir, DIR_MODE);
+  }
 }
 
 async function writeFileAtomic(target: string, data: string): Promise<void> {
-  const temporary = `${target}.${process.pid}.tmp`;
-  await writeFile(temporary, data, { encoding: "utf8", mode: FILE_MODE });
-  await rename(temporary, target);
-  await chmod(target, FILE_MODE);
+  // The rename retry matters here: the app, the daemon heartbeat, and the
+  // settings pane can all rewrite endpoint.json while an indexer holds it open.
+  await atomicWriteFile(target, data, { mode: FILE_MODE });
 }
 
 export async function writeEndpointFile(
@@ -109,8 +112,10 @@ function isProcessAlive(pid: number): boolean {
 }
 
 /**
- * An endpoint is live when its process still exists *and* the socket file is
- * still on disk. A pid can be recycled, so the socket is the real evidence.
+ * An endpoint is live when its process still exists. On unix the socket file is
+ * the second piece of evidence, because a pid can be recycled; a Windows named
+ * pipe has no file to stat and is created on demand, so the pid check stands
+ * alone there.
  */
 export async function readLiveEndpoint(
   paths: AgentStatusPaths

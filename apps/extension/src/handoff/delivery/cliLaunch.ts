@@ -1,58 +1,61 @@
+import { joinForShell, shellQuoteFor, defaultShellKind, type ShellKind } from "@agent-resume/core";
 import { AgentProvider } from "../../history";
 
 const MAX_INLINE_HANDOFF_CHARS = 6000;
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
-}
 
 function buildFileReferencePrompt(handoffFilePath: string): string {
   return `Read the session handoff file at ${handoffFilePath} and continue the work from the Next step section.`;
 }
 
+/**
+ * Command line for a handoff launch.
+ *
+ * `shell` is the terminal's shell: VS Code runs `sendText` through it, and on
+ * Windows that is PowerShell or cmd rather than a POSIX shell.
+ */
 export function buildHandoffCliLaunchCommand(
   provider: AgentProvider,
   projectPath: string,
   composedMessage: string,
-  handoffFilePath: string
+  handoffFilePath: string,
+  shell: ShellKind = defaultShellKind()
 ): string {
+  return joinForShell(buildHandoffCliLaunchArgv(provider, projectPath, composedMessage, handoffFilePath), shell);
+}
+
+export function buildHandoffCliLaunchArgv(
+  provider: AgentProvider,
+  projectPath: string,
+  composedMessage: string,
+  handoffFilePath: string
+): string[] {
   const useInline = composedMessage.length <= MAX_INLINE_HANDOFF_CHARS;
   const prompt = useInline ? composedMessage : buildFileReferencePrompt(handoffFilePath);
+  const fileRef = `@${handoffFilePath}`;
 
   switch (provider) {
     case "codex":
-      return `codex --cd ${shellQuote(projectPath)} ${shellQuote(prompt)}`;
+      return ["codex", "--cd", projectPath, prompt];
     case "grok":
-      return `grok --cwd ${shellQuote(projectPath)} ${shellQuote(prompt)}`;
+      return ["grok", "--cwd", projectPath, prompt];
     case "claude":
-      return `claude ${shellQuote(prompt)}`;
+      return ["claude", prompt];
     case "opencode":
-      return `opencode run ${shellQuote(prompt)}`;
+      return ["opencode", "run", prompt];
     case "pi":
-      if (useInline) {
-        return `pi ${shellQuote(prompt)}`;
-      }
-      return `pi @${shellQuotePathForPi(handoffFilePath)}`;
+      return useInline ? ["pi", prompt] : ["pi", fileRef];
     case "prime":
-      if (useInline) {
-        return `prime-agent ${shellQuote(prompt)}`;
-      }
-      return `prime-agent @${shellQuotePathForPi(handoffFilePath)}`;
+      return useInline ? ["prime-agent", prompt] : ["prime-agent", fileRef];
     case "omp":
-      if (useInline) {
-        return `omp ${shellQuote(prompt)}`;
-      }
-      return `omp @${shellQuotePathForPi(handoffFilePath)}`;
+      return useInline ? ["omp", prompt] : ["omp", fileRef];
     case "agy":
-      return `agy --prompt-interactive ${shellQuote(prompt)}`;
+      return ["agy", "--prompt-interactive", prompt];
     default:
-      return `claude ${shellQuote(prompt)}`;
+      return ["claude", prompt];
   }
 }
 
-function shellQuotePathForPi(filePath: string): string {
-  if (/^[A-Za-z0-9_./-]+$/.test(filePath)) {
-    return filePath;
-  }
-  return shellQuote(filePath);
+/** Path for a prompt the user is editing by hand (kept exported for callers). */
+export function quotePathForShell(filePath: string, shell: ShellKind = defaultShellKind()): string {
+  return shellQuoteFor(shell, filePath);
 }

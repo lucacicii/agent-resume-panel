@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { atomicWriteFile } from "@agent-resume/core";
 
 /**
  * The workbench windows that were open, so the next launch can put them back.
@@ -50,9 +51,7 @@ export async function loadStoredTaskWindows(file: string): Promise<StoredTaskWin
 export async function saveStoredTaskWindows(file: string, windows: readonly StoredTaskWindow[]): Promise<void> {
   try {
     await fs.mkdir(path.dirname(file), { recursive: true });
-    const temp = `${file}.tmp`;
-    await fs.writeFile(temp, `${JSON.stringify(windows.slice(0, MAX_STORED), null, 2)}\n`, "utf8");
-    await fs.rename(temp, file);
+    await atomicWriteFile(file, `${JSON.stringify(windows.slice(0, MAX_STORED), null, 2)}\n`);
   } catch {
     /* window state is best-effort */
   }

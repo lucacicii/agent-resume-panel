@@ -22,6 +22,30 @@ export const WINDOW_BACKGROUND_DARK = "#1e1e1e";
 export const WINDOW_BACKGROUND_TRANSPARENT = "#00000000";
 
 /**
+ * Window options for a window that uses the macOS sidebar material.
+ *
+ * Windows has no `vibrancy`, and a transparent background is only honoured on a
+ * frameless window there — passing the macOS options unguarded would leave the
+ * window with an ignored background and a stale entry in
+ * `translucentWindows`, so theme changes would never repaint it. Elsewhere the
+ * opaque themed colour is what prevents the white flash on close.
+ */
+export function translucentWindowOptions(platform: NodeJS.Platform = process.platform): {
+  vibrancy?: "sidebar";
+  visualEffectState?: "followWindow";
+  backgroundColor: string;
+} {
+  if (platform === "darwin") {
+    return {
+      vibrancy: "sidebar",
+      visualEffectState: "followWindow",
+      backgroundColor: WINDOW_BACKGROUND_TRANSPARENT
+    };
+  }
+  return { backgroundColor: windowBackgroundColor() };
+}
+
+/**
  * Windows that own `vibrancy` / a transparent background.
  *
  * `applyWindowBackgrounds` must leave their background transparent: writing an

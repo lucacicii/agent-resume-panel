@@ -44,7 +44,8 @@ function spawnTracked(command, args, options = {}) {
       cwd: options.cwd || root,
       stdio: "inherit",
       env: options.env || process.env,
-      shell: false
+      // pnpm is `pnpm.cmd` on Windows and cannot be spawned without a shell.
+      shell: options.shell ?? false
     })
   );
 }
@@ -113,7 +114,7 @@ function startWatchers() {
   spawnTracked(
     "pnpm",
     ["--filter", "@agent-resume/core", "run", "watch"],
-    { cwd: repoRoot, env: pnpmEnv }
+    { cwd: repoRoot, env: pnpmEnv, shell: process.platform === "win32" }
   );
   spawnTracked(process.execPath, [tscBin, "-p", "tsconfig.json", "-w"], { cwd: root });
   spawnTracked(process.execPath, [path.join(root, "scripts", "watch-renderer.mjs")], { cwd: root });

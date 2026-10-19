@@ -66,27 +66,33 @@ export interface ResolveThunderDaemonOptions {
   exists?: (candidate: string) => boolean;
 }
 
+/** Rust builds `thunder-daemon`, not `thunder-daemon.exe`, on Windows. */
+function binaryFileName(name: string): string {
+  return process.platform === "win32" ? `${name}.exe` : name;
+}
+
 /** Daemon binary paths relative to a thunder checkout root. */
 const REPO_BINARY_RELATIVE_PATHS = [
   // Unified workspace: the whole monorepo builds into `<repo>/target/{release,debug}`.
-  path.join("target", "release", "thunder-daemon"),
-  path.join("target", "debug", "thunder-daemon"),
+  path.join("target", "release", binaryFileName("thunder-daemon")),
+  path.join("target", "debug", binaryFileName("thunder-daemon")),
   // Legacy per-crate layout (pre-workspace-unification checkouts).
-  path.join("thunder-agent-daemon", "target", "release", "thunder-daemon"),
-  path.join("thunder-agent-daemon", "target", "debug", "thunder-daemon"),
-  // Bundled layout: `Contents/Resources/thunder/bin/thunder-daemon`.
-  path.join("bin", "thunder-daemon"),
-  "thunder-daemon"
+  path.join("thunder-agent-daemon", "target", "release", binaryFileName("thunder-daemon")),
+  path.join("thunder-agent-daemon", "target", "debug", binaryFileName("thunder-daemon")),
+  // Bundled layout: `Contents/Resources/thunder/bin/thunder-daemon` (macOS) or
+  // `resources/thunder/bin/thunder-daemon.exe` (Windows).
+  path.join("bin", binaryFileName("thunder-daemon")),
+  binaryFileName("thunder-daemon")
 ];
 
 /** TUI binary paths. The TUI crate nests under `thunder-agent-core/tui` in the monorepo. */
 const REPO_TUI_BINARY_RELATIVE_PATHS = [
-  path.join("target", "release", "thunder-tui"),
-  path.join("target", "debug", "thunder-tui"),
-  path.join("thunder-agent-core", "tui", "target", "release", "thunder-tui"),
-  path.join("thunder-agent-core", "tui", "target", "debug", "thunder-tui"),
-  path.join("bin", "thunder-tui"),
-  "thunder-tui"
+  path.join("target", "release", binaryFileName("thunder-tui")),
+  path.join("target", "debug", binaryFileName("thunder-tui")),
+  path.join("thunder-agent-core", "tui", "target", "release", binaryFileName("thunder-tui")),
+  path.join("thunder-agent-core", "tui", "target", "debug", binaryFileName("thunder-tui")),
+  path.join("bin", binaryFileName("thunder-tui")),
+  binaryFileName("thunder-tui")
 ];
 
 const REPO_SCRIPT_RELATIVE_PATH = "daemon.sh";
@@ -156,7 +162,8 @@ function binaryInRepo(
   }
 
   const scriptPath = path.join(repo, spec.scriptRelativePath);
-  if (exists(scriptPath)) {
+  // `daemon.sh` is a POSIX wrapper; Windows needs the built `.exe`.
+  if (process.platform !== "win32" && exists(scriptPath)) {
     return { binaryPath: null, scriptPath };
   }
 
@@ -171,9 +178,9 @@ function binaryInRepo(
  */
 export function repoRootForBinary(binaryPath: string): string {
   const parts = path.normalize(binaryPath).split(path.sep);
-  const name = parts.at(-1);
+  const leaf = parts.at(-1)?.replace(/\.exe$/i, "");
   const isCargoTarget =
-    (name === "thunder-daemon" || name === "thunder-tui") &&
+    (leaf === "thunder-daemon" || leaf === "thunder-tui") &&
     parts.at(-3) === "target" &&
     (parts.at(-2) === "release" || parts.at(-2) === "debug");
   if (isCargoTarget) {
@@ -191,6 +198,8 @@ function scriptNextToBinary(
   exists: (p: string) => boolean,
   spec: ThunderBinarySpec
 ): string | null {
+  // The wrapper is a POSIX script; on Windows the `.exe` is the program.
+  if (process.platform === "win32") return null;
   const scriptPath = path.join(repoRootForBinary(binaryPath), spec.scriptRelativePath);
   return exists(scriptPath) ? scriptPath : null;
 }

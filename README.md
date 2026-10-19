@@ -7,7 +7,9 @@ Languages: [English](#english) | [简体中文](#简体中文)
 | Product | Directory | Install | User docs | Issues |
 |---------|-----------|---------|-----------|--------|
 | **VS Code extension** | [`apps/extension/`](apps/extension/) | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) | [docs/panel](docs/panel/README.md) | [Extension Issues](https://github.com/lucacicii/agent-resume-panel/issues) |
-| **Desktop app (macOS)** | [`apps/desktop/`](apps/desktop/) | [Download DMG](https://github.com/lucacicii/agent-resume-panel/releases/latest) | [docs/desktop](docs/desktop/README.md) | [Desktop Issues](https://github.com/lucacicii/agent-resume-panel/issues) |
+| **Desktop app (macOS & Windows)** | [`apps/desktop/`](apps/desktop/) | [Download (DMG / .zip)](https://github.com/lucacicii/agent-resume-panel/releases/latest) | [docs/desktop](docs/desktop/README.md) | [Desktop Issues](https://github.com/lucacicii/agent-resume-panel/issues) |
+
+The VS Code extension is platform-neutral (it runs wherever VS Code runs); the desktop app ships for macOS and Windows.
 
 Shared core library: [`packages/core/`](packages/core/) (`@agent-resume/core`).
 <img width="2880" height="1632" alt="image" src="https://github.com/user-attachments/assets/f7ed9f25-c00f-4443-aab4-085a1825ed87" />
@@ -28,7 +30,7 @@ Shared core library: [`packages/core/`](packages/core/) (`@agent-resume/core`).
 **Agent Resume Panel** is a unified session management, memory recall, and task management hub for AI coding CLI agents and IDE tools. 
 
 - **Local-First & Privacy-Focused**: No mandatory cloud servers or telemetry. All session metadata, transcripts index, GTD status, notes, and daily digests reside locally on your machine inside `~/.agent-resume-panel`.
-- **Zero-Duplicate Setup**: The VS Code extension and the macOS Desktop app seamlessly share the exact same SQLite database (`catalog.db`), settings (`settings.json`), and Markdown notes (`notes/`).
+- **Zero-Duplicate Setup**: The VS Code extension and the Desktop app seamlessly share the exact same SQLite database (`catalog.db`), settings (`settings.json`), and Markdown notes (`notes/`).
 
 ---
 
@@ -92,7 +94,7 @@ The **VS Code extension** brings agent session management right inside your edit
 
 ### Product 2: Agent Resume Desktop App (`apps/desktop`)
 
-The **Agent Resume Desktop app** is a native macOS application built on Electron, serving as a **Session OS & Work Memory** system.
+The **Agent Resume Desktop app** is a native Electron application for macOS and Windows, serving as a **Session OS & Work Memory** system.
 
 #### Key Features & Modules
 
@@ -122,10 +124,10 @@ The **Agent Resume Desktop app** is a native macOS application built on Electron
 
 ### Product Comparison Matrix
 
-| Feature / Capability | VS Code Extension | Agent Resume Desktop (macOS) |
-|----------------------|:-----------------:|:----------------------------:|
+| Feature / Capability | VS Code Extension | Agent Resume Desktop (macOS & Windows) |
+|----------------------|:-----------------:|:--------------------------------------:|
 | **Primary Use Case** | In-editor session resume & coding sidekick | Work digest, memory recall & standalone session OS |
-| **Supported Platforms** | VS Code / Cursor / VSCodium (Cross-platform) | macOS 12+ (Apple Silicon & Intel Universal) |
+| **Supported Platforms** | VS Code / Cursor / VSCodium (Cross-platform) | macOS 12+ (Apple Silicon & Intel Universal) · Windows 10/11 (x64 & arm64) |
 | **Session Browsing & Search** | ✅ Full-text & regex search | ✅ Full-text & reference preview |
 | **Resume Targets** | ✅ Terminal, Ghostty, Claude/Codex Panels, Cursor CLI | ✅ Built-in xterm Workbench, External Terminals |
 | **ACP Interactive Chat** | ✅ Sidebar Panel | ✅ Visual Workbench Chat |
@@ -157,13 +159,19 @@ Both products share `@agent-resume/core` and operate on a unified local data dir
 - **VS Code Marketplace**: [Install Extension](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2)
 - **Open VSX Registry**: Search for `agent-resume-panel-v2` in VSCodium or Open VSX compatible editors.
 
-#### 2. Agent Resume Desktop App (macOS)
-- **Latest Release**: [Download DMG](https://github.com/lucacicii/agent-resume-panel/releases/latest)
-- **Installation Step**: Open DMG and drag `Agent Resume.app` to `/Applications`.
-- **macOS Security Gatekeeper**: Since the app build may not be notarized by Apple, run the following command if macOS blocks execution on first launch:
+#### 2. Agent Resume Desktop App (macOS & Windows)
+- **Latest Release**: [Download DMG / .zip](https://github.com/lucacicii/agent-resume-panel/releases/latest)
+
+**macOS**
+- Download `Agent Resume-<version>-<arch>.dmg`, open it, and drag `Agent Resume.app` to `/Applications`.
+- **Gatekeeper**: Since the app build may not be notarized by Apple, run the following command if macOS blocks execution on first launch:
   ```bash
   xattr -cr "/Applications/Agent Resume.app"
   ```
+
+**Windows**
+- Download `Agent Resume-<version>-win32-<arch>.zip` (portable) or, when published, `Agent Resume-<version>-win32-<arch>-setup.exe`; extract the zip and run `Agent Resume.exe`.
+- **SmartScreen**: Unsigned builds may be flagged on first launch; choose **More info → Run anyway** only if you downloaded the artifact from the official Releases page.
 
 ---
 
@@ -194,7 +202,7 @@ pnpm run install:local # Build VSIX & install to local VS Code/Cursor
 # Desktop commands
 pnpm run dev:desktop   # Start Desktop app in dev mode
 pnpm run build:desktop # Build Desktop app bundle
-pnpm run pack:desktop  # Package Universal macOS DMG
+pnpm run pack:desktop  # Package the Universal macOS DMG or the Windows portable .zip for this host
 pnpm run doctor:desktop# Run Desktop environment diagnostic doctor
 ```
 
@@ -207,7 +215,7 @@ pnpm run doctor:desktop# Run Desktop environment diagnostic doctor
 **Agent Resume Panel** 是专为 AI Coding Agent (如 Codex, Claude Code, Antigravity 等) 打造的统一会话管理、工作回忆复盘与任务管理中心。
 
 - **纯本地优先与隐私安全**：无需任何强制云端服务或数据上报。所有的会话元数据、对话索引、GTD 状态、Markdown 笔记以及 AI 日报均保存在本机的 `~/.agent-resume-panel` 目录下。
-- **两个产品，一套存储**：VS Code 插件与 macOS Desktop 桌面端无缝共享相同的 SQLite 数据库 (`catalog.db`)、配置文件 (`settings.json`) 以及 Markdown 笔记目录 (`notes/`)，无需重复配置。
+- **两个产品，一套存储**：VS Code 插件与 Desktop 桌面端无缝共享相同的 SQLite 数据库 (`catalog.db`)、配置文件 (`settings.json`) 以及 Markdown 笔记目录 (`notes/`)，无需重复配置。
 
 ---
 
@@ -271,7 +279,7 @@ pnpm run doctor:desktop# Run Desktop environment diagnostic doctor
 
 ### 产品二：Agent Resume Desktop 桌面端 (`apps/desktop`)
 
-**Agent Resume Desktop** 是一款 macOS 原生 Electron 桌面应用，定位为 **Session OS + Memory (会话操作系统与记忆沉淀)**。
+**Agent Resume Desktop** 是一款面向 macOS 与 Windows 的原生 Electron 桌面应用，定位为 **Session OS + Memory (会话操作系统与记忆沉淀)**。
 
 #### 核心功能与模块
 
@@ -301,10 +309,10 @@ pnpm run doctor:desktop# Run Desktop environment diagnostic doctor
 
 ### 产品功能对比表
 
-| 功能 / 特性 | VS Code 扩展 | Agent Resume Desktop (macOS) |
-|-------------|:------------:|:----------------------------:|
+| 功能 / 特性 | VS Code 扩展 | Agent Resume Desktop (macOS & Windows) |
+|-------------|:------------:|:--------------------------------------:|
 | **核心定位** | 编辑器内会话恢复与 ACP 辅助 | 工作回顾、记忆回忆与独立 Session OS |
-| **支持平台** | VS Code / Cursor / VSCodium (跨平台) | macOS 12+ (Apple Silicon & Intel 通用包) |
+| **支持平台** | VS Code / Cursor / VSCodium (跨平台) | macOS 12+ (Apple Silicon & Intel 通用包) · Windows 10/11 (x64 & arm64) |
 | **会话浏览与搜索** | ✅ 全文与正则表达式搜索 | ✅ 全文搜索与参考列表预览 |
 | **恢复目标 (Targets)** | ✅ 内置终端、Ghostty、Claude/Codex 面板、Cursor CLI | ✅ 内置 xterm 工作台、外部终端 Shell |
 | **ACP 交互对话** | ✅ 编辑器侧边栏面板 | ✅ Workbench 可视化 ACP 聊天 |
@@ -336,13 +344,19 @@ pnpm run doctor:desktop# Run Desktop environment diagnostic doctor
 - **VS Code Marketplace**: [前往 Marketplace 安装](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2)
 - **Open VSX 市场**: 在 VSCodium 或支持 Open VSX 的编辑器中搜索 `agent-resume-panel-v2`。
 
-#### 2. Agent Resume Desktop 桌面端安装 (macOS)
-- **最新 Release 下载**: [下载 DMG 安装包](https://github.com/lucacicii/agent-resume-panel/releases/latest)
-- **安装步骤**: 打开 DMG 并将 `Agent Resume.app` 拖入 `Applications (应用程序)` 目录。
-- **macOS 安全提示 (Gatekeeper)**：若首次打开提示“无法验证开发者”，请在终端运行以下指令清除隔离标记：
+#### 2. Agent Resume Desktop 桌面端安装 (macOS & Windows)
+- **最新 Release 下载**: [下载 DMG / .zip](https://github.com/lucacicii/agent-resume-panel/releases/latest)
+
+**macOS**
+- 下载 `Agent Resume-<version>-<arch>.dmg`，打开 DMG 并将 `Agent Resume.app` 拖入 `Applications (应用程序)` 目录。
+- **安全提示 (Gatekeeper)**：若首次打开提示“无法验证开发者”，请在终端运行以下指令清除隔离标记：
   ```bash
   xattr -cr "/Applications/Agent Resume.app"
   ```
+
+**Windows**
+- 下载 `Agent Resume-<version>-win32-<arch>.zip`（便携版），或发布页提供的 `Agent Resume-<version>-win32-<arch>-setup.exe`；解压 zip 后运行 `Agent Resume.exe`。
+- **SmartScreen**：未签名构建首次启动可能被拦截；仅在确认来自官方 Releases 页面时选择 **更多信息 → 仍要运行**。
 
 ---
 
@@ -373,7 +387,7 @@ pnpm run install:local # 构建 VSIX 并安装至本机 VS Code/Cursor
 # Desktop 常用命令
 pnpm run dev:desktop   # 启动 Desktop 开发模式
 pnpm run build:desktop # 构建 Desktop 产物
-pnpm run pack:desktop  # 打包 macOS Universal DMG
+pnpm run pack:desktop  # 按当前平台打包 macOS Universal DMG 或 Windows 便携 .zip
 pnpm run doctor:desktop# 运行 Desktop 环境诊断 Doctor
 ```
 

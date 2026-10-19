@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import * as path from "node:path";
 import type { AgentProvider } from "../catalog/types";
 import { basenameOrPath, expandHome, normalizeProjectPath } from "../pathUtils";
+import { isPathInside } from "../platform";
 import { noteAssetsDirName } from "./naming";
 
 export const NOTES_ROOT_SEGMENT = "notes";
@@ -104,7 +105,8 @@ export function relMdPathFromAbs(panelHome: string, absPath: string): string | u
   const root = expandHome(panelHome);
   const normalizedAbs = path.resolve(absPath);
   const normalizedRoot = path.resolve(root);
-  if (normalizedAbs === normalizedRoot || !normalizedAbs.startsWith(normalizedRoot + path.sep)) {
+  // Case-insensitive on Windows: `C:\Panel` and `c:\panel` are one tree.
+  if (!isPathInside(normalizedRoot, normalizedAbs)) {
     return undefined;
   }
   return path.relative(normalizedRoot, normalizedAbs);

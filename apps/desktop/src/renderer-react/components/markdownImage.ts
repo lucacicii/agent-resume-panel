@@ -189,7 +189,11 @@ function isAllowedTempClipboardImage(absPath: string): boolean {
   if ((posix.startsWith("/var/folders/") || posix.startsWith("/private/var/folders/")) && posix.includes("/T/")) {
     return true;
   }
-  return posix.startsWith("/tmp/") || posix.startsWith("/private/tmp/");
+  if (posix.startsWith("/tmp/") || posix.startsWith("/private/tmp/")) {
+    return true;
+  }
+  // Windows: `%TEMP%` is `C:/Users/<name>/AppData/Local/Temp`.
+  return /^[a-zA-Z]:\/Users\/[^/]+\/AppData\/Local\/Temp\//i.test(posix);
 }
 
 function isInsideFence(markdown: string, offset: number): boolean {
@@ -277,7 +281,7 @@ function normalizePosixPath(value: string): string {
   return stack.join("/") || "/";
 }
 
-function toFileUrl(absPath: string): string {
+export function toFileUrl(absPath: string): string {
   const posix = normalizePosixPath(absPath);
   if (/^[a-zA-Z]:\//.test(posix)) return `file:///${posix}`;
   const encoded = posix.split("/").map((segment, index) => (

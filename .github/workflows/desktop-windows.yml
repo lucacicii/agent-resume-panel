@@ -1,0 +1,84 @@
+name: Desktop (Windows)
+
+# The desktop release path is per-platform: macOS builds DMGs, Windows builds a
+# portable zip (and an optional NSIS installer). This job proves the Windows
+# half builds, typechecks, passes the cross-platform suites, and packages.
+#
+# Signing is optional here: without WINDOWS_CERTIFICATE_* the artifact is
+# unsigned, which is what a PR build should be. Release runs add the secrets.
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - "apps/desktop/**"
+      - "packages/core/**"
+      - "scripts/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".node-version"
+      - ".github/workflows/desktop-windows.yml"
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - "packages/core/**"
+      - "scripts/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".node-version"
+      - ".github/workflows/desktop-windows.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build core
+        run: pnpm run build:core
+
+      - name: Typecheck desktop
+        run: pnpm run typecheck:desktop
+
+      - name: Core tests
+        run: pnpm run test:core
+
+      # Runs the platform-neutral suites plus test:win-app; macOS suites are
+      # excluded by scripts/test-desktop.mjs on this host.
+      - name: Desktop tests
+        run: pnpm run test:desktop
+
+      - name: Package desktop
+        run: pnpm run pack:desktop:win
+        env:
+          # Keep the job hermetic: no bundled Thunder binary is available in CI.
+          AGENT_RESUME_REQUIRE_THUNDER: "0"
+          # NSIS is not installed on the runner; the portable zip is the artifact.
+          AGENT_RESUME_WIN_INSTALLER: ""
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-resume-windows
+          if-no-files-found: error
+          path: |
+            apps/desktop/release/Agent Resume-*-win32-*.zip
+            apps/desktop/release/Agent Resume-win32-*/

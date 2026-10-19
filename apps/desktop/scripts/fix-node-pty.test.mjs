@@ -22,6 +22,15 @@ try {
   assert.notEqual(fs.statSync(arm64).mode & 0o111, 0);
   assert.notEqual(fs.statSync(x64).mode & 0o111, 0);
   assert.equal(fs.statSync(linux).mode & 0o111, 0);
+
+  // Windows has no spawn-helper; the fixer must be a no-op there rather than
+  // warning about a missing file on every build.
+  const win = path.join(root, "prebuilds", "win32-x64", "spawn-helper");
+  fs.mkdirSync(path.dirname(win), { recursive: true });
+  fs.writeFileSync(win, "helper");
+  fs.chmodSync(win, 0o644);
+  assert.deepEqual(ensureSpawnHelpersExecutable(root, "win32"), []);
+  assert.equal(fs.statSync(win).mode & 0o111, 0);
   console.log("fix-node-pty.test.mjs: all assertions passed");
 } finally {
   fs.rmSync(root, { recursive: true, force: true });

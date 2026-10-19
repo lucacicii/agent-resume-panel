@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { renamePathWithRetry } from "./atomicWrite";
 import { defaultScratchDir, desktopDataDir } from "./panelHome";
 import { expandHome } from "./pathUtils";
 import { effectivePanelHome } from "./settings/store";
@@ -52,5 +53,5 @@ export async function migrateLegacyScratchDir(
   }
 
   await fs.mkdir(desktopDataDir(panelHome), { recursive: true });
-  await fs.rename(legacyDir, targetDir);
+  await renamePathWithRetry(legacyDir, targetDir);
 }

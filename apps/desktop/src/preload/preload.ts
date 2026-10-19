@@ -136,6 +136,12 @@ export type TaskAccent = {
 };
 
 export interface DesktopApi {
+  /**
+   * Platform the app runs on. Exposed here rather than read from
+   * `navigator.platform`, which Chromium has deprecated and which reports
+   * "MacIntel" on an iPad and "Win32" on 64-bit Windows alike.
+   */
+  readonly platform: NodeJS.Platform;
   getPanelHome(): Promise<string>;
   getSettings(): Promise<PanelSettings>;
   backupTargetStatus(): Promise<BackupStorageTargetStatus[]>;
@@ -1700,6 +1706,7 @@ export interface DesktopApi {
 }
 
 const api: DesktopApi = {
+  platform: process.platform,
   getPanelHome: () => ipcRenderer.invoke("panel:getHome"),
   getSettings: () => ipcRenderer.invoke("settings:get"),
   backupTargetStatus: () => ipcRenderer.invoke("backup:targetStatus"),

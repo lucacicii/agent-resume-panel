@@ -37,7 +37,7 @@ const silent = () => undefined;
     runCargo: noCargo,
     log: silent
   });
-  assert.deepEqual(resolved, { ok: true, binaryPath: explicit, source: "env-bin", target: THUNDER_TARGETS.arm64 });
+  assert.deepEqual(resolved, { ok: true, binaryPath: explicit, source: "env-bin", target: THUNDER_TARGETS.darwin.arm64 });
 }
 
 {
@@ -187,7 +187,7 @@ const silent = () => undefined;
   fs.chmodSync(fakeBinary, 0o644);
 
   const staged = stageThunderSidecar("x64", {
-    resolve: () => ({ ok: true, binaryPath: fakeBinary, source: "test", target: THUNDER_TARGETS.x64 }),
+    resolve: () => ({ ok: true, binaryPath: fakeBinary, source: "test", target: THUNDER_TARGETS.darwin.x64 }),
     log: silent
   });
   assert.equal(staged.ok, true);
@@ -255,7 +255,7 @@ const silent = () => undefined;
   const fake = path.join(tempRoot, "thunder-tui");
   fs.writeFileSync(fake, "#!/bin/sh\necho stub\n");
   const staged = stageThunderTui("x64", {
-    resolve: () => ({ ok: true, binaryPath: fake, source: "test", target: THUNDER_TARGETS.x64 }),
+    resolve: () => ({ ok: true, binaryPath: fake, source: "test", target: THUNDER_TARGETS.darwin.x64 }),
     log: silent
   });
   assert.equal(staged.ok, true);

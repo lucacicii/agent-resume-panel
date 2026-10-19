@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { atomicWriteFileSync } from "@agent-resume/core";
 import type { ThunderModelsConfig } from "@agent-resume/core";
 
 /**
@@ -19,16 +20,14 @@ export interface ThunderConfigStore {
   writeModelsConfig(config: ThunderModelsConfig): void;
 }
 
-/** Write with a `.bak` of the previous file and an atomic rename. */
+/** Write with a `.bak` of the previous file and an atomic, retried rename. */
 function atomicWrite(file: string, contents: string): void {
   try {
     fs.copyFileSync(file, `${file}.bak`);
   } catch {
     // No previous file to back up.
   }
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, contents, "utf8");
-  fs.renameSync(tmp, file);
+  atomicWriteFileSync(file, contents, { mode: 0o600 });
 }
 
 export function createThunderConfigStore(dir?: string): ThunderConfigStore {

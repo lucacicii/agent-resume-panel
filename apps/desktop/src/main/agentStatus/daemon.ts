@@ -92,7 +92,10 @@ async function startAgentStatusDaemon(
   }
 
   await ensureAgentStatusDir(paths);
-  if (Buffer.byteLength(paths.socket) >= AGENT_STATUS_SOCKET_MAX_BYTES) {
+  // A unix socket path is capped at ~104 bytes; a Windows named pipe has no such
+  // limit and lives in the `\\.\pipe\` namespace, so the check only applies
+  // where it means something.
+  if (process.platform !== "win32" && Buffer.byteLength(paths.socket) >= AGENT_STATUS_SOCKET_MAX_BYTES) {
     throw new Error(
       `agent-status socket path is too long for this platform (${Buffer.byteLength(paths.socket)} bytes): ${paths.socket}`
     );

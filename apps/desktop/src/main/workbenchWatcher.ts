@@ -1,7 +1,7 @@
 import { BrowserWindow, type WebContents } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { expandHome } from "@agent-resume/core";
+import { expandHome, isPathInside } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
 
 const CHANGE_BATCH_MS = 120;
@@ -57,7 +57,7 @@ type WorkbenchWatcherRuntimeMetrics = {
 };
 
 function isWithinRoot(target: string, root: string): boolean {
-  return target === root || target.startsWith(root + path.sep);
+  return isPathInside(root, target);
 }
 
 function resolveWatchRoot(raw: unknown): string {

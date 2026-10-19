@@ -9,12 +9,12 @@ const desktopChangelogPath = path.join(desktopRoot, "CHANGELOG.md");
 const releaseRepo = "lucacicii/agent-resume-panel";
 
 function usage() {
-  console.log(`Usage: node scripts/release-desktop-mac.mjs [options]
+  console.log(`Usage: node scripts/release-desktop.mjs [options]
 
 Options:
-  --build              Run pnpm run pack:desktop when the DMG is missing
+  --build              Run pnpm run pack:desktop when an artifact is missing
   --notes-file <path>  Override release notes (default: extract from apps/desktop/CHANGELOG.md)
-  --upload-only        Upload the DMG to an existing release only
+  --upload-only        Upload the artifacts to an existing release only
   --dry-run            Print commands without executing them
   --help               Show this help
 
@@ -116,9 +116,28 @@ function readDesktopVersion() {
   return pkg.version;
 }
 
-function dmgPathsForVersion(version) {
+/**
+ * The artifacts a release must contain for the host platform.
+ *
+ * macOS: one DMG per arch. Windows: one portable zip per arch (the optional
+ * NSIS installer is uploaded when it was built, but is not required).
+ */
+function artifactPathsForVersion(version) {
+  if (process.platform === "win32") {
+    return ["arm64", "x64"].map(
+      (arch) => path.join(desktopRoot, "release", `Agent Resume-${version}-win32-${arch}.zip`)
+    );
+  }
   return ["arm64", "x64"].map(
     (arch) => path.join(desktopRoot, "release", `Agent Resume-${version}-${arch}.dmg`)
+  );
+}
+
+/** Optional artifacts that are uploaded when present. */
+function optionalArtifactPathsForVersion(version) {
+  if (process.platform !== "win32") return [];
+  return ["arm64", "x64"].map(
+    (arch) => path.join(desktopRoot, "release", `Agent Resume-${version}-win32-${arch}-setup.exe`)
   );
 }
 
@@ -126,25 +145,25 @@ function ensureGhAuth(dryRun) {
   run("gh", ["auth", "status"], { dryRun });
 }
 
-function ensureDmgs(version, build, dryRun) {
-  const dmgPaths = dmgPathsForVersion(version);
-  const existing = dmgPaths.filter((dmgPath) => fs.existsSync(dmgPath));
-  if (existing.length === dmgPaths.length) {
-    return dmgPaths;
+function ensureArtifacts(version, build, dryRun) {
+  const artifactPaths = artifactPathsForVersion(version);
+  const existing = artifactPaths.filter((artifactPath) => fs.existsSync(artifactPath));
+  if (existing.length === artifactPaths.length) {
+    return artifactPaths;
   }
   if (!build) {
     throw new Error(
-      `Missing DMGs: ${dmgPaths.join(", ")}\nRebuild with --build or run: pnpm run pack:desktop`
+      `Missing artifacts: ${artifactPaths.join(", ")}\nRebuild with --build or run: pnpm run pack:desktop`
     );
   }
   run("pnpm", ["run", "pack:desktop"], { dryRun, cwd: root });
   if (!dryRun) {
-    const missing = dmgPaths.filter((dmgPath) => !fs.existsSync(dmgPath));
+    const missing = artifactPaths.filter((artifactPath) => !fs.existsSync(artifactPath));
     if (missing.length > 0) {
-      throw new Error(`Packaging finished but DMGs were not found: ${missing.join(", ")}`);
+      throw new Error(`Packaging finished but artifacts were not found: ${missing.join(", ")}`);
     }
   }
-  return dmgPaths;
+  return artifactPaths;
 }
 
 function releaseExists(tag, dryRun) {
@@ -197,20 +216,21 @@ function uploadWithRetries(label, upload, { dryRun, attempts = 5, delaySec = 15 
     } catch (error) {
       if (attempt === attempts) throw error;
       console.warn(`${label} failed; retrying in ${delaySec}s...`);
-      execFileSync("sleep", [String(delaySec)], { cwd: root, stdio: "inherit" });
+      // `sleep` is a POSIX binary; Atomics.wait is the portable equivalent.
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delaySec * 1000);
     }
   }
 }
 
-function uploadAssetWithGh(version, dmgPath, dryRun) {
+function uploadAssetWithGh(version, artifactPath, dryRun) {
   const tag = `v${version}`;
-  const assetName = path.basename(dmgPath);
+  const assetName = path.basename(artifactPath);
   uploadWithRetries(`Uploading ${assetName} via gh`, (isDryRun) => {
     if (isDryRun) {
-      console.log(`[dry-run] gh release upload ${tag} ${dmgPath} --repo ${releaseRepo} --clobber`);
+      console.log(`[dry-run] gh release upload ${tag} ${artifactPath} --repo ${releaseRepo} --clobber`);
       return;
     }
-    run("gh", ["release", "upload", tag, dmgPath, "--repo", releaseRepo, "--clobber"], { dryRun: false });
+    run("gh", ["release", "upload", tag, artifactPath, "--repo", releaseRepo, "--clobber"], { dryRun: false });
   }, { dryRun });
 }
 
@@ -231,16 +251,16 @@ function releaseIdForTag(tag, dryRun) {
   return String(databaseId);
 }
 
-function uploadAssetWithCurl(version, dmgPath, dryRun) {
+function uploadAssetWithCurl(version, artifactPath, dryRun) {
   const tag = `v${version}`;
   const releaseId = releaseIdForTag(tag, dryRun);
-  const assetName = path.basename(dmgPath);
+  const assetName = path.basename(artifactPath);
   const uploadUrl = `https://uploads.github.com/repos/${releaseRepo}/releases/${releaseId}/assets?name=${encodeURIComponent(assetName)}`;
   const token = ghAuthToken(dryRun);
 
   uploadWithRetries(`Uploading ${assetName} via curl`, (isDryRun) => {
     if (isDryRun) {
-      console.log(`[dry-run] curl --http1.1 --upload-file ${dmgPath} ${uploadUrl}`);
+      console.log(`[dry-run] curl --http1.1 --upload-file ${artifactPath} ${uploadUrl}`);
       return;
     }
     execFileSync(
@@ -267,7 +287,7 @@ function uploadAssetWithCurl(version, dmgPath, dryRun) {
         "-H",
         "Content-Type: application/octet-stream",
         "-T",
-        dmgPath,
+        artifactPath,
         uploadUrl
       ],
       { cwd: root, stdio: "inherit" }
@@ -275,22 +295,22 @@ function uploadAssetWithCurl(version, dmgPath, dryRun) {
   }, { dryRun });
 }
 
-function uploadAsset(version, dmgPath, dryRun) {
+function uploadAsset(version, artifactPath, dryRun) {
   try {
-    uploadAssetWithGh(version, dmgPath, dryRun);
+    uploadAssetWithGh(version, artifactPath, dryRun);
   } catch (error) {
     console.warn("gh release upload failed; falling back to curl upload API...");
-    uploadAssetWithCurl(version, dmgPath, dryRun);
+    uploadAssetWithCurl(version, artifactPath, dryRun);
   }
 }
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
   const version = readDesktopVersion();
-  const dmgPaths = ensureDmgs(version, options.build, options.dryRun);
+  const artifactPaths = ensureArtifacts(version, options.build, options.dryRun);
 
   console.log(`Desktop version: ${version}`);
-  console.log(`DMGs: ${dmgPaths.join(", ")}`);
+  console.log(`Artifacts: ${artifactPaths.join(", ")}`);
   console.log(`Target repo: ${releaseRepo}`);
 
   ensureGhAuth(options.dryRun);
@@ -299,8 +319,12 @@ function main() {
     console.log(`Release notes: ${notesFile}`);
     createRelease(version, notesFile, options.dryRun);
   }
-  for (const dmgPath of dmgPaths) {
-    uploadAsset(version, dmgPath, options.dryRun);
+  for (const artifactPath of artifactPaths) {
+    uploadAsset(version, artifactPath, options.dryRun);
+  }
+  for (const optionalPath of optionalArtifactPathsForVersion(version)) {
+    if (!fs.existsSync(optionalPath)) continue;
+    uploadAsset(version, optionalPath, options.dryRun);
   }
 
   console.log(`\nRelease ready: https://github.com/${releaseRepo}/releases/tag/v${version}`);

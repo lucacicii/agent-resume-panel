@@ -1,7 +1,7 @@
 import { execFile, type ChildProcess } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { expandHome } from "@agent-resume/core";
+import { expandHome, isPathInside } from "@agent-resume/core";
 
 export interface WorkbenchSearchMatch {
   path: string;
@@ -308,7 +308,7 @@ function resolveCwd(raw?: string): string {
 function resolvePathWithinRoot(raw: string, rootPath: string): string {
   const root = path.resolve(expandHome(rootPath.trim()));
   const target = path.resolve(expandHome(raw.trim()));
-  if (target !== root && !target.startsWith(root + path.sep)) {
+  if (!isPathInside(root, target)) {
     throw new Error("路径超出允许范围");
   }
   return target;

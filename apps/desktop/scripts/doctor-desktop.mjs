@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Desktop environment doctor for macOS Intel + Apple Silicon.
+ * Desktop environment doctor for macOS (Intel + Apple Silicon) and Windows.
  * Run after clone / pnpm install when dev or pack fails with env-looking errors.
  */
 import { execFileSync } from "node:child_process";
@@ -54,7 +54,10 @@ function checkNode() {
 
 function checkPnpm() {
   try {
-    const out = execFileSync("pnpm", ["--version"], { encoding: "utf8" }).trim();
+    const out = execFileSync("pnpm", ["--version"], {
+      encoding: "utf8",
+      shell: process.platform === "win32"
+    }).trim();
     const ok = out === EXPECTED_PNPM || out.startsWith(`${EXPECTED_PNPM}`);
     return {
       ok,
@@ -72,14 +75,23 @@ function checkPnpm() {
   }
 }
 
+const SUPPORTED_PLATFORMS = new Set(["darwin", "win32"]);
+
 function checkPlatform() {
   const { platform, arch } = process;
-  if (platform !== "darwin") {
+  if (!SUPPORTED_PLATFORMS.has(platform)) {
     return {
       ok: false,
       name: "Platform",
-      detail: `${platform}/${arch} — Desktop pack/dev matrix is macOS only for now`,
-      fix: "Use an Intel or Apple Silicon Mac for desktop work."
+      detail: `${platform}/${arch} — Desktop pack/dev matrix is macOS and Windows`,
+      fix: "Use an Intel or Apple Silicon Mac, or Windows 10/11 (x64 or arm64)."
+    };
+  }
+  if (platform === "win32") {
+    return {
+      ok: true,
+      name: "Platform",
+      detail: `win32/${arch} (${arch === "arm64" ? "Windows on Arm" : "Windows x64"})`
     };
   }
   return {
@@ -108,25 +120,45 @@ function checkNodePty() {
     };
   }
 
+  const platform = process.platform;
   const arch = process.arch;
-  const prebuildDir = path.join(root, "prebuilds", `darwin-${arch}`);
+  const prebuildDir = path.join(root, "prebuilds", `${platform}-${arch}`);
   const hasPrebuild = fs.existsSync(prebuildDir);
-  const helpers = ensureSpawnHelpersExecutable(root, "darwin");
-  const archHelpers = findSpawnHelpers(root, "darwin").filter((h) => h.includes(`darwin-${arch}`));
-  const ok = hasPrebuild && (helpers.length > 0 || archHelpers.length > 0);
+  const detailParts = [`root ${root}`];
 
-  // Per-arch packs need prebuilds for each target arch present in the package.
-  const hasX64 = fs.existsSync(path.join(root, "prebuilds", "darwin-x64"));
-  const hasArm64 = fs.existsSync(path.join(root, "prebuilds", "darwin-arm64"));
-  const packReady = hasX64 && hasArm64;
-  const detailParts = [
-    `root ${root}`,
-    hasPrebuild ? `prebuild darwin-${arch} OK` : `missing prebuild darwin-${arch}`,
-    helpers.length ? `spawn-helper x${helpers.length}` : "no spawn-helper",
-    packReady
-      ? "both-arch prebuilds (x64+arm64) OK"
-      : `pack prebuilds: x64=${hasX64} arm64=${hasArm64}`
-  ];
+  let ok;
+  let packReady;
+  if (platform === "win32") {
+    // ConPTY comes from the native addon; there is no spawn-helper to fix.
+    const addon = path.join(prebuildDir, "pty.node");
+    ok = fs.existsSync(addon);
+    detailParts.push(ok ? `prebuild ${platform}-${arch} OK` : `missing prebuild ${platform}-${arch}/pty.node`);
+    const hasX64 = fs.existsSync(path.join(root, "prebuilds", "win32-x64", "pty.node"));
+    const hasArm64 = fs.existsSync(path.join(root, "prebuilds", "win32-arm64", "pty.node"));
+    packReady = hasX64 && hasArm64;
+    detailParts.push(
+      packReady
+        ? "both-arch prebuilds (x64+arm64) OK"
+        : `pack prebuilds: x64=${hasX64} arm64=${hasArm64}`
+    );
+  } else {
+    const helpers = ensureSpawnHelpersExecutable(root, platform);
+    const archHelpers = findSpawnHelpers(root, platform).filter((h) => h.includes(`${platform}-${arch}`));
+    ok = hasPrebuild && (helpers.length > 0 || archHelpers.length > 0);
+    detailParts.push(
+      hasPrebuild ? `prebuild ${platform}-${arch} OK` : `missing prebuild ${platform}-${arch}`,
+      helpers.length ? `spawn-helper x${helpers.length}` : "no spawn-helper"
+    );
+    // Per-arch packs need prebuilds for each target arch present in the package.
+    const hasX64 = fs.existsSync(path.join(root, "prebuilds", "darwin-x64"));
+    const hasArm64 = fs.existsSync(path.join(root, "prebuilds", "darwin-arm64"));
+    packReady = hasX64 && hasArm64;
+    detailParts.push(
+      packReady
+        ? "both-arch prebuilds (x64+arm64) OK"
+        : `pack prebuilds: x64=${hasX64} arm64=${hasArm64}`
+    );
+  }
 
   return {
     ok,
@@ -135,8 +167,8 @@ function checkNodePty() {
     fix: ok
       ? packReady
         ? undefined
-        : "For pack:desktop reinstall node-pty so both darwin-x64 and darwin-arm64 prebuilds exist: pnpm install --force"
-      : "pnpm install --force  # from repo root; never copy node_modules across Intel/Apple Silicon"
+        : `For pack:desktop reinstall node-pty so both ${platform}-x64 and ${platform}-arm64 prebuilds exist: pnpm install --force`
+      : "pnpm install --force  # from repo root; never copy node_modules between machines"
   };
 }
 
@@ -198,9 +230,10 @@ function checkElectronPackCache() {
   }
 
   const zipDir = path.join(desktopRoot, ".electron-zips", `v${version}`);
+  const platform = process.platform === "win32" ? "win32" : "darwin";
   const need = [
-    `electron-v${version}-darwin-x64.zip`,
-    `electron-v${version}-darwin-arm64.zip`
+    `electron-v${version}-${platform}-x64.zip`,
+    `electron-v${version}-${platform}-arm64.zip`
   ];
   const present = need.map((name) => ({
     name,
@@ -267,12 +300,16 @@ function checkAgentStatusDaemon() {
  */
 function agentStatusPaths(panelHome) {
   const dir = path.join(panelHome, ".desktop", "agent-status");
-  const uid = typeof process.getuid === "function" ? process.getuid() : 0;
   const profile = createHash("sha1").update(panelHome).digest("hex").slice(0, 8);
+  // Must match apps/desktop/src/main/agentStatus/paths.ts: Windows uses a named
+  // pipe in the `\\.\pipe\` namespace, unix a temp-dir socket file.
+  const socket = process.platform === "win32"
+    ? `\\\\.\\pipe\\agent-resume-status-${profile}`
+    : path.join(os.tmpdir(), `agent-resume-status-${typeof process.getuid === "function" ? process.getuid() : 0}-${profile}.sock`);
   return {
     dir,
     endpoint: path.join(dir, "endpoint.json"),
-    socket: path.join(os.tmpdir(), `agent-resume-status-${uid}-${profile}.sock`)
+    socket
   };
 }
 
@@ -335,7 +372,7 @@ export function runDesktopDoctor() {
 function main() {
   const checks = runDesktopDoctor();
   let failed = 0;
-  console.log("Agent Resume Desktop — environment doctor (macOS Intel / Apple Silicon)\n");
+  console.log(`Agent Resume Desktop — environment doctor (${process.platform === "win32" ? "Windows" : "macOS Intel / Apple Silicon"})\n`);
   for (const c of checks) {
     const mark = c.ok ? "OK  " : "FAIL";
     if (!c.ok) failed += 1;
@@ -348,8 +385,8 @@ function main() {
   if (failed === 0) {
     console.log("All required checks passed.");
     console.log("Dev:  pnpm run dev:desktop");
-    console.log("Pack: pnpm run pack:desktop   # any Mac; builds arm64 + x64 separately");
-    console.log("Tip:  never copy node_modules between Intel and Apple Silicon — only git + pnpm install.");
+    console.log("Pack: pnpm run pack:desktop   # builds arm64 + x64 separately");
+    console.log("Tip:  never copy node_modules between machines or CPU architectures — only git + pnpm install.");
     process.exit(0);
   }
   console.error(`${failed} check(s) failed. Fix above, then re-run: pnpm run doctor:desktop`);

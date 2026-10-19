@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { randomUUID } from "node:crypto";
+import { atomicWriteFile } from "../atomicWrite";
 import { readJsonLines } from "../transcript/jsonl";
 
 export interface AcpSessionStoreRecord {
@@ -129,22 +129,7 @@ async function writeAcpSessionRecords(panelHome: string, records: AcpSessionStor
   await ensureAcpStoreDirs(panelHome);
   const filePath = acpSessionsPath(panelHome);
   const body = records.map((record) => JSON.stringify(record)).join("\n");
-  const temporaryPath = path.join(
-    path.dirname(filePath),
-    `.${path.basename(filePath)}.agent-resume-${process.pid}-${randomUUID()}`
-  );
-  const handle = await fs.open(temporaryPath, "wx", 0o600);
-  try {
-    await handle.writeFile(body ? `${body}\n` : "", "utf8");
-  } finally {
-    await handle.close();
-  }
-
-  try {
-    await fs.rename(temporaryPath, filePath);
-  } finally {
-    await fs.rm(temporaryPath, { force: true });
-  }
+  await atomicWriteFile(filePath, body ? `${body}\n` : "", { mode: 0o600 });
 }
 
 async function withAcpStoreLock<T>(panelHome: string, operation: () => Promise<T>): Promise<T> {

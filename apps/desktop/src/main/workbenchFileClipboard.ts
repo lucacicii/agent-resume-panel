@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { expandHome } from "@agent-resume/core";
+import { expandHome, isPathInside } from "@agent-resume/core";
 
 const execFileAsync = promisify(execFile);
 const PASTEBOARD_TIMEOUT_MS = 5000;
@@ -36,6 +36,29 @@ function run(argv) {
 }
 `;
 
+/**
+ * Win32 has no NSPasteboard; the clipboard file list is CF_HDROP. The WinForms
+ * clipboard wrapper is the shortest path to it, and it must run on an STA
+ * thread — `powershell.exe -Sta` provides one.
+ */
+const READ_WINDOWS_FILES_SCRIPT = String.raw`
+Add-Type -AssemblyName System.Windows.Forms
+$files = [System.Windows.Forms.Clipboard]::GetFileDropList()
+$items = @()
+foreach ($file in $files) { $items += $file }
+ConvertTo-Json -InputObject $items -Compress
+`;
+
+const WRITE_WINDOWS_FILES_SCRIPT = String.raw`
+Add-Type -AssemblyName System.Windows.Forms
+$paths = $env:AGENT_RESUME_CLIPBOARD_PATHS | ConvertFrom-Json
+$collection = New-Object System.Collections.Specialized.StringCollection
+foreach ($item in $paths) { [void]$collection.Add([string]$item) }
+[System.Windows.Forms.Clipboard]::SetFileDropList($collection)
+`;
+
+const CLIPBOARD_PATHS_ENV = "AGENT_RESUME_CLIPBOARD_PATHS";
+
 interface WorkbenchPasteCopiedEntry {
   sourcePath: string;
   destinationPath: string;
@@ -53,12 +76,17 @@ interface WorkbenchPasteResult {
 }
 
 function isPathWithin(targetPath: string, rootPath: string): boolean {
-  return targetPath === rootPath || targetPath.startsWith(rootPath + path.sep);
+  return isPathInside(rootPath, targetPath);
 }
 
-function requireMacOs(): void {
-  if (process.platform !== "darwin") {
-    throw new Error("文件剪贴板仅支持 macOS");
+/** The file-list clipboard exists on macOS (NSPasteboard) and Windows (CF_HDROP). */
+export function clipboardFilePathsSupported(platform = process.platform): boolean {
+  return platform === "darwin" || platform === "win32";
+}
+
+function requireSupportedPlatform(): void {
+  if (!clipboardFilePathsSupported()) {
+    throw new Error("文件剪贴板仅支持 macOS 和 Windows");
   }
 }
 
@@ -66,8 +94,26 @@ function errorMessage(error: unknown): string {
   return error instanceof Error && error.message ? error.message : String(error);
 }
 
+function encodePowerShell(script: string): string {
+  return Buffer.from(script, "utf16le").toString("base64");
+}
+
+function windowsPowerShellPath(): string {
+  const systemRoot = process.env.SystemRoot?.trim() || "C:\\Windows";
+  return path.win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+}
+
+async function runPowerShell(script: string, env: NodeJS.ProcessEnv = process.env): Promise<string> {
+  const result = await execFileAsync(
+    windowsPowerShellPath(),
+    ["-NoProfile", "-NonInteractive", "-Sta", "-EncodedCommand", encodePowerShell(script)],
+    { timeout: PASTEBOARD_TIMEOUT_MS, maxBuffer: PASTEBOARD_MAX_BUFFER, env, windowsHide: true }
+  );
+  return result.stdout.trim();
+}
+
 async function runPasteboardScript(script: string, args: string[] = []): Promise<string> {
-  requireMacOs();
+  requireSupportedPlatform();
   const result = await execFileAsync("/usr/bin/osascript", ["-l", "JavaScript", "-e", script, ...args], {
     timeout: PASTEBOARD_TIMEOUT_MS,
     maxBuffer: PASTEBOARD_MAX_BUFFER
@@ -75,18 +121,33 @@ async function runPasteboardScript(script: string, args: string[] = []): Promise
   return result.stdout.trim();
 }
 
+function isAbsolutePath(value: string): boolean {
+  // The parser also runs in tests on a Mac; accept Windows paths there too.
+  return path.isAbsolute(value) || path.win32.isAbsolute(value);
+}
+
 export function parsePasteboardPaths(stdout: string): string[] {
   const value: unknown = JSON.parse(stdout || "[]");
   if (!Array.isArray(value)) throw new Error("无法读取文件剪贴板");
-  return value.filter((item): item is string => typeof item === "string" && path.isAbsolute(item));
+  return value.filter((item): item is string => typeof item === "string" && isAbsolutePath(item));
 }
 
-export async function readMacPasteboardFilePaths(): Promise<string[]> {
+export async function readClipboardFilePaths(): Promise<string[]> {
+  if (process.platform === "win32") {
+    return parsePasteboardPaths(await runPowerShell(READ_WINDOWS_FILES_SCRIPT));
+  }
   return parsePasteboardPaths(await runPasteboardScript(READ_FILE_URLS_SCRIPT));
 }
 
-async function writeMacPasteboardFilePaths(paths: string[]): Promise<void> {
+async function writeClipboardFilePaths(paths: string[]): Promise<void> {
   if (!paths.length) throw new Error("没有可复制的文件");
+  if (process.platform === "win32") {
+    await runPowerShell(WRITE_WINDOWS_FILES_SCRIPT, {
+      ...process.env,
+      [CLIPBOARD_PATHS_ENV]: JSON.stringify(paths)
+    });
+    return;
+  }
   const stdout = await runPasteboardScript(WRITE_FILE_URLS_SCRIPT, [JSON.stringify(paths)]);
   const result: unknown = JSON.parse(stdout || "{}");
   if (!result || typeof result !== "object" || !(result as { ok?: unknown }).ok) {
@@ -212,14 +273,15 @@ export async function copyPathsIntoWorkbench(
 }
 
 export async function copyWorkbenchPathToClipboard(rootPath: string, sourcePath: string): Promise<void> {
+  requireSupportedPlatform();
   const source = resolveWorkbenchEntry(rootPath, sourcePath);
-  await writeMacPasteboardFilePaths([source]);
+  await writeClipboardFilePaths([source]);
 }
 
-export async function pasteMacClipboardIntoWorkbench(
+export async function pasteClipboardIntoWorkbench(
   rootPath: string,
   targetDirectory: string
 ): Promise<WorkbenchPasteResult> {
-  const sourcePaths = await readMacPasteboardFilePaths();
+  const sourcePaths = await readClipboardFilePaths();
   return copyPathsIntoWorkbench(rootPath, targetDirectory, sourcePaths);
 }

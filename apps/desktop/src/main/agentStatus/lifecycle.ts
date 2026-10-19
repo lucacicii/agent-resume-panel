@@ -29,6 +29,11 @@ import {
   type LaunchAgentResult,
   type LaunchAgentSpec
 } from "../launchd";
+import {
+  installWindowsLoginItem,
+  isWindowsLoginItemInstalled,
+  uninstallWindowsLoginItem
+} from "../windowsLoginItem";
 
 const DEFAULT_START_TIMEOUT_MS = 5_000;
 const START_POLL_MS = 50;
@@ -201,7 +206,7 @@ export type AgentStatusDaemonStatus = {
 export async function readAgentStatusDaemonStatus(panelHome: string): Promise<AgentStatusDaemonStatus> {
   const paths = agentStatusPaths(panelHome);
   const endpoint = await readLiveEndpoint(paths);
-  const launchAgentInstalled = await isAgentStatusLaunchAgentInstalled().catch(() => false);
+  const launchAgentInstalled = await isAgentStatusLaunchAgentInstalled(panelHome).catch(() => false);
   const base: AgentStatusDaemonStatus = {
     running: Boolean(endpoint),
     panelHome,
@@ -239,7 +244,10 @@ export async function readAgentStatusDaemonStatus(panelHome: string): Promise<Ag
  * the repo ever wrote the plist it was permanently false. The install/remove
  * pair below is what makes the answer meaningful.
  */
-export async function isAgentStatusLaunchAgentInstalled(): Promise<boolean> {
+export async function isAgentStatusLaunchAgentInstalled(panelHome?: string): Promise<boolean> {
+  if (process.platform === "win32") {
+    return panelHome ? isWindowsLoginItemInstalled(panelHome) : false;
+  }
   return isLaunchAgentInstalled(AGENT_STATUS_LAUNCH_AGENT_LABEL);
 }
 
@@ -291,14 +299,25 @@ export async function installAgentStatusLaunchAgent(input: {
   appVersion: string;
   notify?: boolean;
 }): Promise<LaunchAgentResult> {
+  if (process.platform === "win32") {
+    // Windows has no plist: the login item is an HKCU `Run` value that starts a
+    // shim carrying the daemon's environment. The shape is reported through the
+    // same result type so callers do not branch.
+    const result = await installWindowsLoginItem(input);
+    return { plistPath: result.shimPath, changed: result.changed, loaded: result.registered };  }
   return installLaunchAgent(agentStatusLaunchAgentSpec(input));
 }
 
 /** Remove the login item and boot the service out. */
-export async function uninstallAgentStatusLaunchAgent(): Promise<{
+export async function uninstallAgentStatusLaunchAgent(panelHome?: string): Promise<{
   removed: boolean;
   plistPath: string;
 }> {
+  if (process.platform === "win32") {
+    if (!panelHome) return { removed: false, plistPath: "" };
+    const result = await uninstallWindowsLoginItem(panelHome);
+    return { removed: result.removed, plistPath: result.shimPath };
+  }
   return uninstallLaunchAgent(AGENT_STATUS_LAUNCH_AGENT_LABEL);
 }
 

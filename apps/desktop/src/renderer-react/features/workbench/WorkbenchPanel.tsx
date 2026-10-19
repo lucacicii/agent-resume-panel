@@ -32,6 +32,7 @@ import {
 } from "../../gtd";
 import { hueFromHex } from "../../../shared/taskColors";
 import { desktopApi } from "../../bridge";
+import { isMacRenderer } from "../../platform";
 import { confirmDestructive } from "../../confirmAction";
 import { contextMenuPoint, showContextMenuAt, type NativeContextMenuItem } from "../../nativeContextMenu";
 import { useMenuKeyboard, useMenuPosition } from "../../components/menuOverlay";
@@ -6375,7 +6376,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       ? `${selectedProjectMeta.label} — ${selectedProjectMeta.path}`
       : t("desktop.workbench.quickAccessSelectProject");
   const noProjectReason = sideRoots.length ? undefined : t("desktop.workbench.quickAccessNoProjectCommand");
-  const macShortcuts = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
+  const macShortcuts = isMacRenderer();
   const shortcut = (key: string) => macShortcuts ? `⌘${key}` : `Ctrl+${key}`;
   const openWorkbenchView = (view?: SideView) => {
     closeQuickAccess();

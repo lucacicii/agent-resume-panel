@@ -100,8 +100,68 @@ if (process.platform === "darwin") {
     console.warn("iconutil failed; generated icon.icns from the PNG iconset");
   }
   fs.rmSync(iconset, { recursive: true, force: true });
+  // Windows installers and portable builds still want a .ico; it is generated
+  // on every platform so a cross-platform release does not need a Mac.
+  writeWindowsIcon(iconSrc, path.join(iconDestDir, "icon.ico"));
 } else {
   fs.copyFileSync(iconSrc, iconPng);
+  writeWindowsIcon(iconSrc, path.join(iconDestDir, "icon.ico"));
+}
+
+/**
+ * Write a multi-size .ico from the 1024px app icon.
+ *
+ * An ICO is a small container: a header, one directory entry per image, then
+ * the images. Windows accepts PNG-compressed entries (Vista and later), so the
+ * 1024px source is downscaled with sips when available and embedded as PNG —
+ * no image library needed. On a machine without sips the source is embedded
+ * at its own size, which Explorer still renders.
+ */
+function writeWindowsIcon(sourcePng, destinationIco) {
+  const sizes = [16, 24, 32, 48, 64, 128, 256];
+  const temporaryDir = path.join(iconDestDir, ".ico-tmp");
+  fs.rmSync(temporaryDir, { recursive: true, force: true });
+  fs.mkdirSync(temporaryDir, { recursive: true });
+  try {
+    const images = sizes.map((size) => {
+      const target = path.join(temporaryDir, `${size}.png`);
+      try {
+        execFileSync("sips", ["-z", String(size), String(size), sourcePng, "--out", target], { stdio: "ignore" });
+        return { size, data: fs.readFileSync(target) };
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+    if (!images.length) {
+      images.push({ size: 256, data: fs.readFileSync(sourcePng) });
+    }
+
+    const header = Buffer.alloc(6);
+    header.writeUInt16LE(0, 0); // reserved
+    header.writeUInt16LE(1, 2); // type: icon
+    header.writeUInt16LE(images.length, 4);
+
+    const directory = Buffer.alloc(16 * images.length);
+    let offset = header.length + directory.length;
+    images.forEach((image, index) => {
+      const entry = index * 16;
+      // 256 is encoded as 0 in the directory.
+      directory.writeUInt8(image.size >= 256 ? 0 : image.size, entry);
+      directory.writeUInt8(image.size >= 256 ? 0 : image.size, entry + 1);
+      directory.writeUInt8(0, entry + 2); // palette
+      directory.writeUInt8(0, entry + 3); // reserved
+      directory.writeUInt16LE(1, entry + 4); // color planes
+      directory.writeUInt16LE(32, entry + 6); // bits per pixel
+      directory.writeUInt32LE(image.data.length, entry + 8);
+      directory.writeUInt32LE(offset, entry + 12);
+      offset += image.data.length;
+    });
+
+    fs.writeFileSync(destinationIco, Buffer.concat([header, directory, ...images.map((image) => image.data)]));
+    console.log(`generated icon.ico (${images.map((image) => image.size).join("/")})`);
+  } finally {
+    fs.rmSync(temporaryDir, { recursive: true, force: true });
+  }
 }
 }
 

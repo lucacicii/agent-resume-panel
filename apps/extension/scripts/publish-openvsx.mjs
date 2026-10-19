@@ -16,5 +16,6 @@ console.log(`Publishing to Open VSX: ${vsixPath}`);
 execFileSync("pnpm", ["exec", "ovsx", "publish", vsixPath], {
   cwd: extensionRoot,
   stdio: "inherit",
-  env: process.env
+  env: process.env,
+  shell: process.platform === "win32"
 });

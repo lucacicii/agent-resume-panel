@@ -103,7 +103,7 @@ export function registerAgentStatusIpc(deps: AgentStatusIpcContext): void {
     const status = await readAgentStatusDaemonStatus(panelHome);
     return {
       ...status,
-      launchAgentInstalled: await isAgentStatusLaunchAgentInstalled().catch(() => false)
+      launchAgentInstalled: await isAgentStatusLaunchAgentInstalled(deps.getPanelHome()).catch(() => false)
     };
   };
 
@@ -154,7 +154,7 @@ export function registerAgentStatusIpc(deps: AgentStatusIpcContext): void {
   });
 
   safeHandle("agentStatus:uninstallLaunchAgent", async () => {
-    await uninstallAgentStatusLaunchAgent();
+    await uninstallAgentStatusLaunchAgent(deps.getPanelHome());
     return readStatus();
   });
 

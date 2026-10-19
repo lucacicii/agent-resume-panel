@@ -12,7 +12,12 @@
  */
 
 import { kindForProcess } from "./identity";
-import { foregroundProcesses, readProcessEntries, type ProcessEntry } from "./processTable";
+import {
+  foregroundProcesses,
+  PROCESS_TABLE_SUPPORTED,
+  readProcessEntries,
+  type ProcessEntry
+} from "./processTable";
 import type { AgentKind, PaneTelemetry } from "./types";
 
 /** How often the process table is rescanned. */
@@ -94,7 +99,11 @@ export function createDiscoveryScanner(input: {
   let disposed = false;
 
   const scan = async (): Promise<void> => {
-    if (running || disposed) return;
+    // The probe is POSIX-only: `ps` has no portable Windows equivalent and the
+    // process-group/terminal columns it needs do not exist there. Without this
+    // guard every scan would reject into the catch below and the daemon would
+    // burn a timer on a guaranteed failure.
+    if (!PROCESS_TABLE_SUPPORTED || running || disposed) return;
     running = true;
     try {
       const entries = await readProcessEntries();

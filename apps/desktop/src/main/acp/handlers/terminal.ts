@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawnSpecFor } from "@agent-resume/core";
 
 interface TerminalEntry {
   process: ChildProcessWithoutNullStreams;
@@ -24,7 +25,12 @@ function finishTerminal(entry: TerminalEntry, exitCode: number): void {
 function normalizeTerminalLaunch(command: string, args: string[]): { command: string; args: string[] } {
   // Grok Build ACP currently sends this shell invocation as one command string
   // rather than ACP's command + args shape. Keep the compatibility narrowly scoped.
-  if (!args.length && /^\/bin\/bash\s+-lc\s+\S/.test(command)) {
+  if (!args.length && /^(?:\/bin\/)?bash\s+-lc\s+\S/.test(command)) {
+    if (process.platform === "win32") {
+      // `/bin/bash` is the POSIX path. Git Bash installs `bash.exe` on PATH;
+      // running the same string keeps the semantics for users who have it.
+      return { command: "bash", args: ["-lc", command] };
+    }
     return { command: "/bin/bash", args: ["-lc", command] };
   }
   return { command, args };
@@ -37,9 +43,12 @@ export async function createTerminal(params: {
 }): Promise<{ terminalId: string }> {
   const terminalId = `acp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const launch = normalizeTerminalLaunch(params.command, params.args ?? []);
-  const child = spawn(launch.command, launch.args, {
+  // A `.cmd`/`.bat` tool cannot be spawned directly; `spawnSpecFor` routes it
+  // through cmd.exe with correct quoting.
+  const spec = spawnSpecFor(launch.command, launch.args);
+  const child = spawn(spec.file, spec.args, {
     cwd: params.cwd || undefined,
-    shell: false,
+    shell: spec.shell,
     env: process.env
   });
   const entry: TerminalEntry = {

@@ -2,13 +2,13 @@
 
 Languages: [English](#english) | [简体中文](#简体中文)
 
-macOS-oriented **Session OS + Memory** desktop app: **Workbench** with embedded terminal, background daily/weekly/monthly digests via MCP, plus **Notes** and **GTD** workflows.
+**Session OS + Memory** desktop app for macOS and Windows: **Workbench** with embedded terminal, background daily/weekly/monthly digests via MCP, plus **Notes** and **GTD** workflows.
 
 Pairs with the **Agent Resume Panel VS Code extension** — same agent sessions, same `~/.agent-resume-panel` data directory, no duplicate setup.
 
-| | Desktop app (macOS) | VS Code extension |
+| | Desktop app (macOS & Windows) | VS Code extension |
 |---|---|---|
-| **Install** | [Download DMG](https://github.com/lucacicii/agent-resume-panel/releases/latest) | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) |
+| **Install** | [Download (DMG / .zip)](https://github.com/lucacicii/agent-resume-panel/releases/latest) | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) |
 | **Docs** | [docs/desktop](README.md) | [docs/panel](../panel/README.md) |
 
 [Changelog](../../apps/desktop/CHANGELOG.md) · [Latest release](https://github.com/lucacicii/agent-resume-panel/releases/latest) · Extension: **2.6.12**
@@ -23,15 +23,18 @@ Pairs with the **Agent Resume Panel VS Code extension** — same agent sessions,
 
 ### Download & install
 
-- **macOS** (Apple Silicon + Intel universal): [Latest release](https://github.com/lucacicii/agent-resume-panel/releases/latest)
-- Open the DMG and drag **Agent Resume** into **Applications**.
-- **First launch:** macOS may block the app because it is not notarized. Right-click the app → **Open** once, or run:
+- **macOS** (Apple Silicon + Intel universal): [Latest release](https://github.com/lucacicii/agent-resume-panel/releases/latest) — download `Agent Resume-<version>-<arch>.dmg`.
+- **Windows** (x64 + arm64): same Releases page — download `Agent Resume-<version>-win32-<arch>.zip` (portable) or, when published, `...-setup.exe`.
+- **macOS:** open the DMG and drag **Agent Resume** into **Applications**. **Windows:** extract the zip and run `Agent Resume.exe`, or run the setup installer.
+- **First launch (macOS):** macOS may block the app because it is not notarized. Right-click the app → **Open** once, or run:
 
   ```bash
   xattr -cr "/Applications/Agent Resume.app"
   ```
 
-Requirements: macOS 12+, Apple Silicon or Intel. Version history: [Changelog](../../apps/desktop/CHANGELOG.md).
+- **First launch (Windows):** unsigned builds may trigger SmartScreen; continue only if the artifact came from the official Releases page.
+
+Requirements: macOS 12+ (Apple Silicon or Intel), or Windows 10/11 (x64 or arm64). Version history: [Changelog](../../apps/desktop/CHANGELOG.md).
 
 ### Documentation by module
 
@@ -59,7 +62,7 @@ Requirements: macOS 12+, Apple Silicon or Intel. Version history: [Changelog](..
 
 | | **Agent Resume Desktop** | **VS Code extension** |
 |---|---|---|
-| **What it is** | Standalone macOS app — **Session OS + Memory** | Sidebar panel inside VS Code / Cursor / VSCodium |
+| **What it is** | Standalone macOS / Windows app — **Session OS + Memory** | Sidebar panel inside VS Code / Cursor / VSCodium |
 | **Best for** | Embedded **Workbench**, scheduled digests, MCP memory retrieval | Resume while coding; **ACP Chat**; GTD / Notes in the IDE |
 | **Desktop-only** | Daily / weekly / monthly digests (background + MCP); xterm Workbench + git tools | — |
 | **Extension-only** | — | ACP Chat; Claude / Codex IDE panel resume; Ghostty targets |
@@ -84,13 +87,13 @@ Requirements: macOS 12+, Apple Silicon or Intel. Version history: [Changelog](..
 
 ## 简体中文
 
-macOS 导向的 **Session OS + Memory** 桌面应用：**Workbench** 恢复会话并嵌入终端，日/周/月回顾由后台生成并通过 MCP 读取，配合 **Notes** 与 **GTD**。
+**Session OS + Memory** 桌面应用，支持 macOS 与 Windows：**Workbench** 恢复会话并嵌入终端，日/周/月回顾由后台生成并通过 MCP 读取，配合 **Notes** 与 **GTD**。
 
 与 **Agent Resume Panel VS Code 扩展** 搭配使用 — 同一批 Agent 会话、共用 **`~/.agent-resume-panel`**，无需重复配置。
 
-| | Desktop 桌面端（macOS） | VS Code 扩展 |
+| | Desktop 桌面端（macOS & Windows） | VS Code 扩展 |
 |---|---|---|
-| **安装** | [下载 DMG](https://github.com/lucacicii/agent-resume-panel/releases/latest) | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) |
+| **安装** | [下载 DMG / .zip](https://github.com/lucacicii/agent-resume-panel/releases/latest) | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) |
 | **文档** | [docs/desktop](README.md) | [docs/panel](../panel/README.md) |
 
 [更新日志](../../apps/desktop/CHANGELOG.md) · [最新版本](https://github.com/lucacicii/agent-resume-panel/releases/latest) · 扩展：**2.6.12**
@@ -100,15 +103,18 @@ macOS 导向的 **Session OS + Memory** 桌面应用：**Workbench** 恢复会�
 
 ### 下载安装
 
-- **macOS**（Apple Silicon + Intel 通用包）：[最新版本](https://github.com/lucacicii/agent-resume-panel/releases/latest)
-- 打开 DMG，将 **Agent Resume** 拖入 **应用程序**。
-- **首次打开：** 应用未经 Apple 公证，macOS 可能拦截。请右键应用 → **打开** 一次，或执行：
+- **macOS**（Apple Silicon + Intel 通用包）：[最新版本](https://github.com/lucacicii/agent-resume-panel/releases/latest) — 下载 `Agent Resume-<version>-<arch>.dmg`。
+- **Windows**（x64 + arm64）：同一个 Releases 页面 — 下载 `Agent Resume-<version>-win32-<arch>.zip`（便携版），或发布页提供的 `...-setup.exe`。
+- **macOS：** 打开 DMG，将 **Agent Resume** 拖入 **应用程序**。**Windows：** 解压 zip 后运行 `Agent Resume.exe`，或运行 setup 安装包。
+- **首次打开（macOS）：** 应用未经 Apple 公证，macOS 可能拦截。请右键应用 → **打开** 一次，或执行：
 
   ```bash
   xattr -cr "/Applications/Agent Resume.app"
   ```
 
-系统要求：macOS 12+，Apple Silicon 或 Intel。版本历史：[更新日志](../../apps/desktop/CHANGELOG.md)。
+- **首次打开（Windows）：** 未签名构建可能触发 SmartScreen；请仅在产物来自官方 Releases 页面时继续。
+
+系统要求：macOS 12+（Apple Silicon 或 Intel），或 Windows 10/11（x64 或 arm64）。版本历史：[更新日志](../../apps/desktop/CHANGELOG.md)。
 
 ### 按模块阅读
 
@@ -136,7 +142,7 @@ macOS 导向的 **Session OS + Memory** 桌面应用：**Workbench** 恢复会�
 
 | | **Agent Resume Desktop** | **VS Code 扩展** |
 |---|---|---|
-| **定位** | 独立 macOS 应用 — **Session OS + Memory** | VS Code / Cursor / VSCodium 侧边栏面板 |
+| **定位** | 独立 macOS / Windows 应用 — **Session OS + Memory** | VS Code / Cursor / VSCodium 侧边栏面板 |
 | **适合场景** | 内嵌 **Workbench**、定时 digest、MCP 记忆检索 | 写代码时恢复会话；编辑器旁 **ACP Chat**；IDE 内 GTD / 笔记 |
 | **仅 Desktop** | 日 / 周 / 月 Digest（后台 + MCP）；xterm Workbench + Git 工具 | — |
 | **仅扩展** | — | ACP Chat；Claude / Codex 插件面板恢复；Ghostty |

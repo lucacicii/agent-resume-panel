@@ -90,7 +90,7 @@ test("planArpmRun plans commands with optional task context injection", async ()
       panelHome,
       settings
     });
-    assert.equal(standard.command, "codex --cd '/repo/my-app'");
+    assert.deepEqual(standard.argv, ["codex", "--cd", "/repo/my-app"]);
     assert.equal(standard.warning, undefined);
 
     // Explicit provider (claude).
@@ -100,7 +100,7 @@ test("planArpmRun plans commands with optional task context injection", async ()
       panelHome,
       settings
     });
-    assert.equal(claudeRun.command, "claude");
+    assert.deepEqual(claudeRun.argv, ["claude"]);
 
     // Missing task context file fails fast.
     await assert.rejects(
@@ -127,10 +127,11 @@ test("planArpmRun plans commands with optional task context injection", async ()
       panelHome,
       settings
     });
-    assert.equal(
-      claudeWithNote.command,
-      `claude --append-system-prompt "$(cat '${agentsFile}')"`
-    );
+    assert.deepEqual(claudeWithNote.argv, [
+      "claude",
+      "--append-system-prompt",
+      "# Task context"
+    ]);
     assert.equal(claudeWithNote.warning, undefined);
 
     // Codex with task context file injected.
@@ -140,10 +141,13 @@ test("planArpmRun plans commands with optional task context injection", async ()
       panelHome,
       settings
     });
-    assert.equal(
-      codexWithNote.command,
-      `codex --cd '/repo/my-app' -c "developer_instructions=$(cat '${agentsFile}')"`
-    );
+    assert.deepEqual(codexWithNote.argv, [
+      "codex",
+      "--cd",
+      "/repo/my-app",
+      "-c",
+      "developer_instructions=# Task context"
+    ]);
 
     // Unsupported provider (agy) warns and drops the context flag.
     const agyWithNote = await planArpmRun({
@@ -152,7 +156,7 @@ test("planArpmRun plans commands with optional task context injection", async ()
       panelHome,
       settings
     });
-    assert.equal(agyWithNote.command, "agy");
+    assert.deepEqual(agyWithNote.argv, ["agy"]);
     assert.match(agyWithNote.warning || "", /agy has no session instruction flag/);
   });
 });

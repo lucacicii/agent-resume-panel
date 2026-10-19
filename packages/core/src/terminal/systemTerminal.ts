@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import { AgentSession } from "../catalog/types";
 import { expandHome } from "../pathUtils";
-import { buildResumeCommand } from "./commands";
+import { defaultShellKind, quoteCmd, quotePowerShell, quotePosix, type ShellKind } from "../platform";
+import { buildResumeArgv, joinForShell } from "./commands";
 
 export type SystemTerminalLaunchMode = "pasteCommand" | "copyCommand" | "executeCommand";
 
@@ -12,8 +13,7 @@ export interface SystemTerminalSettings {
 
 export async function openProjectInSystemTerminal(projectPath: string): Promise<void> {
   const cwd = expandHome(projectPath);
-  const shell = process.env.SHELL || "/bin/zsh";
-  await launchSystemTerminal(cwd, shell, `cd ${shellQuote(cwd)} && exec ${shell} -l`);
+  await launchSystemTerminal(cwd, buildInteractiveCommand(cwd));
 }
 
 export async function openCommandInSystemTerminal(
@@ -27,19 +27,17 @@ export async function openCommandInSystemTerminal(
 
   const launchMode = settings.externalLaunchMode || "executeCommand";
   const autoPasteDelayMs = settings.externalAutoPasteDelayMs ?? 900;
-  const shell = process.env.SHELL || "/bin/zsh";
   const cwd = expandHome(projectPath);
-  const commandWithCwd = `cd ${shellQuote(cwd)} && ${command}`;
 
   if (launchMode === "executeCommand") {
-    await launchSystemTerminal(cwd, shell, commandWithCwd);
+    await launchSystemTerminal(cwd, changeDirectoryCommand(cwd, defaultShellKind()) + " && " + command);
     return {};
   }
 
   if (clipboard) {
     await clipboard.writeText(command);
   }
-  await launchSystemTerminal(cwd, shell, `cd ${shellQuote(cwd)} && exec ${shell} -l`);
+  await launchSystemTerminal(cwd, buildInteractiveCommand(cwd));
 
   if (launchMode === "copyCommand") {
     return { copied: true, message: "Command copied; paste into the terminal and press Enter." };
@@ -58,7 +56,7 @@ export async function openSessionInSystemTerminal(
   contextFile?: string
 ): Promise<{ copied?: boolean; message?: string }> {
   const cwd = expandHome(session.projectPath);
-  const resumeCommand = buildResumeCommand(session, contextFile);
+  const resumeCommand = joinForShell(buildResumeArgv(session, contextFile), defaultShellKind());
   const result = await openCommandInSystemTerminal(
     cwd,
     resumeCommand,
@@ -70,7 +68,24 @@ export async function openSessionInSystemTerminal(
     : result;
 }
 
-async function launchSystemTerminal(cwd: string, shell: string, command: string): Promise<void> {
+/** `cd <dir>` for the shell that will run it. */
+export function changeDirectoryCommand(cwd: string, shell: ShellKind): string {
+  if (shell === "cmd") return `cd /d ${quoteCmd(cwd)}`;
+  if (shell === "powershell") return `Set-Location -LiteralPath ${quotePowerShell(cwd)}`;
+  return `cd ${quotePosix(cwd)}`;
+}
+
+function buildInteractiveCommand(cwd: string): string {
+  const shell = defaultShellKind();
+  if (process.platform === "win32") {
+    // A fresh PowerShell/cmd window already starts in `cwd` because it is
+    // spawned with that working directory; nothing to run.
+    return "";
+  }
+  return `${changeDirectoryCommand(cwd, shell)} && exec ${process.env.SHELL || "/bin/zsh"} -l`;
+}
+
+async function launchSystemTerminal(cwd: string, command: string): Promise<void> {
   if (process.platform === "darwin") {
     await runCommand("osascript", [
       "-e",
@@ -82,13 +97,14 @@ async function launchSystemTerminal(cwd: string, shell: string, command: string)
   }
 
   if (process.platform === "win32") {
-    const inner = command.replace(/^cd\s+'[^']*'\s*&&\s*/, "");
-    const winCmd = `cd /d ${quoteWindows(cwd)} && ${inner}`;
-    await runDetached("cmd.exe", ["/c", "start", "cmd.exe", "/k", winCmd]);
+    // `start` is a cmd builtin. An empty title argument is required so a quoted
+    // command is not mistaken for the window title.
+    const winCmd = command ? `cd /d ${quoteCmd(cwd)} && ${command}` : "";
+    await runDetached("cmd.exe", ["/d", "/s", "/c", "start", "", "cmd.exe", "/k", winCmd]);
     return;
   }
 
-  const [terminal, ...terminalArgs] = resolveLinuxTerminalInvocation(cwd, shell, command);
+  const [terminal, ...terminalArgs] = resolveLinuxTerminalInvocation(cwd, process.env.SHELL || "/bin/zsh", command);
   await runDetached(terminal, terminalArgs);
 }
 
@@ -129,15 +145,6 @@ async function pasteIntoMacTerminal(appName: string, delayMs: number): Promise<v
     "-e",
     "end tell"
   ]);
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-function quoteWindows(value: string): string {
-  if (!/\s/.test(value)) return value;
-  return `"${value.replace(/"/g, '""')}"`;
 }
 
 function runDetached(command: string, args: string[]): Promise<void> {

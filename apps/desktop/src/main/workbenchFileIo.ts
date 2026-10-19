@@ -1,7 +1,7 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { expandHome } from "@agent-resume/core";
+import { atomicWriteFileSync, expandHome, isPathInside } from "@agent-resume/core";
 
 /** Largest file the workbench opens for editing; bigger files stay external. */
 export const MAX_WORKBENCH_EDIT_BYTES = 2 * 1024 * 1024;
@@ -35,7 +35,8 @@ type WorkbenchFileCreateResult =
   | { ok: false; reason: "exists" };
 
 function isPathWithinRoot(targetPath: string, rootPath: string): boolean {
-  return targetPath === rootPath || targetPath.startsWith(rootPath + path.sep);
+  // Case-insensitive on Windows, so `C:\Repo` and `c:\repo` are the same root.
+  return isPathInside(rootPath, targetPath);
 }
 
 function resolveLexicalWorkbenchPath(rootPath: string, targetPath: string): string {
@@ -172,24 +173,8 @@ export function inspectWorkbenchFile(rootPath: string, filePath: string): Workbe
   };
 }
 
-function atomicWriteFile(filePath: string, content: Buffer, mode: number): void {
-  const directory = path.dirname(filePath);
-  const tempPath = path.join(
-    directory,
-    `.${path.basename(filePath)}.agent-resume-${process.pid}-${randomBytes(6).toString("hex")}`
-  );
-  let fd: number | null = null;
-  try {
-    fd = fs.openSync(tempPath, "wx", mode);
-    fs.writeFileSync(fd, content);
-    fs.fsyncSync(fd);
-    fs.closeSync(fd);
-    fd = null;
-    fs.renameSync(tempPath, filePath);
-  } finally {
-    if (fd !== null) fs.closeSync(fd);
-    fs.rmSync(tempPath, { force: true });
-  }
+function writeFileAtomic(filePath: string, content: Buffer, mode: number): void {
+  atomicWriteFileSync(filePath, content, { mode });
 }
 
 export function saveWorkbenchFile(
@@ -222,7 +207,7 @@ export function saveWorkbenchFile(
   if (encoded.length > MAX_WORKBENCH_EDIT_BYTES) {
     throw new Error(`文件过大（超过 ${Math.round(MAX_WORKBENCH_EDIT_BYTES / 1024 / 1024)}MB）`);
   }
-  atomicWriteFile(canonicalPath, encoded, stat.mode);
+  writeFileAtomic(canonicalPath, encoded, stat.mode);
   const nextStat = fs.statSync(canonicalPath);
   return {
     ok: true,

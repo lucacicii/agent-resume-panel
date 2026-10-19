@@ -13,8 +13,18 @@ export function startMenuCommandBridge(): () => void {
   const api = window.agentResume;
   if (typeof api?.onMenuFind !== "function") return () => undefined;
   return api.onMenuFind(() => {
+    // The menu owns the accelerator, so the page never sees the original
+    // modifier. Dispatch the platform's modifier: panes listen for either
+    // `metaKey` (mac) or `ctrlKey` (Windows/Linux).
+    const mac = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
     window.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "f", metaKey: true, bubbles: true, cancelable: true })
+      new KeyboardEvent("keydown", {
+        key: "f",
+        metaKey: mac,
+        ctrlKey: !mac,
+        bubbles: true,
+        cancelable: true
+      })
     );
   });
 }

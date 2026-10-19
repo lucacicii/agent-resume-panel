@@ -5,7 +5,7 @@ import * as path from "node:path";
 import * as readline from "node:readline";
 import { randomUUID } from "node:crypto";
 import { loadSettings } from "@agent-resume/core";
-import { buildAugmentedPath } from "../processPath";
+import { buildAugmentedPath, pathEnvKey } from "../processPath";
 import {
   describeThunderResolution,
   resolveThunderDaemon,
@@ -237,14 +237,17 @@ export class ThunderClient {
       // (the panel passes `workspace_dir` per task).
       cwd = resolved.source === "bundled" ? os.homedir() : path.dirname(resolved.binaryPath);
     } else {
+      // `daemon.sh` is a POSIX wrapper; the resolver never returns a script on
+      // Windows, so this branch is unreachable there.
       command = "/bin/bash";
       args = [resolved.scriptPath!];
     }
 
     // Prepare environment with augmented PATH and settings credentials
+    const pathKey = pathEnvKey(process.env);
     const env: Record<string, string> = {
       ...process.env,
-      PATH: buildAugmentedPath(process.env.PATH || ""),
+      [pathKey]: buildAugmentedPath(process.env[pathKey] || process.env.PATH || ""),
       RUST_LOG: process.env.RUST_LOG || "info,thunder_daemon=debug,thunder_agent_root=debug,thunder_agent_loop=debug,thunder_agent_providers=debug"
     } as Record<string, string>;
 

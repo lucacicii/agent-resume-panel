@@ -28,45 +28,72 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.join(root, "..", "..");
 const sidecarRoot = path.join(root, ".thunder-sidecar");
 
-export const THUNDER_TARGETS = { x64: "x86_64-apple-darwin", arm64: "aarch64-apple-darwin" };
+export const THUNDER_TARGETS = {
+  darwin: { x64: "x86_64-apple-darwin", arm64: "aarch64-apple-darwin" },
+  win32: { x64: "x86_64-pc-windows-msvc", arm64: "aarch64-pc-windows-msvc" }
+};
 export const THUNDER_DAEMON_BIN = "thunder-daemon";
 export const THUNDER_TUI_BIN = "thunder-tui";
+
+/** Windows binaries carry an extension; the staged file name must match. */
+export function thunderBinaryName(base, platform = process.platform) {
+  return platform === "win32" ? `${base}.exe` : base;
+}
+
+export function thunderTargetFor(arch, platform = process.platform) {
+  return THUNDER_TARGETS[platform]?.[arch] ?? null;
+}
 
 /** Relative layout inside the bundle: `Contents/Resources/thunder` + `bin/thunder-daemon`. */
 const RESOURCE_DIR_NAME = "thunder";
 const BUNDLE_SUBDIR = ["bin"];
 
-export function hostTarget() {
-  return THUNDER_TARGETS[process.arch] ?? null;
+export function hostTarget(platform = process.platform) {
+  return thunderTargetFor(process.arch, platform);
 }
 
-/** Staging root for one arch (`apps/desktop/.thunder-sidecar/<arch>`). */
-export function sidecarDir(arch) {
-  return path.join(sidecarRoot, arch);
+/**
+ * Staging root for one arch and platform
+ * (`apps/desktop/.thunder-sidecar/<platform>-<arch>`). The platform is part of
+ * the path so a Windows pack never overwrites a macOS staging directory.
+ */
+export function sidecarDir(arch, platform = process.platform) {
+  return path.join(sidecarRoot, `${platform}-${arch}`);
 }
 
 /** Directory handed to electron-packager's `extraResource` (becomes `Resources/thunder`). */
-export function sidecarResourceDir(arch) {
-  return path.join(sidecarDir(arch), RESOURCE_DIR_NAME);
+export function sidecarResourceDir(arch, platform = process.platform) {
+  return path.join(sidecarDir(arch, platform), RESOURCE_DIR_NAME);
 }
 
-export function stagedBinaryPath(arch) {
-  return path.join(sidecarResourceDir(arch), ...BUNDLE_SUBDIR, THUNDER_DAEMON_BIN);
+export function stagedBinaryPath(arch, platform = process.platform) {
+  return path.join(sidecarResourceDir(arch, platform), ...BUNDLE_SUBDIR, thunderBinaryName(THUNDER_DAEMON_BIN, platform));
 }
 
 /** Where the bundled `thunder-tui` binary lands (beside the daemon). */
-export function stagedTuiBinaryPath(arch) {
-  return path.join(sidecarResourceDir(arch), ...BUNDLE_SUBDIR, THUNDER_TUI_BIN);
+export function stagedTuiBinaryPath(arch, platform = process.platform) {
+  return path.join(sidecarResourceDir(arch, platform), ...BUNDLE_SUBDIR, thunderBinaryName(THUNDER_TUI_BIN, platform));
 }
 
-/** Where the daemon must end up inside a packaged `.app`. */
-export function bundledDaemonPath(appBundle) {
-  return path.join(appBundle, "Contents", "Resources", RESOURCE_DIR_NAME, ...BUNDLE_SUBDIR, THUNDER_DAEMON_BIN);
+/**
+ * Where the daemon must end up inside a packaged app.
+ *
+ * macOS: `<app>.app/Contents/Resources/thunder/bin/…`
+ * Windows/Linux: `<app>/resources/thunder/bin/…`
+ */
+export function bundledResourceRoot(appRoot, platform = process.platform) {
+  return platform === "darwin"
+    ? path.join(appRoot, "Contents", "Resources", RESOURCE_DIR_NAME)
+    : path.join(appRoot, "resources", RESOURCE_DIR_NAME);
 }
 
-/** Where the TUI must end up inside a packaged `.app` (beside the daemon). */
-export function bundledTuiPath(appBundle) {
-  return path.join(appBundle, "Contents", "Resources", RESOURCE_DIR_NAME, ...BUNDLE_SUBDIR, THUNDER_TUI_BIN);
+export function bundledDaemonPath(appRoot, platform = process.platform) {
+  return path.join(bundledResourceRoot(appRoot, platform), ...BUNDLE_SUBDIR, thunderBinaryName(THUNDER_DAEMON_BIN, platform));
+}
+
+/** Where the TUI must end up inside a packaged app (beside the daemon). */
+export function bundledTuiPath(appRoot, platform = process.platform) {
+  return path.join(bundledResourceRoot(appRoot, platform), ...BUNDLE_SUBDIR, thunderBinaryName(THUNDER_TUI_BIN, platform));
 }
 
 /** Fallback checkout probe used only when the compiled runtime resolver is unavailable. */
@@ -117,6 +144,7 @@ function sha256(file) {
  */
 export function resolveThunderBinary({
   arch,
+  platform = process.platform,
   env = process.env,
   hostArch = process.arch,
   homedir = os.homedir(),
@@ -125,8 +153,9 @@ export function resolveThunderBinary({
   findCheckout = findThunderCheckout,
   log = console.log
 }) {
-  const target = THUNDER_TARGETS[arch];
-  if (!target) return { ok: false, reason: `unsupported arch "${arch}"` };
+  const target = thunderTargetFor(arch, platform);
+  if (!target) return { ok: false, reason: `unsupported arch "${arch}" for ${platform}` };
+  const binaryName = thunderBinaryName(THUNDER_DAEMON_BIN, platform);
 
   const explicit = env.AGENT_RESUME_THUNDER_BIN?.trim();
   if (explicit) {
@@ -139,8 +168,8 @@ export function resolveThunderBinary({
   const artifactDir = env.AGENT_RESUME_THUNDER_DIR?.trim();
   if (artifactDir) {
     const candidates = [
-      path.join(artifactDir, arch, THUNDER_DAEMON_BIN),
-      path.join(artifactDir, THUNDER_DAEMON_BIN)
+      path.join(artifactDir, arch, binaryName),
+      path.join(artifactDir, binaryName)
     ];
     for (const candidate of candidates) {
       if (exists(candidate)) return { ok: true, binaryPath: candidate, source: "artifact-dir", target };
@@ -148,7 +177,7 @@ export function resolveThunderBinary({
     // A per-arch artifact dir that exists but is empty must not silently fall through
     // to a host build: that would ship the wrong architecture.
     if (exists(path.join(artifactDir, arch))) {
-      return { ok: false, reason: `no ${THUNDER_DAEMON_BIN} in ${path.join(artifactDir, arch)}` };
+      return { ok: false, reason: `no ${binaryName} in ${path.join(artifactDir, arch)}` };
     }
   }
 
@@ -162,7 +191,7 @@ export function resolveThunderBinary({
   }
 
   const crateDir = path.join(checkout, "thunder-agent-daemon");
-  const host = THUNDER_TARGETS[hostArch] ?? hostTarget();
+  const host = thunderTargetFor(hostArch, platform) ?? hostTarget(platform);
   const crossCompile = target !== host;
   const args = ["build", "--release", "-p", "thunder-agent-daemon"];
   if (crossCompile) args.push("--target", target);
@@ -181,8 +210,8 @@ export function resolveThunderBinary({
   // to `<crate>/target`. Probe the unified path first so both layouts work.
   const targetSeg = crossCompile ? [target] : [];
   const candidates = [
-    path.join(checkout, "target", ...targetSeg, "release", THUNDER_DAEMON_BIN),
-    path.join(crateDir, "target", ...targetSeg, "release", THUNDER_DAEMON_BIN)
+    path.join(checkout, "target", ...targetSeg, "release", binaryName),
+    path.join(crateDir, "target", ...targetSeg, "release", binaryName)
   ];
   const binaryPath = candidates.find((candidate) => exists(candidate));
   if (!binaryPath) {
@@ -198,6 +227,7 @@ export function resolveThunderBinary({
  */
 export function resolveThunderTuiBinary({
   arch,
+  platform = process.platform,
   env = process.env,
   hostArch = process.arch,
   homedir = os.homedir(),
@@ -206,8 +236,9 @@ export function resolveThunderTuiBinary({
   findCheckout = findThunderCheckout,
   log = console.log
 }) {
-  const target = THUNDER_TARGETS[arch];
-  if (!target) return { ok: false, reason: `unsupported arch "${arch}"` };
+  const target = thunderTargetFor(arch, platform);
+  if (!target) return { ok: false, reason: `unsupported arch "${arch}" for ${platform}` };
+  const binaryName = thunderBinaryName(THUNDER_TUI_BIN, platform);
 
   const explicit = env.AGENT_RESUME_THUNDER_TUI_BIN?.trim();
   if (explicit) {
@@ -220,8 +251,8 @@ export function resolveThunderTuiBinary({
   const artifactDir = env.AGENT_RESUME_THUNDER_TUI_DIR?.trim() || env.AGENT_RESUME_THUNDER_DIR?.trim();
   if (artifactDir) {
     const candidates = [
-      path.join(artifactDir, arch, THUNDER_TUI_BIN),
-      path.join(artifactDir, THUNDER_TUI_BIN)
+      path.join(artifactDir, arch, binaryName),
+      path.join(artifactDir, binaryName)
     ];
     for (const candidate of candidates) {
       if (exists(candidate)) return { ok: true, binaryPath: candidate, source: "artifact-dir", target };
@@ -237,7 +268,7 @@ export function resolveThunderTuiBinary({
     };
   }
 
-  const host = THUNDER_TARGETS[hostArch] ?? hostTarget();
+  const host = thunderTargetFor(hostArch, platform) ?? hostTarget(platform);
   const crossCompile = target !== host;
   const args = ["build", "--release", "-p", "thunder-tui"];
   if (crossCompile) args.push("--target", target);
@@ -254,8 +285,8 @@ export function resolveThunderTuiBinary({
 
   const targetSeg = crossCompile ? [target] : [];
   const candidates = [
-    path.join(checkout, "target", ...targetSeg, "release", THUNDER_TUI_BIN),
-    path.join(checkout, "thunder-agent-core", "tui", "target", ...targetSeg, "release", THUNDER_TUI_BIN)
+    path.join(checkout, "target", ...targetSeg, "release", binaryName),
+    path.join(checkout, "thunder-agent-core", "tui", "target", ...targetSeg, "release", binaryName)
   ];
   const binaryPath = candidates.find((candidate) => exists(candidate));
   if (!binaryPath) {
@@ -290,12 +321,13 @@ function defaultRunCargo({ crateDir, args, log }) {
  * `require: true` (release builds) turns a missing binary into an error.
  */
 export function stageThunderSidecar(arch, {
+  platform = process.platform,
   require: required = false,
   log = console.log,
   resolve: resolveBinary = resolveThunderBinary,
   ...resolveOptions
 } = {}) {
-  const resolved = resolveBinary({ arch, log, ...resolveOptions });
+  const resolved = resolveBinary({ arch, platform, log, ...resolveOptions });
   if (!resolved.ok) {
     const message = `[thunder-sidecar] ${arch}: ${resolved.reason}${resolved.hint ? ` — ${resolved.hint}` : ""}`;
     if (required) throw new Error(message);
@@ -303,11 +335,11 @@ export function stageThunderSidecar(arch, {
     return { ok: false, arch, reason: resolved.reason, hint: resolved.hint };
   }
 
-  const stagedBinary = stagedBinaryPath(arch);
+  const stagedBinary = stagedBinaryPath(arch, platform);
   fs.mkdirSync(path.dirname(stagedBinary), { recursive: true });
   fs.rmSync(stagedBinary, { force: true });
   fs.copyFileSync(resolved.binaryPath, stagedBinary);
-  fs.chmodSync(stagedBinary, 0o755);
+  if (platform !== "win32") fs.chmodSync(stagedBinary, 0o755);
 
   const metadata = {
     arch,
@@ -321,16 +353,16 @@ export function stageThunderSidecar(arch, {
     bytes: fs.statSync(stagedBinary).size,
     stagedAt: new Date().toISOString()
   };
-  writeVersionMetadata(arch, metadata);
+  writeVersionMetadata(arch, metadata, undefined, platform);
   log(
     `[thunder-sidecar] ${arch}: staged ${THUNDER_DAEMON_BIN} (${metadata.source}, ${(metadata.bytes / 1e6).toFixed(1)} MB, staged sha256 ${metadata.sha256Staged.slice(0, 12)}…)`
   );
-  return { ok: true, arch, resourceDir: sidecarResourceDir(arch), stagedBinary, source: metadata.source, metadata };
+  return { ok: true, arch, platform, resourceDir: sidecarResourceDir(arch, platform), stagedBinary, source: metadata.source, metadata };
 }
 
 /** Merge one arch's metadata into `VERSION.json` without dropping the sibling binary's entry. */
-function writeVersionMetadata(arch, metadata, binKey) {
-  const versionFile = path.join(sidecarResourceDir(arch), "VERSION.json");
+function writeVersionMetadata(arch, metadata, binKey, platform = process.platform) {
+  const versionFile = path.join(sidecarResourceDir(arch, platform), "VERSION.json");
   let existing = {};
   try {
     existing = JSON.parse(fs.readFileSync(versionFile, "utf8"));
@@ -346,12 +378,13 @@ function writeVersionMetadata(arch, metadata, binKey) {
  * so the runtime resolver finds it at `Contents/Resources/thunder/bin/thunder-tui`.
  */
 export function stageThunderTui(arch, {
+  platform = process.platform,
   require: required = false,
   log = console.log,
   resolve: resolveBinary = resolveThunderTuiBinary,
   ...resolveOptions
 } = {}) {
-  const resolved = resolveBinary({ arch, log, ...resolveOptions });
+  const resolved = resolveBinary({ arch, platform, log, ...resolveOptions });
   if (!resolved.ok) {
     const message = `[thunder-sidecar] ${arch}: ${resolved.reason}${resolved.hint ? ` — ${resolved.hint}` : ""}`;
     if (required) throw new Error(message);
@@ -359,11 +392,11 @@ export function stageThunderTui(arch, {
     return { ok: false, arch, reason: resolved.reason, hint: resolved.hint };
   }
 
-  const stagedBinary = stagedTuiBinaryPath(arch);
+  const stagedBinary = stagedTuiBinaryPath(arch, platform);
   fs.mkdirSync(path.dirname(stagedBinary), { recursive: true });
   fs.rmSync(stagedBinary, { force: true });
   fs.copyFileSync(resolved.binaryPath, stagedBinary);
-  fs.chmodSync(stagedBinary, 0o755);
+  if (platform !== "win32") fs.chmodSync(stagedBinary, 0o755);
 
   const metadata = {
     arch,
@@ -374,11 +407,11 @@ export function stageThunderTui(arch, {
     bytes: fs.statSync(stagedBinary).size,
     stagedAt: new Date().toISOString()
   };
-  writeVersionMetadata(arch, metadata, "tui");
+  writeVersionMetadata(arch, metadata, "tui", platform);
   log(
     `[thunder-sidecar] ${arch}: staged ${THUNDER_TUI_BIN} (${metadata.source}, ${(metadata.bytes / 1e6).toFixed(1)} MB, staged sha256 ${metadata.sha256Staged.slice(0, 12)}…)`
   );
-  return { ok: true, arch, resourceDir: sidecarResourceDir(arch), stagedBinary, source: metadata.source, metadata };
+  return { ok: true, arch, platform, resourceDir: sidecarResourceDir(arch, platform), stagedBinary, source: metadata.source, metadata };
 }
 
 /**
@@ -390,8 +423,8 @@ export function thunderResourcePaths(staged) {
 }
 
 /** Fail loudly instead of shipping an app whose Chat cannot start. */
-export function assertBundledDaemon(appBundle, { exists = fs.existsSync } = {}) {
-  const expected = bundledDaemonPath(appBundle);
+export function assertBundledDaemon(appRoot, { exists = fs.existsSync, platform = process.platform } = {}) {
+  const expected = bundledDaemonPath(appRoot, platform);
   if (!exists(expected)) {
     throw new Error(
       `Packaged app is missing the bundled Thunder daemon at ${expected}. ` +

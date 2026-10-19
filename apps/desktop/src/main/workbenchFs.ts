@@ -3,7 +3,7 @@ import { execFile, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { expandHome } from "@agent-resume/core";
+import { expandHome, isPathInside } from "@agent-resume/core";
 import {
   discoverGitReposUnder,
   isGitRepo,
@@ -44,8 +44,8 @@ import {
 } from "./workbenchFileIndex";
 import {
   copyWorkbenchPathToClipboard,
-  pasteMacClipboardIntoWorkbench,
-  readMacPasteboardFilePaths
+  pasteClipboardIntoWorkbench,
+  readClipboardFilePaths
 } from "./workbenchFileClipboard";
 import { pasteWorkbenchClipboardImage } from "./workbenchClipboardImage";
 
@@ -157,7 +157,7 @@ function resolveCwd(raw?: string): string {
 function resolvePathWithinRoot(raw: string, rootPath: string): string {
   const root = path.resolve(expandHome(rootPath.trim()));
   const target = path.resolve(expandHome(raw.trim()));
-  if (target !== root && !target.startsWith(root + path.sep)) {
+  if (!isPathInside(root, target)) {
     throw new Error("路径超出允许范围");
   }
   return target;
@@ -822,7 +822,7 @@ export function registerWorkbenchFsIpc(): void {
   );
 
   safeHandle("workbench:clipboardHasFiles", async () => ({
-    hasFiles: (await readMacPasteboardFilePaths()).length > 0
+    hasFiles: (await readClipboardFilePaths()).length > 0
   }));
 
   safeHandle(
@@ -832,7 +832,7 @@ export function registerWorkbenchFsIpc(): void {
       if (typeof args?.targetDirectory !== "string" || !args.targetDirectory.trim()) {
         throw new Error("无效的粘贴目标");
       }
-      return pasteMacClipboardIntoWorkbench(rootPath, args.targetDirectory);
+      return pasteClipboardIntoWorkbench(rootPath, args.targetDirectory);
     }
   );
 

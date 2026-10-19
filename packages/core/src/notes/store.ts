@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { atomicWriteFile } from "../atomicWrite";
 import { ensureExtensionCatalogSchema } from "../catalog/db";
 import type { AgentProvider, AgentSession } from "../catalog/types";
 import { sessionGtdKey } from "../gtd/store";
@@ -460,14 +461,7 @@ export class NotesStore {
     const next = this.normalizeTaskContent(content);
     const synced = await this.syncTaskFileToContent(record, next);
     const target = this.absolutePath(synced.record);
-    const temporary = `${target}.${process.pid}.${Date.now()}.tmp`;
-    try {
-      await fs.writeFile(temporary, synced.content, "utf8");
-      await fs.rename(temporary, target);
-    } catch (error) {
-      await fs.rm(temporary, { force: true }).catch(() => {});
-      throw error;
-    }
+    await atomicWriteFile(target, synced.content);
     await this.refreshNoteFromDisk(synced.record);
     const updated = await getNoteById(this.dbPath, noteId);
     if (!updated) throw new Error("Note disappeared after write.");

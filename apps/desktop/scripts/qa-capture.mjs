@@ -16,9 +16,10 @@
  */
 import { readdirSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { chromium } from "playwright";
 
-const outDir = process.argv[2] || "/tmp/ar-qa";
+const outDir = process.argv[2] || path.join(tmpdir(), "ar-qa");
 const theme = process.argv.includes("--dark") ? "dark" : process.argv.includes("--light") ? "light" : null;
 mkdirSync(outDir, { recursive: true });
 

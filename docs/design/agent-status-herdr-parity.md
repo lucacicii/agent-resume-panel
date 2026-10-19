@@ -37,7 +37,7 @@ agent-status daemon (evaluator, always on, Electron-free)
   state.ts              snapshot, native reports, state.json persistence
   engine/*              manifests, regions, single-authority arbitration (stage 4)
   integrations/*        hook install + report entry point          (stage 6)
-  notify.ts             macOS notification while the app is closed (stage 7)
+  notify.ts             native notification while the app is closed: osascript (macOS) / WinRT toast (Windows) (stage 7)
         │ status.changed events
         ▼
 renderer (UI only): dots, rollups, explain panel
@@ -48,7 +48,7 @@ renderer (UI only): dots, rollups, explain panel
 | Scenario | Own-pane screen | Native hooks | External agents |
 | --- | --- | --- | --- |
 | App running | ✅ | ✅ | ✅ |
-| Window closed (macOS stays in Dock) | ✅ | ✅ | ✅ |
+| Window closed (macOS stays in Dock; Windows quits to the daemon) | ✅ | ✅ | ✅ |
 | App fully quit, daemon alive | ❌ (PTY died with the app) | ✅ | ✅ |
 | Daemon stopped | ❌ | ❌ | ❌ |
 
@@ -84,13 +84,13 @@ the app, by tests, and by the `agent-resume-status` CLI that hooks call.
 | Path | Role | Stage |
 | --- | --- | --- |
 | `src/main/agentStatus/types.ts` | protocol + snapshot vocabulary | 0 ✅ |
-| `src/main/agentStatus/paths.ts` | panel-home paths + launchd label | 1 ✅ |
+| `src/main/agentStatus/paths.ts` | panel-home paths + launchd label / Windows named pipe + HKCU Run | 1 ✅ |
 | `src/main/agentStatus/endpoint.ts` | atomic endpoint/socket/state file IO | 1 ✅ |
 | `src/main/agentStatus/server.ts` | unix socket transport, subscriptions | 1 ✅ |
 | `src/main/agentStatus/client.ts` | request/subscribe client | 1 ✅ |
 | `src/main/agentStatus/state.ts` | snapshot + native reports + persistence | 1 ✅ (derivation is the stage-4 seam) |
 | `src/main/agentStatus/daemon.ts` | daemon entry, single instance, handshake | 1 ✅ |
-| `src/main/agentStatus/lifecycle.ts` | app-side spawn / handshake / launchd install | 1 ✅ |
+| `src/main/agentStatus/lifecycle.ts` | app-side spawn / handshake / launchd or HKCU Run install | 1 ✅ |
 | `src/main/agentStatus/mirror.ts` | `@xterm/headless` screen mirror | 2 ✅ |
 | `src/main/agentStatus/scan.ts` | OSC title/progress, cursor, AR sequence (+ chunk carry) | 2 ✅ |
 | `src/main/agentStatus/screen.ts` | screen prompt fingerprint (stage-4 placeholder for manifests) | 2 ✅ |
@@ -106,7 +106,7 @@ the app, by tests, and by the `agent-resume-status` CLI that hooks call.
 | `src/main/agentStatus/integrations/*.ts` | claude / codex hooks, pi extension, installer registry | 6 ✅ |
 | `src/main/agentStatus/cli.ts` | `agent-resume-status` report path for hooks | 6 ✅ |
 | `src/main/agentStatus/discovery.ts` | agents running outside this app | 7 ✅ |
-| `src/main/agentStatus/notify.ts` | macOS notification while no window is attached | 7 ✅ |
+| `src/main/agentStatus/notify.ts` | native notification while no window is attached: osascript (macOS), PowerShell WinRT toast (Windows) | 7 ✅ |
 | `src/renderer-react/.../settings/AgentStatusPane.tsx` | settings + inspector pane | 6–7 ✅ |
 | `src/renderer-react/.../sessionStatus/useAgentStatus.ts` | UI subscription | 7 |
 | `scripts/agent-status-daemon.test.mjs` | daemon lifecycle + protocol test | 1 ✅ |
@@ -118,7 +118,7 @@ the app, by tests, and by the `agent-resume-status` CLI that hooks call.
 | # | Content | Exit criteria | Days |
 | --- | --- | --- | --- |
 | 0 | Contracts + fixture corpus + capture script | types frozen, ≥5 real screen samples | 1 |
-| 1 | Daemon skeleton: single instance, endpoint, launchd, handshake, socket, `state.json`; app-side ensure; packaged-app check | daemon survives app quit, restarts clean, `test:agent-status` green | 4–6 ✅ |
+| 1 | Daemon skeleton: single instance, endpoint, launchd / HKCU Run, handshake, socket / named pipe, `state.json`; app-side ensure; packaged-app check | daemon survives app quit, restarts clean, `test:agent-status` green | 4–6 ✅ |
 | 2 | Sensor: `@xterm/headless` mirror + scan in main, telemetry to daemon, renderer subscribes; delete `probe.ts` / `statusJudge.ts` / `prompt.ts` / renderer `store.ts` | status correct with the Workbench tab unmounted | 3–5 ✅ |
 | 3 | Identity + foreground process group (`tpgid`); global discovery deferred to stage 7 | every pane reports its agent | 3–4 ✅ |
 | 4 | Rule engine (region / priority / all-any-not / `visible_*` / `skipStateUpdate`), single authority, `status.explain` | verdicts explainable rule-by-rule | 4–6 ✅ |
@@ -275,8 +275,11 @@ Total: 32–48 dev-days.
   cover it. Pi keeps its companion extension, now owned by `integrations/pi.ts` so the settings pane
   reports the same fact the terminal does.
 - **The daemon gained the two things only a daemon can do**: notifications for a pane that starts
-  blocking while no window is attached (`notify.ts`, macOS `osascript`), and discovery of agents
-  running outside this app (`discovery.ts`). Discovery reuses the derivation: an external agent is
+  blocking while no window is attached (`notify.ts` — `osascript` on macOS, a PowerShell WinRT toast
+  on Windows posted under the AUMID `com.thunder-luc.agent-resume`), and discovery of agents
+  running outside this app (`discovery.ts`, POSIX only: Windows has no `ps` process table, so status
+  there comes from pane/hook events rather than external discovery). Discovery reuses the derivation:
+  an external agent is
   fed as telemetry with `toolRunning` from its own terminal's foreground group, so external panes get
   process evidence and never a screen verdict. External pane ids are `-pid`, which cannot collide with
   PTY ids.
@@ -297,7 +300,8 @@ Total: 32–48 dev-days.
   user name or a long panel-home path (found while writing the test: `listen EINVAL`). The socket is now
   `<tmpdir>/agent-resume-status-<uid>-<profile-hash>.sock`, while `endpoint.json` / `state.json` /
   `daemon.log` stay under the panel home. The endpoint file remains the discovery source of truth and
-  records the real socket path, so nothing else has to care.
+  records the real socket path, so nothing else has to care. Windows has no socket files: the same
+  endpoint entry carries a `\\.\pipe\agent-resume-status-<profile-hash>` named-pipe path instead.
 - **No asar rule added to `mac-app.mjs`.** The packaged app already spawns the pure-Node MCP CLI
   from inside `app.asar` with `ELECTRON_RUN_AS_NODE=1` (`mcpRegistration.ts`), which proves the
   pattern works here; `resolveDaemonEntryPath` keeps an `app.asar.unpacked` candidate as a
@@ -331,4 +335,4 @@ Total: 32–48 dev-days.
 | `@xterm/headless` differs from `@xterm/xterm` rendering | pin the same 5.5.x line; golden fixtures compare identical screens |
 | Hook installation damages user config | ownership marker + deep-diff test + backup into panel home before the first write |
 | Remote/override manifests as untrusted input | compile-validate rules, per-rule evaluation timeout, agent allow-list |
-| launchd daemon annoys users | visible toggle, one-click uninstall, no secrets on disk, never touches other user config |
+| login-item daemon annoys users | visible toggle, one-click uninstall, no secrets on disk, never touches other user config (launchd on macOS, HKCU Run on Windows) |

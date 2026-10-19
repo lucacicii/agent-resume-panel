@@ -22,7 +22,25 @@ const vsixPath = packageVsix(`${pkg.name}-${pkg.version}.test.vsix`);
 const tempRoot = await mkdtemp(path.join(tmpdir(), "agent-resume-vsix-test-"));
 
 try {
-  execFileSync("unzip", ["-q", vsixPath, "-d", tempRoot], { stdio: "pipe" });
+  if (process.platform === "win32") {
+    // `unzip` is not part of Windows; Expand-Archive reads the same zip.
+    const systemRoot = process.env.SystemRoot || "C:\\Windows";
+    execFileSync(
+      path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Expand-Archive -LiteralPath $env:AGENT_RESUME_ARCHIVE -DestinationPath $env:AGENT_RESUME_DEST -Force"
+      ],
+      {
+        stdio: "pipe",
+        env: { ...process.env, AGENT_RESUME_ARCHIVE: vsixPath, AGENT_RESUME_DEST: tempRoot }
+      }
+    );
+  } else {
+    execFileSync("unzip", ["-q", vsixPath, "-d", tempRoot], { stdio: "pipe" });
+  }
   const extRoot = path.join(tempRoot, "extension");
   const coreEntry = path.join(extRoot, "node_modules", "@agent-resume", "core", "dist", "extension.js");
   assert.ok(fs.existsSync(coreEntry), `VSIX must contain ${coreEntry}`);

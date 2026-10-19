@@ -11,7 +11,13 @@ export const TRAY_MAX_DOTS = 8;
 const TRAY_PAD_X = 7;
 const TRAY_GAP = 12;
 const TRAY_DOT_DIAMETER = 11;
+/** macOS menu bar height. The Windows notification area is 16 logical px. */
 const TRAY_HEIGHT = 22;
+const TRAY_HEIGHT_WIN32 = 16;
+
+export function trayHeightForPlatform(platform: NodeJS.Platform = process.platform): number {
+  return platform === "win32" ? TRAY_HEIGHT_WIN32 : TRAY_HEIGHT;
+}
 
 export const STATUS_COLORS_LIGHT: Record<WorkbenchSessionDotStatus, [number, number, number]> = {
   awaiting_user: [255, 149, 0],
@@ -157,11 +163,14 @@ export function composeTrayItems(
   return items.slice(0, TRAY_MAX_DOTS);
 }
 
-export function trayIconSize(dotCount: number): { width: number; height: number } {
+export function trayIconSize(
+  dotCount: number,
+  platform: NodeJS.Platform = process.platform
+): { width: number; height: number } {
   const visible = Math.max(1, Math.min(TRAY_MAX_DOTS, dotCount));
   return {
     width: TRAY_PAD_X * 2 + visible * TRAY_DOT_DIAMETER + (visible - 1) * TRAY_GAP,
-    height: TRAY_HEIGHT
+    height: trayHeightForPlatform(platform)
   };
 }
 
@@ -263,14 +272,18 @@ export function renderSessionDotsTrayPng(
   return encodePng(width, height, rgba);
 }
 
-export function sessionDotsTrayImage(items: readonly TrayItem[]): NativeImage {
+export function sessionDotsTrayImage(
+  items: readonly TrayItem[],
+  platform: NodeJS.Platform = process.platform
+): NativeImage {
   if (items.length === 0) {
     // Idle menu bar item: a template image, so macOS draws it in the menu bar's
     // own colour and it stays correct in light mode, dark mode, and over a
-    // tinted menu bar. Colour is reserved for the live status dots.
-    const png = renderSessionDotsTrayPng([], { dark: false, scale: 2, monochrome: true });
+    // tinted menu bar. Colour is reserved for the live status dots. Windows has
+    // no template images, so it gets the drawn idle dot instead.
+    const png = renderSessionDotsTrayPng([], { dark: false, scale: 2, monochrome: platform === "darwin" });
     const image = nativeImage.createFromBuffer(png, { scaleFactor: 2 });
-    image.setTemplateImage(true);
+    image.setTemplateImage(platform === "darwin");
     return image;
   }
   const dark = nativeTheme.shouldUseDarkColors;

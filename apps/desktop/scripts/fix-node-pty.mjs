@@ -41,13 +41,20 @@ export function findSpawnHelpers(nodePtyRoot, platform = process.platform) {
 }
 
 export function ensureSpawnHelpersExecutable(nodePtyRoot, platform = process.platform) {
+  // Windows has no `spawn-helper`: node-pty talks to ConPTY through the native
+  // addon, and executability is an extension, not a mode bit. Nothing to fix.
+  if (platform === "win32") return [];
   return findSpawnHelpers(nodePtyRoot, platform).filter(ensureExecutable);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const nodePtyRoot = resolveNodePtyRoot();
-  const helpers = ensureSpawnHelpersExecutable(nodePtyRoot);
-  if (helpers.length === 0) {
-    console.warn(`[fix-node-pty] no spawn-helper found for ${process.platform} under ${nodePtyRoot}`);
+  if (process.platform === "win32") {
+    console.log("[fix-node-pty] win32 uses ConPTY through the native addon; nothing to fix");
+  } else {
+    const nodePtyRoot = resolveNodePtyRoot();
+    const helpers = ensureSpawnHelpersExecutable(nodePtyRoot);
+    if (helpers.length === 0) {
+      console.warn(`[fix-node-pty] no spawn-helper found for ${process.platform} under ${nodePtyRoot}`);
+    }
   }
 }

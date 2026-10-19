@@ -9,10 +9,11 @@ import {
 } from "./mentions";
 import type { WorkbenchComposerMention } from "./types";
 import {
-  buildNewSessionCommand,
+  buildNewSessionArgv,
   supportsSessionContext,
   type NewSessionExecutionMode
 } from "../terminal/commands";
+import { defaultShellKind, shellQuoteFor } from "../platform";
 import { desktopDataDir } from "../panelHome";
 import type { AgentProvider } from "../catalog/types";
 
@@ -157,7 +158,7 @@ export async function planArpmRun(input: {
   cwd: string;
   panelHome: string;
   settings: Awaited<ReturnType<typeof loadSettings>>;
-}): Promise<{ command: string; warning?: string }> {
+}): Promise<{ argv: string[]; warning?: string }> {
   const flags = parseRunFlags(input.args);
   const configured = String(input.settings.workbench?.defaultNewSessionProvider || "").trim();
   const provider = flags.provider ?? ((configured || "codex") as AgentProvider);
@@ -181,16 +182,31 @@ export async function planArpmRun(input: {
   }
 
   const mode: NewSessionExecutionMode = flags.yolo ? "yolo" : "standard";
-  return { command: buildNewSessionCommand(provider, input.cwd, mode, contextFile), warning };
+  return { argv: buildNewSessionArgv(provider, input.cwd, mode, contextFile), warning };
 }
 
-function spawnDetached(command: string, cwd: string): Promise<void> {
+/**
+ * Start the agent without a shell.
+ *
+ * `arpm` runs in whatever terminal the user opened, on either platform, so the
+ * argv is handed to `spawn` directly. The old `shell: true` path re-parsed a
+ * quoted string, which broke on Windows (cmd cannot parse POSIX quotes) and
+ * silently split arguments containing spaces.
+ */
+function spawnDetached(argv: readonly string[], cwd: string): Promise<void> {
+  const [file, ...args] = argv;
+  if (!file) {
+    return Promise.reject(new Error("No command to run."));
+  }
   return new Promise((resolve, reject) => {
-    const child = spawn(command, {
+    const child = spawn(file, args, {
       cwd,
-      shell: true,
       stdio: "inherit",
-      detached: false
+      detached: false,
+      // Windows resolves `claude.cmd`/`codex.cmd` shims through PATHEXT only
+      // when the shell does the lookup; `shell: false` keeps argv intact, and
+      // Node still resolves the extension itself on win32.
+      windowsHide: false
     });
     child.on("error", reject);
     child.on("exit", (code) => {
@@ -231,8 +247,7 @@ export async function runArpmCli(argv: string[]): Promise<number> {
       console.log(buildMentionPrompt(mention));
       if (flags.launch) {
         const mode: NewSessionExecutionMode = flags.yolo ? "yolo" : "standard";
-        const commandLine = buildNewSessionCommand(flags.provider, mention.cwd, mode);
-        await spawnDetached(commandLine, mention.cwd);
+        await spawnDetached(buildNewSessionArgv(flags.provider, mention.cwd, mode), mention.cwd);
         return 0;
       }
       console.log(`cd ${shellSingleQuote(mention.cwd)}`);
@@ -247,7 +262,7 @@ export async function runArpmCli(argv: string[]): Promise<number> {
         settings
       });
       if (plan.warning) console.error(plan.warning);
-      await spawnDetached(plan.command, process.cwd());
+      await spawnDetached(plan.argv, process.cwd());
       return 0;
     }
     throw new Error(USAGE);
@@ -257,6 +272,7 @@ export async function runArpmCli(argv: string[]): Promise<number> {
   }
 }
 
+/** `cd` hint printed for the user to paste into their shell. */
 function shellSingleQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
+  return shellQuoteFor(defaultShellKind(), value);
 }

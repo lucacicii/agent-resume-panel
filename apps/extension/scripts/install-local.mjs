@@ -76,7 +76,13 @@ function installWithEditorCli(vsix, editors, requireAll) {
       continue;
     }
 
-    execFileSync(command, ["--install-extension", vsix, "--force"], { stdio: "inherit" });
+    execFileSync(command, ["--install-extension", vsix, "--force"], {
+      stdio: "inherit",
+      // `code`/`cursor`/`codium` are `.cmd` shims on Windows and only the shell
+      // can start them. Paths are passed as separate argv entries, so Node's
+      // own `.cmd` handling quotes them.
+      shell: process.platform === "win32"
+    });
     installed.push(command);
   }
 
@@ -85,11 +91,34 @@ function installWithEditorCli(vsix, editors, requireAll) {
 
 function hasCommand(command) {
   try {
-    execFileSync("command", ["-v", command], { shell: true, stdio: "ignore" });
+    if (process.platform === "win32") {
+      execFileSync("where.exe", [command], { stdio: "ignore" });
+    } else {
+      // Pass the name as a positional parameter so it is never re-parsed.
+      execFileSync("sh", ["-c", 'command -v "$1"', "sh", command], { stdio: "ignore" });
+    }
     return true;
   } catch {
     return false;
   }
+}
+
+function unzipArchive(archive, destination) {
+  if (process.platform === "win32") {
+    const systemRoot = process.env.SystemRoot || "C:\\Windows";
+    execFileSync(
+      join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Expand-Archive -LiteralPath $env:AGENT_RESUME_ARCHIVE -DestinationPath $env:AGENT_RESUME_DEST -Force"
+      ],
+      { stdio: "inherit", env: { ...process.env, AGENT_RESUME_ARCHIVE: archive, AGENT_RESUME_DEST: destination } }
+    );
+    return;
+  }
+  execFileSync("unzip", ["-q", archive, "-d", destination], { stdio: "inherit" });
 }
 
 async function installIntoVscodeOssExtensions(vsix, extensionDir, id) {
@@ -102,7 +131,7 @@ async function installIntoVscodeOssExtensions(vsix, extensionDir, id) {
   rmSync(installPath, { recursive: true, force: true });
 
   try {
-    execFileSync("unzip", ["-q", vsix, "-d", tempRoot], { stdio: "inherit" });
+    unzipArchive(vsix, tempRoot);
     await rename(unpacked, installPath);
     await cp(join(tempRoot, "extension.vsixmanifest"), join(installPath, ".vsixmanifest"));
     console.log(`Installed ${id} to ${installPath}`);

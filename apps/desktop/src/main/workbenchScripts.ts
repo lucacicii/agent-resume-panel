@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { expandHome } from "@agent-resume/core";
+import { expandHome, isPathInside } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
 
 const DEFAULT_SCRIPT_SCAN_MAX_DEPTH = 6;
@@ -100,7 +100,7 @@ function resolveCwd(raw?: string): string {
 function resolvePathWithinRoot(raw: string, rootPath: string): string {
   const root = path.resolve(expandHome(rootPath.trim()));
   const target = path.resolve(expandHome(raw.trim()));
-  if (target !== root && !target.startsWith(root + path.sep)) {
+  if (!isPathInside(root, target)) {
     throw new Error("路径超出允许范围");
   }
   return target;

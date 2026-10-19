@@ -1,6 +1,7 @@
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useOverlayPresence } from "../../components/useOverlayMotion";
+import { isMacRenderer } from "../../platform";
 import {
   compareQuickAccessPathMatches,
   fuzzyMatchPath,
@@ -202,7 +203,7 @@ export function QuickAccess({
 
   if (!presence.mounted) return null;
   const displayValue = mode === "commands" ? `>${query}` : query;
-  const mac = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
+  const mac = isMacRenderer();
 
   const activate = () => {
     if (activeIndex < 0) return;

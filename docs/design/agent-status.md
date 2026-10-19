@@ -23,7 +23,7 @@
 
 **非目标**
 
-- Windows(进程组与 tty 语义不同,见 §16)。
+- Windows 上没有 `ps` 进程表:外部 agent 发现不可用,状态由 pane 的屏幕判定、钩子上报与 ACP 原生状态驱动(见 §7.3、§16)。
 - 让 agent 在 App 退出后继续运行(需要把 PTY 所有权迁进守护进程,是另一个产品决策)。
 - 扩展端(VS Code)的屏幕感知:VS Code 不提供终端原始输出,扩展只保留 ACP 原生状态。
 
@@ -62,7 +62,7 @@
 │  agentStatus/                                                       │
 │    mirror.ts       每 pane 一个 @xterm/headless 屏幕镜像             │
 │    scan.ts         OSC 0/2 标题、OSC 9;4 进度、DEC 25 光标、状态序列  │
-│    processTable.ts ps 表(pgid/tpgid/tty/comm + argv)                 │
+│    processTable.ts ps 表(pgid/tpgid/tty/comm + argv;仅 POSIX)        │
 │    identity.ts     进程 → agent(解释器解包、会话键提示)               │
 │    sensor.ts       每 1s 组帧并发布 telemetry                        │
 │    bridge.ts       断线自愈的守护进程客户端                           │
@@ -76,7 +76,7 @@
 │  engine/          manifest 编译 / region 切片 / 求值 / 仲裁 / 注册表  │
 │  engine/manifests 5 份规则包(34 条规则)                              │
 │  discovery.ts     发现本 App 之外的 agent                            │
-│  notify.ts        无窗口连接时的 macOS 通知                          │
+│  notify.ts        无窗口连接时通知(osascript / WinRT toast)          │
 └───────────────────────────┬─────────────────────────────────────────┘
                             │ status.changed
                             ▼
@@ -96,7 +96,7 @@
 | 场景 | 自有 pane 屏幕 | 钩子上报 | 本 App 之外的 agent |
 | --- | --- | --- | --- |
 | App 运行、窗口可见 | ✅ | ✅ | ✅(进程证据,无屏幕判定) |
-| 仅关窗(macOS 常驻 Dock) | ✅ | ✅ | ✅ |
+| 仅关窗(macOS 常驻 Dock;Windows 关窗即退出) | ✅ | ✅ | ✅ |
 | App 完全退出、守护进程存活 | ❌(它的 PTY 已随 App 消失) | ✅ | ✅ |
 | 守护进程停止 | ❌ | ❌ | ❌ |
 
@@ -260,8 +260,8 @@ TUI 启动第一帧就写一条 `app=thunder:state=idle`——这条同时是**�
 | endpoint | `<panel home>/.desktop/agent-status/endpoint.json` | `{apiVersion, appVersion, pid, socketPath, startedAt, updatedAt}`,0600 |
 | 状态快照 | `<panel home>/.desktop/agent-status/state.json` | 只存 pane 身份 + 原生上报,**不存屏幕文本** |
 | 日志 | `<panel home>/.desktop/agent-status/daemon.log` | 启动时打印已加载规则包清单 |
-| socket | `<tmpdir>/agent-resume-status-<uid>-<profile-hash>.sock` | 0600;见下 |
-| 登录启动 | `~/Library/LaunchAgents/dev.agentresume.agent-status.plist` | `RunAtLoad` + `KeepAlive` + `ThrottleInterval 5`；**由 `src/main/launchd.ts` 真的写入**（打包版启动时自动注册，设置面板可手动装卸） |
+| socket | macOS: `<tmpdir>/agent-resume-status-<uid>-<profile-hash>.sock`,0600;Windows: 命名管道 `\\.\pipe\agent-resume-status-<profile-hash>` | 见下 |
+| 登录启动 | macOS: `~/Library/LaunchAgents/dev.agentresume.agent-status.plist`(`RunAtLoad` + `KeepAlive` + `ThrottleInterval 5`);Windows: HKCU `Software\Microsoft\Windows\CurrentVersion\Run` 的 `AgentResumeAgentStatus` 值,指向 `agent-status-login.cmd` | **由 `launchd.ts` / `windowsLoginItem.ts` 真的写入**（打包版启动时自动注册，设置面板可手动装卸） |
 
 > **勘误（本次修复）**：登录启动这一行从 stage 1 就写在文档里,但**当时并没有任何代码去写这份 plist**
 > ——仓库里只有一处 `existsSync` + `launchctl print` 的**检查**,所以设置面板那一栏永远显示 `—`,
@@ -269,9 +269,10 @@ TUI 启动第一帧就写一条 `app=thunder:state=idle`——这条同时是**�
 > `installAgentStatusLaunchAgent` / `uninstallAgentStatusLaunchAgent`,底层走 `launchctl bootstrap`/`bootout`),
 > 并有 `scripts/launchd.test.mjs` 覆盖 plist 渲染与「不覆盖他人 plist」两条约束。
 
-**socket 为什么在 tmpdir**:macOS 的 unix socket 路径上限约 104 字节,`<panel home>/.desktop/agent-status/daemon.sock`
+**socket 为什么在 tmpdir(macOS)**:macOS 的 unix socket 路径上限约 104 字节,`<panel home>/.desktop/agent-status/daemon.sock`
 在长用户名或长 panel home 下直接 `listen EINVAL`(实现时实测踩到)。tmpdir 路径短且按用户私有,
-endpoint 文件仍是唯一的发现来源并记录真实 socket 路径。
+endpoint 文件仍是唯一的发现来源并记录真实 socket 路径。Windows 没有 socket 文件,传输走
+`\\.\pipe\agent-resume-status-<profile-hash>` 命名管道,按 profile 隔离,不受路径长度限制。
 
 **单实例与升级**:启动时读 endpoint,存活实例直接退出;`--replace` 用于升级——协议新增方法会
 `AGENT_STATUS_API_VERSION + 1`,App 启动发现版本不匹配就替换守护进程。这条不是洁癖:
@@ -283,8 +284,13 @@ endpoint 文件仍是唯一的发现来源并记录真实 socket 路径。
 ### 7.2 通知
 
 `notify.ts`:某 pane **进入** blocked 且**当前没有窗口连接**(`subscriberCount === 0`)时,
-用 `osascript -e 'display notification …'` 通知。只在跃迁时触发;打包版由 `--notify` 打开,
-dev 不打开(否则开发时天天弹窗)。
+发一条系统通知。只在跃迁时触发;打包版由 `--notify` 打开,dev 不打开(否则开发时天天弹窗)。
+
+- **macOS**:`osascript -e 'display notification …'`。
+- **Windows**:通过 `powershell.exe -EncodedCommand` 调用 WinRT
+  (`Windows.UI.Notifications.ToastNotificationManager`),AUMID 为
+  `com.thunder-luc.agent-resume`。该 AUMID 由打包器写进 exe、并由 `app.setAppUserModelId` 对齐;
+  便携 zip 解压后没有开始菜单快捷方式,Windows 会静默丢弃 toast——这是安全的降级,不影响状态判定。
 
 ### 7.3 外部 agent 发现
 
@@ -292,6 +298,10 @@ dev 不打开(否则开发时天天弹窗)。
 (沿 `ppid` 向上追溯到 pane 的 ptyPid)。外部 pane 的 id 为 `-pid`,与正数的 PTY id 不可能冲突。
 它们以 telemetry 形式喂入同一套判定,`toolRunning` 来自其自身终端的前台进程组——
 所以外部 agent 有**进程证据**,永远没有屏幕判定。
+
+**Windows**:`processTable.ts` 的 `PROCESS_TABLE_SUPPORTED` 只在 darwin/linux 为真,这一节在
+Windows 整体跳过。因此 Windows 上不会发现本 App 之外的 agent;自有 pane 的状态仍然由屏幕镜像与
+钩子上报驱动(钩子 wrapper 是 `.cmd`,由 `cmd.exe` 启动)。
 
 ---
 
@@ -315,13 +325,17 @@ payload 只在包装脚本里被粗略 grep 出 `session_id`(作为 session 归�
 
 ### 8.2 包装脚本与门禁
 
-`<panel home>/.desktop/agent-state/agent-resume-status-<agent>.sh`:
+`<panel home>/.desktop/agent-state/agent-resume-status-<agent>.sh`(macOS)/
+`.cmd`(Windows):
 
 1. **门禁**:`AGENT_RESUME_PANE_ID` 为空直接退出。该变量只由本 App 派生的 pane 注入,
    所以全局安装的钩子在别人的终端里什么也不做。
 2. **静默**:所有输出重定向到 `report.log`。部分 agent 会把 hook stdout 当指令解析,钩子绝不能污染它。
 3. **永不失败**:任何路径 `exit 0`,不阻塞 agent 的关键路径。
 4. 调用 App 自带 Node 运行时执行 `cli.js report --pane … --state … [--session-ref …]`。
+
+Windows 的钩子由 `cmd.exe` 启动,只接受可执行文件或 `.cmd`/`.bat`——shebang 在 `.cmd` 里只是注释,
+所以 wrapper 用 batch 原语实现同样的三条保证,`exit /b 0` 收尾。
 
 ### 8.3 配置编辑策略
 
@@ -342,7 +356,8 @@ payload 只在包装脚本里被粗略 grep 出 `session_id`(作为 session 归�
 
 ## 9. 线协议(v2)
 
-传输:unix domain socket,JSON lines;`hello` 握手校验 `apiVersion`。
+传输:macOS 为 unix domain socket;Windows 为命名管道 `\\.\pipe\agent-resume-status-<profile-hash>`。
+两者都是 JSON lines;`hello` 握手校验 `apiVersion`。
 
 | 方法 | 方向 | 说明 |
 | --- | --- | --- |
@@ -382,7 +397,7 @@ Thunder 聊天同理且更彻底:一个 run 的阶段由 thunder 自己报(`useT
 | --- | --- | --- |
 | Workbench 会话标签(`.wb-terminal-tab.is-session`) | 每个 pane | 标签内显示自己的状态点;`open` 不显示 |
 | GTD 面板的 workbench chip | 每个 workbench | 汇总点 + `is-needs-you` 强调;点击打开该 workbench 窗口 |
-| macOS 菜单栏托盘 | 每个 workbench（已开窗口，或窗口已关但仍有 session） | 汇总点；刚打开、还没有 session 的 workbench 显示灰点；点击聚焦已开窗口，否则新开 task 窗口 |
+| macOS 菜单栏 / Windows 通知区域托盘 | 每个 workbench（已开窗口，或窗口已关但仍有 session） | 汇总点；刚打开、还没有 session 的 workbench 显示灰点；macOS 点击聚焦已开窗口，否则新开 task 窗口；Windows 左键恢复应用、右键打开菜单 |
 
 汇总只有一份实现:`shared/workbenchSelection.ts` 的 `WORKBENCH_SESSION_DOT_URGENCY` 与 `rollupSessionDotStatus`。main(托盘)与渲染层(GTD)都 import 它,
 输入也都是同一份 `workbenchActiveSessions` —— 真相只有「每 pane 一个状态」,workbench 状态是它的纯派生投影。
@@ -392,7 +407,7 @@ Thunder 聊天同理且更彻底:一个 run 的阶段由 thunder 自己报(`useT
 
 一个页面回答四个问题:
 
-1. 守护进程活着吗(pid、API 版本、连接窗口数、已加载规则包、socket 路径、launchd 是否注册);
+1. 守护进程活着吗(pid、API 版本、连接窗口数、已加载规则包、socket/管道路径、登录项是否注册——macOS launchd / Windows HKCU Run);
 2. 哪些 agent 装了钩子(可安装/卸载,未检测到则禁用按钮);
 3. 守护进程在跟踪哪些 pane(含外部 agent);
 4. **某一个 pane 为什么是这个状态**:命中的规则、参与的两层规则包、每条被考虑规则的原因、
@@ -428,7 +443,7 @@ Thunder 聊天同理且更彻底:一个 run 的阶段由 thunder 自己报(`useT
 | `bridge.ts` / `ipc.ts` / `runtime.ts` | 主进程与守护进程、渲染层的桥 |
 | `state.ts` | 每 pane 记录、每帧求值、持久化、explain/screenDump |
 | `daemon.ts` | 入口、单实例、心跳、优雅退出、通知与发现的宿主 |
-| `lifecycle.ts` | 重启/替换、状态读取、入口路径解析,以及 launchd 登录项的安装/卸载 |
+| `lifecycle.ts` | 重启/替换、状态读取、入口路径解析,以及登录项的安装/卸载(macOS launchd / Windows HKCU Run) |
 | `engine/manifest.ts` / `region.ts` / `evaluate.ts` / `registry.ts` | 规则编译、切片、求值、分层与覆盖 |
 | `engine/manifests/*.json` | 5 份规则包(34 条规则) |
 | `integrations/` | 钩子安装器、包装脚本、配置编辑、pi 扩展 |
@@ -490,7 +505,7 @@ node apps/desktop/scripts/agent-status-pipeline-demo.mjs
 | Codex 钩子装了但没反应 | Codex 里批准一次(未批准时 `hooks/list` 的 `trustStatus` 是 `untrusted`) |
 | 钩子没生效 | 看 `<panel home>/.desktop/agent-state/report.log`;确认 pane 内有 `AGENT_RESUME_PANE_ID` |
 | 升级后行为反常 | 多半是旧守护进程:确认 `endpoint.json` 的 `apiVersion`,App 启动会自动替换 |
-| 想彻底卸载 | 设置里移除各 agent 钩子 → 停止守护进程 → 删 `~/Library/LaunchAgents/dev.agentresume.agent-status.plist` → 删 `<panel home>/.desktop/agent-status` 与 `.desktop/agent-state` |
+| 想彻底卸载 | 设置里移除各 agent 钩子 → 停止守护进程 → macOS 删 `~/Library/LaunchAgents/dev.agentresume.agent-status.plist`,Windows 删 HKCU `…\Run` 下的 `AgentResumeAgentStatus` 与 `agent-status-login.cmd` → 删 `<panel home>/.desktop/agent-status` 与 `.desktop/agent-state` |
 
 ---
 
@@ -506,7 +521,7 @@ node apps/desktop/scripts/agent-status-pipeline-demo.mjs
 发布步骤:`pnpm run merge:desktop-i18n && pnpm run i18n:check` → `pnpm run test:desktop` →
 `pnpm run pack:desktop`(已在本机产出 arm64/x64 DMG 并验证打包内守护进程可启动)→
 按 [`agent-status-acceptance.md`](agent-status-acceptance.md) 逐条人工验收 →
-`pnpm run release:desktop:mac`(从 CHANGELOG 提取 0.2.27 段落,需要 Developer ID 公证)。
+`pnpm run release:desktop`(从 CHANGELOG 提取 0.2.27 段落;macOS 需要 Developer ID 公证,Windows 使用 Authenticode 签名)。
 
 ---
 
@@ -519,7 +534,7 @@ node apps/desktop/scripts/agent-status-pipeline-demo.mjs
 | 外部 agent 无屏幕判定 | 只能报"在跑/在等钩子上报",看不出对话框 | 钩子是正解(需要 pid 归属,见 D2 前置) |
 | 无 marker 类 region(`prompt_box_body` 等) | 个别规则用 `bottom_non_empty_lines(n)` 近似 | 有真实屏幕证明不足时再加 |
 | 远程规则包热更新 | 规则修复需要随版本发布 | 本地覆盖已可用;远程需要托管与信任模型 |
-| Windows | 不支持状态感知 | 需要 ConPTY 下另一套进程组/tty 逻辑 |
+| Windows | 无 `ps` 进程表,外部 agent 发现不可用;自有 pane 的屏幕判定与钩子上报正常 | 已支持:状态由 pane / 钩子事件驱动;命名管道 + HKCU Run 登录项 + WinRT toast(见 §7) |
 
 **D2(未纳入本次)**:把 PTY 所有权迁进守护进程,使 agent 在 App 退出后继续运行。
 它会让"感知"升级为"终端服务化"(attach/detach、replay、resize、会话恢复、崩溃接管),

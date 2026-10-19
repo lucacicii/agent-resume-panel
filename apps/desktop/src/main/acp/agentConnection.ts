@@ -6,6 +6,7 @@ import type { AgentCapabilities, ClientConnection, ClientContext } from "@agentc
 import * as path from "node:path";
 import type { PanelSettings } from "@agent-resume/core";
 import { resolveSpawnCommand } from "../processPath";
+import { spawnSpecFor } from "@agent-resume/core";
 import { loadAcpAgentLaunch } from "./config";
 import { createAcpClientApp } from "./createClientApp";
 import { getAcpSdk } from "./sdk";
@@ -89,12 +90,15 @@ export class AcpAgentConnection {
           `Searched PATH includes Homebrew/fnm/nvm common locations.`
       );
     }
-    const useShell = process.platform === "win32" && (command.endsWith(".cmd") || command.endsWith(".bat"));
+    // `.cmd`/`.bat` shims cannot be spawned directly: they run through
+    // `cmd.exe /d /s /c` with each argument quoted explicitly, instead of
+    // `shell: true` (whose joining does not escape `&`, `|`, `^` or `%`).
+    const spec = spawnSpecFor(command, args);
     this.stderrBuffer = "";
-    this.process = spawn(command, args, {
+    this.process = spawn(spec.file, spec.args, {
       stdio: ["pipe", "pipe", "pipe"],
       env,
-      shell: useShell
+      shell: spec.shell
     });
 
     let handshakeComplete = false;

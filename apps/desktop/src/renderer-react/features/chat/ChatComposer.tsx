@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect, useMemo, useCallback } from "react"
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { NativeMenuSelect } from "../../components/NativeMenuSelect";
 import { showContextMenuAt, type NativeContextMenuItem } from "../../nativeContextMenu";
+import { isMacRenderer } from "../../platform";
 import { desktopApi } from "../../bridge";
 import type {
   AgentToolDescriptor,
@@ -1423,7 +1424,7 @@ export function ChatComposer({
       {isStreaming && (queuedCount ?? 0) > 0 && (
         <div className="tb-composer-queued" aria-label="Queued messages">
           <span><ThemeIcon name="inbox" size={ICON_SIZE.inline} /> {queuedCount} queued</span>
-          <span>Enter steers · ⌥Enter follows up</span>
+          <span>{`Enter steers · ${isMacRenderer() ? "⌥Enter" : "Alt+Enter"} follows up`}</span>
         </div>
       )}
       <div className={`tb-composer-box${isStreaming ? " is-active" : ""}`}>

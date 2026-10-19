@@ -57,13 +57,26 @@ const SHORTCUT_KEYS = new Set([
   "Backquote"
 ]);
 
-/** Conservative validation for values passed to Electron globalShortcut.register. */
-export function isValidGlobalShortcut(value: string): boolean {
+/**
+ * Validate an accelerator for `globalShortcut.register`.
+ *
+ * `Command` / `Option` are macOS names. On Windows Electron maps `Command` to
+ * the Windows key, which is not what a user typing "Command+D" means — so the
+ * macOS-only names are rejected there and the value falls back to the default
+ * (a `CommandOrControl` accelerator works on both).
+ */
+export function isValidGlobalShortcut(
+  value: string,
+  platform: NodeJS.Platform = process.platform
+): boolean {
   const parts = value.trim().split("+").map((part) => part.trim()).filter(Boolean);
   if (parts.length < 2) return false;
   const modifiers = parts.slice(0, -1);
   const key = parts.at(-1) || "";
   if (!modifiers.length || modifiers.some((modifier) => !SHORTCUT_MODIFIERS.has(modifier))) {
+    return false;
+  }
+  if (platform !== "darwin" && modifiers.some((modifier) => modifier === "Command" || modifier === "Option")) {
     return false;
   }
   if (/^[A-Z0-9]$/.test(key) || /^F(?:[1-9]|1[0-9]|2[0-4])$/.test(key)) {
@@ -80,7 +93,6 @@ export function normalizeGlobalShortcut(
   if (!candidate) return "";
   return isValidGlobalShortcut(candidate) ? candidate : fallback;
 }
-
 export function isQuickAccessShortcut(input: DesktopShortcutInput, commandMode: boolean): boolean {
   if (input.type !== "keyDown") return false;
   if (!(input.control || input.meta) || input.alt || input.shift !== commandMode) return false;

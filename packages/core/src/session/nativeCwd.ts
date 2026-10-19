@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { atomicWriteFile } from "../atomicWrite";
 import { runSqliteJson, escapeSqlLiteral } from "../sqlite";
 import { readJsonLines } from "../transcript/jsonl";
 import { findFilesByName, listJsonlFiles } from "../transcript/fs";
@@ -296,9 +297,7 @@ async function updatePiPrimeCwd(
 }
 
 async function atomicWriteText(filePath: string, content: string): Promise<void> {
-  const tmp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  await fs.writeFile(tmp, content, "utf8");
-  await fs.rename(tmp, filePath);
+  await atomicWriteFile(filePath, content);
 }
 
 async function atomicWriteJson(filePath: string, value: unknown): Promise<void> {

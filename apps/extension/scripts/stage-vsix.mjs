@@ -129,11 +129,13 @@ export function stageVsix({ clean = true } = {}) {
 
   execFileSync("pnpm", ["install", "--prod", "--lockfile-only"], {
     cwd: stagingRoot,
-    stdio: "inherit"
+    stdio: "inherit",
+    shell: process.platform === "win32"
   });
   execFileSync("pnpm", ["install", "--prod", "--frozen-lockfile"], {
     cwd: stagingRoot,
-    stdio: "inherit"
+    stdio: "inherit",
+    shell: process.platform === "win32"
   });
 
   vendorCore(stagingRoot);

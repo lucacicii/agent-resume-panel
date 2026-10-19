@@ -1,3 +1,4 @@
+import * as os from "node:os";
 import * as path from "node:path";
 import { toPortableKey } from "@agent-resume/core/extension";
 import { isFavoriteProject } from "../favorites/projectFavorites";
@@ -130,7 +131,7 @@ export async function queryProjectGroupSummaries(
   >();
 
   for (const row of rows) {
-    const rawPath = row.project_path?.trim() || process.env.HOME || "";
+    const rawPath = row.project_path?.trim() || os.homedir();
     const resolvedPath = path.resolve(rawPath);
     const projectId = row.project_id?.trim() || undefined;
     const groupKey = projectId ? `id:${projectId}` : `key:${toPortableKey(resolvedPath)}`;

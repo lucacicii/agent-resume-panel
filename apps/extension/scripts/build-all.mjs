@@ -7,7 +7,11 @@ import { packageVsix } from "./vsix-output.mjs";
 const extensionRoot = join(import.meta.dirname, "..");
 const repoRoot = join(extensionRoot, "..", "..");
 
-execFileSync("pnpm", ["run", "compile"], { cwd: repoRoot, stdio: "inherit" });
+execFileSync("pnpm", ["run", "compile"], {
+  cwd: repoRoot,
+  stdio: "inherit",
+  shell: process.platform === "win32"
+});
 
 const openvsxPkg = JSON.parse(readFileSync(join(extensionRoot, "package.json"), "utf8"));
 console.log("Building Open VSX version...");

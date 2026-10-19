@@ -1,5 +1,6 @@
 import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
 import { useI18n } from "../../../i18n";
+import { isMacRenderer } from "../../../platform";
 import type { TerminalPane } from "../terminal/TerminalView";
 
 type WorkbenchSideView = "files" | "git" | "search" | "scripts" | "browser" | null;
@@ -49,7 +50,7 @@ export function WorkbenchDetailHeader({
   const { t } = useI18n();
   // Accelerators are surfaced in tooltips so the keyboard path is discoverable
   // where the control lives, not only in the menu bar.
-  const isMac = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
+  const isMac = isMacRenderer();
   const shiftAccel = (key: string, meta: boolean) =>
     isMac ? `${meta ? "⌘" : "⌃"}⇧${key}` : `Ctrl+Shift+${key}`;
   const gitAccel = shiftAccel("G", false);

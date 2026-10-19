@@ -24,8 +24,8 @@ import { loadPanelDbPaths } from "./panelDatabases";
  * Decoding goes through Chromium (`nativeImage.createFromBuffer`, fed with
  * `fs.readFile` bytes so read errors surface their real errno). HEIC/HEIF —
  * the default iPhone photo format, frequently renamed to .png/.jpg — has no
- * Chromium decoder, so on macOS a failed decode falls back to one `sips`
- * conversion, the same system codec Preview uses.
+ * Chromium decoder, so a failed decode falls back once to the system codec —
+ * `sips` on macOS, WIC through System.Drawing on Windows.
  */
 
 /** `catalog_meta` key holding the last directory the user picked an image in. */
@@ -85,13 +85,34 @@ function normalizedImage(image: Electron.NativeImage): Electron.NativeImage {
 }
 
 /**
- * One-shot `sips` conversion to PNG for formats Chromium cannot decode.
- * Returns an empty image when even the system codec rejects the file.
+ * One-shot system-codec conversion to PNG for formats Chromium cannot decode.
+ * macOS uses `sips`; Windows uses WIC through `System.Drawing`, which handles
+ * HEIC only when the HEIF Image Extension is installed — a failure there is
+ * the same "unsupported" outcome as before. Returns an empty image when even
+ * the system codec rejects the file.
  */
-async function decodeViaSips(filePath: string): Promise<Electron.NativeImage> {
+async function decodeViaSystemCodec(filePath: string): Promise<Electron.NativeImage> {
   const converted = path.join(tmpdir(), `arp-template-image-${randomUUID()}.png`);
   try {
-    await execFile("sips", ["-s", "format", "png", filePath, "--out", converted]);
+    if (process.platform === "win32") {
+      const script = [
+        "Add-Type -AssemblyName System.Drawing",
+        "$image = [System.Drawing.Image]::FromFile($env:AGENT_RESUME_IMAGE_IN)",
+        "try { $image.Save($env:AGENT_RESUME_IMAGE_OUT, [System.Drawing.Imaging.ImageFormat]::Png) }",
+        "finally { $image.Dispose() }"
+      ].join("; ");
+      const systemRoot = process.env.SystemRoot?.trim() || "C:\\Windows";
+      await execFile(
+        path.win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+        ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")],
+        {
+          env: { ...process.env, AGENT_RESUME_IMAGE_IN: filePath, AGENT_RESUME_IMAGE_OUT: converted },
+          windowsHide: true
+        }
+      );
+    } else {
+      await execFile("sips", ["-s", "format", "png", filePath, "--out", converted]);
+    }
     return nativeImage.createFromBuffer(await fs.readFile(converted));
   } catch {
     return nativeImage.createEmpty();
@@ -100,14 +121,14 @@ async function decodeViaSips(filePath: string): Promise<Electron.NativeImage> {
   }
 }
 
-/** Decode a picked image file, falling back to the macOS system codec once. */
+/** Decode a picked image file, falling back to the system codec once. */
 async function decodeImageFile(filePath: string): Promise<Electron.NativeImage> {
   // Read the bytes ourselves: an unreadable file (permissions, iCloud
   // placeholder, …) then fails with its real errno instead of an empty image.
   const bytes = await fs.readFile(filePath);
   let image = nativeImage.createFromBuffer(bytes);
-  if (image.isEmpty() && process.platform === "darwin") {
-    image = await decodeViaSips(filePath);
+  if (image.isEmpty() && (process.platform === "darwin" || process.platform === "win32")) {
+    image = await decodeViaSystemCodec(filePath);
   }
   if (image.isEmpty()) {
     throw new Error(`Unsupported image format: ${path.basename(filePath)}`);

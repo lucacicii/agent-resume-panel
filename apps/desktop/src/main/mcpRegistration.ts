@@ -1,9 +1,10 @@
-import { access, readFile, rename, writeFile } from "node:fs/promises";
+import { access, readFile, stat } from "node:fs/promises";
 import { constants, existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import * as path from "node:path";
 import { spawn } from "node:child_process";
+import { atomicWriteFile, executableCandidates, spawnSpecFor } from "@agent-resume/core";
 
 export const EXTERNAL_MCP_SERVICE_ID = "agent-resume";
 /** In-app browser tools (requires Desktop running). */
@@ -37,12 +38,33 @@ interface McpClientDefinition {
   manualHome?: string;
 }
 
+/**
+ * OpenCode is the one client whose config does not live in a dot-directory.
+ * On macOS/Linux it is `~/.config/opencode`; on Windows the XDG convention maps
+ * to `%APPDATA%\opencode` (config) and `%LOCALAPPDATA%\opencode` (data).
+ */
+function openCodeConfigPath(): string {
+  if (process.platform === "win32") {
+    const appData = process.env.APPDATA?.trim() || path.join(homedir(), "AppData", "Roaming");
+    return path.join(appData, "opencode", "opencode.json");
+  }
+  return path.join(homedir(), ".config", "opencode", "opencode.json");
+}
+
+function openCodeDataPath(): string {
+  if (process.platform === "win32") {
+    const localAppData = process.env.LOCALAPPDATA?.trim() || path.join(homedir(), "AppData", "Local");
+    return path.join(localAppData, "opencode");
+  }
+  return path.join(homedir(), ".local", "share", "opencode");
+}
+
 const definitions: McpClientDefinition[] = [
   { id: "codex", label: "Codex", mode: "automatic", executable: "codex", configPath: path.join(homedir(), ".codex", "config.toml") },
   { id: "claude", label: "Claude Code", mode: "automatic", executable: "claude", configPath: path.join(homedir(), ".claude.json") },
   { id: "gemini", label: "Gemini CLI", mode: "automatic", executable: "gemini", configPath: path.join(homedir(), ".gemini", "settings.json"), detectPath: path.join(homedir(), ".gemini") },
   { id: "antigravity", label: "Antigravity", mode: "automatic", executable: "agy", configPath: path.join(homedir(), ".gemini", "config", "mcp_config.json"), detectPath: path.join(homedir(), ".gemini") },
-  { id: "opencode", label: "OpenCode", mode: "automatic", executable: "opencode", configPath: path.join(homedir(), ".config", "opencode", "opencode.json"), detectPath: path.join(homedir(), ".local", "share", "opencode") },
+  { id: "opencode", label: "OpenCode", mode: "automatic", executable: "opencode", configPath: openCodeConfigPath(), detectPath: openCodeDataPath() },
   { id: "cursor", label: "Cursor", mode: "manual", manualHome: path.join(homedir(), ".cursor") },
   { id: "pi", label: "Pi", mode: "manual", manualHome: path.join(homedir(), ".pi", "agent") },
   { id: "grok", label: "Grok Build", mode: "manual", manualHome: path.join(homedir(), ".grok") }
@@ -64,14 +86,23 @@ async function exists(target: string | undefined): Promise<boolean> {
   }
 }
 
-const USER_EXECUTABLE_DIRS = [
-  path.join(homedir(), ".local", "bin"),
-  path.join(homedir(), ".volta", "bin"),
-  path.join(homedir(), ".npm-global", "bin"),
-  path.join(homedir(), ".cargo", "bin"),
-  "/opt/homebrew/bin",
-  "/usr/local/bin"
-];
+const USER_EXECUTABLE_DIRS = process.platform === "win32"
+  ? [
+      path.join(process.env.APPDATA?.trim() || path.join(homedir(), "AppData", "Roaming"), "npm"),
+      path.join(process.env.LOCALAPPDATA?.trim() || path.join(homedir(), "AppData", "Local"), "pnpm"),
+      path.join(process.env.LOCALAPPDATA?.trim() || path.join(homedir(), "AppData", "Local"), "Volta", "bin"),
+      path.join(homedir(), ".local", "bin"),
+      path.join(homedir(), ".cargo", "bin"),
+      path.join(process.env.ProgramFiles?.trim() || "C:\\Program Files", "nodejs")
+    ]
+  : [
+      path.join(homedir(), ".local", "bin"),
+      path.join(homedir(), ".volta", "bin"),
+      path.join(homedir(), ".npm-global", "bin"),
+      path.join(homedir(), ".cargo", "bin"),
+      "/opt/homebrew/bin",
+      "/usr/local/bin"
+    ];
 
 /**
  * Finder-launched Electron apps do not load the user's shell startup files,
@@ -97,13 +128,23 @@ export async function resolveExecutableOnPath(
     ...(inheritedPath || "").split(path.delimiter).filter(Boolean),
     ...USER_EXECUTABLE_DIRS
   ])];
+  // Windows: a bare `claude` is `claude.exe` or `claude.cmd`, and X_OK there
+  // only checks existence (directories pass), so test for a file.
+  const names = executableCandidates(requested).names;
   for (const dir of directories) {
-    const candidate = path.join(dir, requested);
-    try {
-      await access(candidate, constants.X_OK);
-      return candidate;
-    } catch {
-      // keep looking
+    for (const name of names) {
+      const candidate = path.join(dir, name);
+      try {
+        if (process.platform === "win32") {
+          const file = await stat(candidate);
+          if (!file.isFile()) continue;
+        } else {
+          await access(candidate, constants.X_OK);
+        }
+        return candidate;
+      } catch {
+        // keep looking
+      }
     }
   }
   return undefined;
@@ -281,7 +322,9 @@ export async function listMcpClients(): Promise<McpClientInfo[]> {
 
 function run(command: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    // A `.cmd` client CLI must go through cmd.exe; quoting lives in core.
+    const spec = spawnSpecFor(command, args);
+    const child = spawn(spec.file, spec.args, { stdio: ["ignore", "pipe", "pipe"], shell: spec.shell });
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
     child.on("error", reject);
@@ -318,9 +361,7 @@ async function writeJsonAtomically(target: string, value: Record<string, unknown
   const directory = path.dirname(target);
   const { mkdir } = await import("node:fs/promises");
   await mkdir(directory, { recursive: true });
-  const temporary = `${target}.${process.pid}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-  await rename(temporary, target);
+  await atomicWriteFile(target, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -361,7 +402,7 @@ async function registerCliClient(
   const executable = await resolveExecutableOnPath(definition.executable);
   if (!executable) {
     throw new Error(
-      `${definition.label} was not found on this Mac. Checked PATH, ~/.local/bin, ~/.volta/bin, /opt/homebrew/bin, and /usr/local/bin.`
+      `${definition.label} was not found on this machine. Checked PATH and the usual npm/pnpm/Volta/Cargo install directories.`
     );
   }
   if (replace) {
@@ -412,7 +453,7 @@ export async function registerMcpClient(
   }
   if ((definition.id === "codex" || definition.id === "claude") && !(await resolveExecutableOnPath(definition.executable))) {
     throw new Error(
-      `${definition.label} was not found on this Mac. Checked PATH, ~/.local/bin, ~/.volta/bin, /opt/homebrew/bin, and /usr/local/bin.`
+      `${definition.label} was not found on this machine. Checked PATH and the usual npm/pnpm/Volta/Cargo install directories.`
     );
   }
   if (definition.id === "codex" || definition.id === "claude") {
@@ -551,7 +592,7 @@ async function registerBrowserCliClient(
   const executable = await resolveExecutableOnPath(definition.executable);
   if (!executable) {
     throw new Error(
-      `${definition.label} was not found on this Mac. Checked PATH, ~/.local/bin, ~/.volta/bin, /opt/homebrew/bin, and /usr/local/bin.`
+      `${definition.label} was not found on this machine. Checked PATH and the usual npm/pnpm/Volta/Cargo install directories.`
     );
   }
   if (replace) {
@@ -582,7 +623,7 @@ export async function registerBrowserMcpClient(
     !(await resolveExecutableOnPath(definition.executable))
   ) {
     throw new Error(
-      `${definition.label} was not found on this Mac. Checked PATH, ~/.local/bin, ~/.volta/bin, /opt/homebrew/bin, and /usr/local/bin.`
+      `${definition.label} was not found on this machine. Checked PATH and the usual npm/pnpm/Volta/Cargo install directories.`
     );
   }
   if (definition.id === "codex" || definition.id === "claude") {
@@ -781,9 +822,7 @@ async function migrateTomlFile(configPath: string, launch: McpLaunchConfig): Pro
   const raw = await readFile(configPath, "utf8");
   const { content, changed } = migrateTomlAgentResumeSection(raw, launch);
   if (!changed) return false;
-  const temporary = `${configPath}.${process.pid}.tmp`;
-  await writeFile(temporary, content, "utf8");
-  await rename(temporary, configPath);
+  await atomicWriteFile(configPath, content);
   return true;
 }
 

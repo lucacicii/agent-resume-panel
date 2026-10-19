@@ -1,5 +1,6 @@
 import * as os from "node:os";
 import * as path from "node:path";
+import { expandEnvVars, normalizePathForCompare, pathApiFor, samePath } from "./platform";
 
 export function expandHome(input: string): string {
   const trimmed = input.trim();
@@ -7,29 +8,34 @@ export function expandHome(input: string): string {
     return trimmed;
   }
 
-  if (trimmed === "~") {
+  // `%USERPROFILE%\…` and `${HOME}/…` arrive from settings written elsewhere.
+  const expanded = expandEnvVars(trimmed);
+
+  if (expanded === "~") {
     return os.homedir();
   }
 
-  if (trimmed.startsWith("~/")) {
-    return path.join(os.homedir(), trimmed.slice(2));
+  if (expanded.startsWith("~/") || expanded.startsWith("~\\")) {
+    return path.join(os.homedir(), expanded.slice(2));
   }
 
-  if (trimmed.startsWith("$HOME/")) {
-    return path.join(os.homedir(), trimmed.slice("$HOME/".length));
+  if (expanded.startsWith("$HOME/") || expanded.startsWith("$HOME\\")) {
+    return path.join(os.homedir(), expanded.slice("$HOME/".length));
   }
 
-  return rehomeForeignAbsolutePath(path.normalize(trimmed));
+  return rehomeForeignAbsolutePath(path.normalize(expanded));
 }
 
 function rehomeForeignAbsolutePath(input: string): string {
   const home = os.homedir();
-  if (!path.isAbsolute(input) || input === home || input.startsWith(`${home}${path.sep}`)) {
+  if (!path.isAbsolute(input) || samePath(input, home) || isUnderHome(input, home)) {
     return input;
   }
 
+  // Windows homes (`C:\Users\<name>`) are matched by shape, not by platform:
+  // a settings file synced from a Windows machine is opened on a Mac and back.
   const foreignHomePattern = process.platform === "win32"
-    ? null
+    ? /^[A-Za-z]:\\Users\\([^\\/]+)(?:[\\/](.*))?$/
     : process.platform === "darwin"
       ? /^\/Users\/([^/]+)(?:\/(.*))?$/
       : /^\/home\/([^/]+)(?:\/(.*))?$/;
@@ -56,13 +62,23 @@ export function normalizeProjectPath(projectPath: string): string {
   return path.resolve(projectPath);
 }
 
+/** True when `target` is inside `home`, comparing the way the platform does. */
+function isUnderHome(target: string, home: string): boolean {
+  const api = pathApiFor(process.platform);
+  const normalizedHome = normalizePathForCompare(home, process.platform);
+  const normalizedTarget = normalizePathForCompare(target, process.platform);
+  if (normalizedTarget === normalizedHome) return true;
+  const relative = api.relative(normalizedHome, normalizedTarget);
+  return Boolean(relative) && !relative.startsWith("..") && !api.isAbsolute(relative);
+}
+
 export function compactPath(projectPath: string): string {
   const home = os.homedir();
-  if (projectPath === home) {
+  if (samePath(projectPath, home)) {
     return "~";
   }
 
-  if (projectPath.startsWith(`${home}${path.sep}`)) {
+  if (isUnderHome(projectPath, home)) {
     return `~/${path.relative(home, projectPath).split(path.sep).join("/")}`;
   }
 
@@ -79,7 +95,13 @@ export function toPortableKey(projectPath: string): string {
   if (!trimmed) {
     return "abs:";
   }
-  if (trimmed === "~" || trimmed.startsWith("~/") || trimmed.startsWith("$HOME/")) {
+  if (
+    trimmed === "~"
+    || trimmed.startsWith("~/")
+    || trimmed.startsWith("~\\")
+    || trimmed.startsWith("$HOME/")
+    || trimmed.startsWith("$HOME\\")
+  ) {
     const expanded = expandHome(trimmed);
     return compactPath(normalizeProjectPath(expanded));
   }
@@ -123,7 +145,7 @@ export function isForeignUserPath(projectPath: string): boolean {
   }
   const normalized = path.normalize(trimmed);
   const home = os.homedir();
-  if (normalized === home || normalized.startsWith(`${home}${path.sep}`)) {
+  if (samePath(normalized, home) || isUnderHome(normalized, home)) {
     return false;
   }
   return expandHome(normalized) !== normalized;
@@ -135,17 +157,14 @@ function compactForeignAbsolutePath(absolutePath: string): string | null {
   }
   const foreignHomePattern =
     process.platform === "win32"
-      ? null
+      ? /^[A-Za-z]:\\Users\\([^\\/]+)(?:[\\/](.*))?$/
       : process.platform === "darwin"
         ? /^\/Users\/([^/]+)(?:\/(.*))?$/
         : /^\/home\/([^/]+)(?:\/(.*))?$/;
-  if (!foreignHomePattern) {
-    return null;
-  }
   const match = absolutePath.match(foreignHomePattern);
   if (!match) {
     return null;
   }
-  const suffix = (match[2] ?? "").split(path.sep).join("/");
+  const suffix = (match[2] ?? "").split(/[\\/]/).filter(Boolean).join("/");
   return suffix ? `~/${suffix}` : "~";
 }

@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { Writable, Readable } from "node:stream";
 import type { AgentCapabilities, ClientConnection, ClientContext } from "@agentclientprotocol/sdk" with { "resolution-mode": "import" };
 import * as path from "node:path";
+import { spawnSpecFor } from "@agent-resume/core";
 import { loadAcpAgentLaunch } from "./config";
 import { createAcpClientApp } from "./createClientApp";
 import { resolveSpawnCommand } from "./resolveCommand";
@@ -55,15 +56,17 @@ export class AcpAgentConnection {
       throw new Error(
         `Command not found: ${launch.command}. ` +
           `Install the agent CLI or set Settings → ACP → ${this.provider} command to an absolute path. ` +
-          `Searched PATH includes Homebrew/fnm/nvm common locations.`
+          `Searched PATH and the usual npm/pnpm/Volta/fnm/nvm install directories.`
       );
     }
-    const useShell = process.platform === "win32" && (command.endsWith(".cmd") || command.endsWith(".bat"));
+    // A `.cmd`/`.bat` shim (npm, pnpm, Volta on Windows) cannot be started by
+    // `spawn` directly; `spawnSpecFor` routes it through `cmd.exe`.
+    const spec = spawnSpecFor(command, args);
     this.stderrBuffer = "";
-    this.process = spawn(command, args, {
+    this.process = spawn(spec.file, spec.args, {
       stdio: ["pipe", "pipe", "pipe"],
       env,
-      shell: useShell
+      shell: spec.shell
     });
 
     let handshakeComplete = false;

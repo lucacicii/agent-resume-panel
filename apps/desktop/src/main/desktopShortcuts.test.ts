@@ -36,6 +36,15 @@ describe("global standalone note shortcut", () => {
     expect(isValidGlobalShortcut("CommandOrControl")).toBe(false);
   });
 
+  it("rejects macOS-only modifier names off darwin", () => {
+    expect(isValidGlobalShortcut("Command+D", "darwin")).toBe(true);
+    expect(isValidGlobalShortcut("Option+D", "darwin")).toBe(true);
+    // `Command` maps to the Windows key there, which is not what the user meant.
+    expect(isValidGlobalShortcut("Command+D", "win32")).toBe(false);
+    expect(isValidGlobalShortcut("Option+D", "win32")).toBe(false);
+    expect(isValidGlobalShortcut("CommandOrControl+D", "win32")).toBe(true);
+  });
+
   it("allows an explicit empty value to disable the shortcut", () => {
     expect(normalizeGlobalShortcut("")).toBe("");
     expect(normalizeGlobalShortcut(undefined)).toBe("");

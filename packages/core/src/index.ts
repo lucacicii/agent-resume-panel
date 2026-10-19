@@ -7,6 +7,36 @@ export {
   expandPortableKey,
   isForeignUserPath
 } from "./pathUtils";
+export {
+  pathApiFor,
+  isWindows,
+  defaultShellKind,
+  shellKindForExecutable,
+  quotePosix,
+  quotePowerShell,
+  quoteCmd,
+  shellQuoteFor,
+  quoteCommandLineFor,
+  normalizePathForCompare,
+  samePath,
+  isPathInside,
+  expandEnvVars,
+  isWindowsReservedName,
+  avoidWindowsReservedName
+} from "./platform";
+export type { PlatformName, ShellKind } from "./platform";
+export {
+  DEFAULT_PATHEXT,
+  pathextEntries,
+  executableCandidates,
+  requiresWindowsShell,
+  resolveExecutable,
+  spawnSpecFor,
+  commandLineFor
+} from "./executable";
+export type { ExecutableLookup, SpawnSpec } from "./executable";
+export { atomicWriteFile, atomicWriteFileSync, removeDirectoryWithRetry, renamePathWithRetry, isDirectory } from "./atomicWrite";
+export type { AtomicWriteOptions } from "./atomicWrite";
 export { getMachineId, machineIdFilePath, resetMachineIdCache } from "./machineId";
 export {
   DEFAULT_PANEL_HOME,
@@ -732,13 +762,18 @@ export type {
   CommitMessageSettingsSource
 } from "./arp";
 export {
+  buildResumeArgv,
+  buildNewSessionArgv,
   buildResumeCommand,
   buildNewSessionCommand,
-  sessionContextFlags,
+  sessionContextArgs,
   supportsNewSessionYoloMode,
-  supportsSessionContext
+  supportsSessionContext,
+  joinForShell,
+  shellQuote,
+  powerShellQuote
 } from "./terminal/commands";
-export type { NewSessionExecutionMode } from "./terminal/commands";
+export type { NewSessionExecutionMode, CommandShell } from "./terminal/commands";
 export {
   openProjectInEditor,
   projectEditorLabel,

@@ -3,7 +3,14 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as pty from "node-pty";
-import { expandHome, MCP_SESSION_ENV, MCP_SESSION_ENV_KEYS } from "@agent-resume/core";
+import {
+  expandHome,
+  isWindows,
+  MCP_SESSION_ENV,
+  MCP_SESSION_ENV_KEYS,
+  quoteCmd,
+  quotePowerShell
+} from "@agent-resume/core";
 import {
   checkoutGitBranch,
   listGitBranchesWithNested,
@@ -262,8 +269,28 @@ const FALLBACK_SHELLS = [
   "/usr/local/bin/zsh"
 ];
 
+/**
+ * Windows shells, in the order the app prefers them.
+ *
+ * PowerShell 7 first (better VT support, UTF-8 by default), then Windows
+ * PowerShell, then cmd. Git Bash is opt-in only: it is a POSIX shell in a
+ * Windows install and its PATH does not match the rest of the app.
+ */
+function windowsShellCandidates(env: NodeJS.ProcessEnv = process.env): string[] {
+  const systemRoot = env.SystemRoot || env.SYSTEMROOT || "C:\\Windows";
+  const programFiles = env.ProgramFiles || "C:\\Program Files";
+  const localAppData = env.LOCALAPPDATA || "";
+  return [
+    path.win32.join(programFiles, "PowerShell", "7", "pwsh.exe"),
+    localAppData ? path.win32.join(localAppData, "Microsoft", "WindowsApps", "pwsh.exe") : "",
+    path.win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+    env.ComSpec || path.win32.join(systemRoot, "System32", "cmd.exe")
+  ].filter(Boolean);
+}
+
 function isExecutable(filePath: string): boolean {
   try {
+    if (isWindows()) return fs.statSync(filePath).isFile();
     fs.accessSync(filePath, fs.constants.X_OK);
     return true;
   } catch {
@@ -280,14 +307,36 @@ function findExecutableInPath(name: string, extraDirs: string[]): string | null 
     dirs.add(dir);
   }
 
+  const names = isWindows()
+    ? [name, `${name}.exe`, `${name}.cmd`, `${name}.bat`]
+    : [name];
+
   for (const dir of dirs) {
-    const full = path.join(dir, name);
-    if (isExecutable(full)) return full;
+    for (const candidate of names) {
+      const full = path.join(dir, candidate);
+      if (isExecutable(full)) return full;
+    }
   }
   return null;
 }
 
 function resolveShell(): string {
+  if (isWindows()) {
+    // The user's choice wins when it is a real executable; `SHELL` is often
+    // set by Git Bash and would otherwise pick a POSIX shell by accident.
+    const preferred = process.env.AGENT_RESUME_SHELL?.trim();
+    if (preferred) {
+      const expanded = expandHome(preferred);
+      if (isExecutable(expanded)) return expanded;
+      const fromPath = findExecutableInPath(path.basename(expanded), []);
+      if (fromPath) return fromPath;
+    }
+    for (const candidate of windowsShellCandidates()) {
+      if (isExecutable(candidate)) return candidate;
+    }
+    return process.env.ComSpec || "cmd.exe";
+  }
+
   const candidate = process.env.SHELL?.trim() || "";
   if (candidate) {
     const expanded = expandHome(candidate);
@@ -327,10 +376,15 @@ function resolveCwd(raw?: string): string {
   return cwd;
 }
 
-function shellKind(shell: string): "zsh" | "bash" | "other" {
+function shellKind(shell: string): "zsh" | "bash" | "powershell" | "cmd" | "other" {
   const base = path.basename(shell).toLowerCase();
   if (base.includes("zsh")) return "zsh";
   if (base.includes("bash")) return "bash";
+  if (isWindows()) {
+    const stem = base.replace(/\.exe$/, "");
+    if (stem === "powershell" || stem === "pwsh") return "powershell";
+    if (stem === "cmd") return "cmd";
+  }
   return "other";
 }
 
@@ -354,13 +408,17 @@ function materializeIntegrationScript(sourcePath: string): string | null {
     path.join(os.tmpdir(), "agent-resume-shell-integration-")
   );
   try {
-    fs.chmodSync(destinationDir, 0o700);
+    if (!isWindows()) fs.chmodSync(destinationDir, 0o700);
     const sourceDir = path.dirname(sourcePath);
-    for (const name of ["integration.sh", "zsh.sh", "bash.sh"]) {
+    // Every script is copied: `integration.sh` sources the POSIX ones, and the
+    // PowerShell script is dot-sourced by absolute path.
+    for (const name of fs.readdirSync(sourceDir)) {
       const source = path.join(sourceDir, name);
-      const destination = path.join(destinationDir, name);
-      fs.writeFileSync(destination, fs.readFileSync(source), { mode: 0o600 });
-      fs.chmodSync(destination, 0o600);
+      if (!fs.statSync(source).isFile()) continue;
+      fs.writeFileSync(path.join(destinationDir, name), fs.readFileSync(source), {
+        mode: isWindows() ? undefined : 0o600
+      });
+      if (!isWindows()) fs.chmodSync(path.join(destinationDir, name), 0o600);
     }
     materializedIntegrationScript = path.join(destinationDir, "integration.sh");
     return materializedIntegrationScript;
@@ -372,8 +430,33 @@ function materializeIntegrationScript(sourcePath: string): string | null {
   }
 }
 
-function resolveIntegrationScript(): string | null {
-  if (process.platform !== "darwin" && process.platform !== "linux") return null;
+/**
+ * The integration file for this shell, or null when the shell has none.
+ *
+ * POSIX shells share `integration.sh`; PowerShell and cmd each have their own
+ * file, because neither can source the POSIX one.
+ */
+function resolveIntegrationScript(shell?: string): string | null {
+  if (isWindows()) {
+    if (!shell) return null;
+    const kind = shellKind(shell);
+    if (kind !== "powershell" && kind !== "cmd") return null;
+    const name = kind === "cmd" ? "cmd.cmd" : "powershell.ps1";
+    const candidates = [
+      path.join(__dirname, "shellIntegration", name),
+      path.join(__dirname, "..", "main", "shellIntegration", name),
+      path.join(__dirname, "..", "..", "src", "main", "shellIntegration", name)
+    ];
+    for (const candidate of candidates) {
+      if (!fs.existsSync(candidate)) continue;
+      if (candidate.includes(`${path.sep}app.asar${path.sep}`)) {
+        return materializeIntegrationScript(candidate);
+      }
+      return candidate;
+    }
+    return null;
+  }
+
   const candidates = [
     path.join(__dirname, "shellIntegration", "integration.sh"),
     path.join(__dirname, "..", "main", "shellIntegration", "integration.sh"),
@@ -398,30 +481,55 @@ function envWithPath(
 ): Record<string, string> {
   // Strip undefined env values so node-pty always receives a clean string map.
   const raw: Record<string, string | undefined> = { ...process.env };
-  const env = ensureUtf8TerminalEnv(raw) as Record<string, string>;
+  const env = isWindows()
+    ? (Object.fromEntries(
+        Object.entries(raw).filter(([, value]) => typeof value === "string")
+      ) as Record<string, string>)
+    : (ensureUtf8TerminalEnv(raw) as Record<string, string>);
   for (const key of Object.keys(env)) {
     if (env[key] === undefined || env[key] === null) {
       delete env[key];
     }
   }
   const home = os.homedir();
-  const extra = [
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-    "/usr/bin",
-    "/bin",
-    path.join(home, ".local/bin"),
-    path.join(home, ".npm-global/bin")
-  ];
-  const merged = (env.PATH || "").split(path.delimiter).filter(Boolean);
-  for (const dir of extra) {
-    if (!merged.includes(dir) && fs.existsSync(dir)) {
-      merged.push(dir);
+  if (isWindows()) {
+    // Windows environment names are case-insensitive, but node-pty passes the
+    // map through verbatim. Collapse `Path`/`PATH` into the one name child
+    // processes read, and fill in what a GUI launch may be missing.
+    const pathValue = env.PATH ?? env.Path ?? "";
+    const merged = pathValue.split(path.delimiter).filter(Boolean);
+    const extra = windowsPathDirs(env, home);
+    for (const dir of extra) {
+      if (!merged.some((entry) => entry.toLowerCase() === dir.toLowerCase()) && fs.existsSync(dir)) {
+        merged.push(dir);
+      }
     }
+    delete env.Path;
+    env.PATH = merged.join(path.delimiter);
+    if (!env.USERPROFILE) env.USERPROFILE = home;
+    if (!env.HOME) env.HOME = home;
+    if (!env.ComSpec) env.ComSpec = path.join(env.SystemRoot || "C:\\Windows", "System32", "cmd.exe");
+    if (!env.PATHEXT) env.PATHEXT = ".COM;.EXE;.BAT;.CMD";
+    if (!env.TERM) env.TERM = "xterm-256color";
+  } else {
+    const extra = [
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+      "/usr/bin",
+      "/bin",
+      path.join(home, ".local/bin"),
+      path.join(home, ".npm-global/bin")
+    ];
+    const merged = (env.PATH || "").split(path.delimiter).filter(Boolean);
+    for (const dir of extra) {
+      if (!merged.includes(dir) && fs.existsSync(dir)) {
+        merged.push(dir);
+      }
+    }
+    env.PATH = merged.join(path.delimiter);
+    if (!env.HOME) env.HOME = home;
+    if (!env.TERM) env.TERM = "xterm-256color";
   }
-  env.PATH = merged.join(path.delimiter);
-  if (!env.HOME) env.HOME = home;
-  if (!env.TERM) env.TERM = "xterm-256color";
   // Pane identity for installed agent hooks: it is also the gate that keeps a
   // globally installed hook from reporting a terminal we do not manage.
   for (const [key, value] of Object.entries(extraEnv)) env[key] = value;
@@ -435,18 +543,49 @@ function envWithPath(
   return env;
 }
 
+/** Directories a GUI-launched Windows app usually misses. */
+function windowsPathDirs(env: Record<string, string>, home: string): string[] {
+  const appData = env.APPDATA || path.join(home, "AppData", "Roaming");
+  const localAppData = env.LOCALAPPDATA || path.join(home, "AppData", "Local");
+  const programFiles = env.ProgramFiles || "C:\\Program Files";
+  const systemRoot = env.SystemRoot || "C:\\Windows";
+  return [
+    path.join(appData, "npm"),
+    path.join(localAppData, "pnpm"),
+    path.join(localAppData, "Volta", "bin"),
+    path.join(localAppData, "Programs"),
+    path.join(home, ".local", "bin"),
+    path.join(home, ".cargo", "bin"),
+    path.join(programFiles, "nodejs"),
+    path.join(systemRoot, "System32"),
+    systemRoot
+  ];
+}
+
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
+/**
+ * Command line that runs `command` inside `shell`.
+ *
+ * Windows has no `exec`: the child shell is started with the integration
+ * already loaded and the command is typed in as its first input, which is what
+ * the POSIX branch achieves with `exec <shell>`.
+ */
 function buildShellLaunchArgs(
   shell: string,
   integrationScript: string | null,
   command?: string
 ): string[] {
-  const quotedShell = shellQuote(shell);
-  const cmd = command?.trim();
   const kind = shellKind(shell);
+  const cmd = command?.trim();
+
+  if (isWindows()) {
+    return buildWindowsLaunchArgs(shell, kind, integrationScript, cmd);
+  }
+
+  const quotedShell = shellQuote(shell);
 
   if (integrationScript) {
     const quotedIntegration = shellQuote(integrationScript);
@@ -480,6 +619,44 @@ function buildShellLaunchArgs(
   return [];
 }
 
+function buildWindowsLaunchArgs(
+  shell: string,
+  kind: "zsh" | "bash" | "powershell" | "cmd" | "other",
+  integrationScript: string | null,
+  command?: string
+): string[] {
+  if (kind === "cmd") {
+    if (!command) return [];
+    // AutoRun is the only cmd hook; the integration script sets the prompt.
+    if (integrationScript) {
+      return ["/k", `call ${quoteCmd(integrationScript)} && ${command}`];
+    }
+    return ["/k", command];
+  }
+
+  if (kind === "powershell") {
+    // `-NoExit` keeps the pane alive after the command finishes; without it the
+    // shell exits and the pane respawns in a loop.
+    const args = ["-NoLogo", "-NoExit", "-ExecutionPolicy", "Bypass"];
+    if (integrationScript) {
+      args.push("-NoProfile", "-Command", `. ${quotePowerShell(integrationScript)}`);
+      if (command) args.push(";", command);
+      return args;
+    }
+    if (command) return [...args, "-Command", command];
+    return args;
+  }
+
+  // Git Bash / WSL: POSIX flags apply.
+  if (kind === "bash" && integrationScript) {
+    const quotedIntegration = shellQuote(integrationScript);
+    if (command) return ["-ic", `source ${quotedIntegration}; ${command}; exec bash -i`];
+    return ["-i", "--init-file", integrationScript];
+  }
+  if (command) return ["-ic", command];
+  return [];
+}
+
 function spawnPty(
   shell: string,
   cwd: string,
@@ -488,7 +665,7 @@ function spawnPty(
   command?: string,
   extraEnv: Record<string, string> = {}
 ): pty.IPty {
-  const integrationScript = resolveIntegrationScript();
+  const integrationScript = resolveIntegrationScript(shell);
   const env = envWithPath(integrationScript, shell, extraEnv);
   const args = buildShellLaunchArgs(shell, integrationScript, command);
   return pty.spawn(shell, args, {

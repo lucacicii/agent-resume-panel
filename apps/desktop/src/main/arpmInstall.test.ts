@@ -4,7 +4,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  ARPM_PROFILE_BEGIN,
   ARPM_RC_BEGIN,
+  buildArpmCmdShim,
   buildArpmShim,
   installArpmShell,
   installArpmShim,
@@ -67,7 +69,7 @@ describe("arpm shim install", () => {
     const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-arpm-panel-"));
     try {
       await fs.writeFile(path.join(homeDir, ".zshrc"), "# existing\n", "utf8");
-      const installed = installArpmShell({ panelHome, homeDir });
+      const installed = installArpmShell({ panelHome, homeDir, platform: "darwin" });
       const hook = readFileSync(installed.hookPath, "utf8");
       expect(hook).toContain("builtin cd");
       expect(hook).toContain('command arpm go "$2" --print-cwd');
@@ -78,11 +80,64 @@ describe("arpm shim install", () => {
       expect(zshrc).toContain(installed.hookPath);
       const bashrc = readFileSync(path.join(homeDir, ".bashrc"), "utf8");
       expect(bashrc).toContain(ARPM_RC_BEGIN);
-      const again = installArpmShell({ panelHome, homeDir });
+      const again = installArpmShell({ panelHome, homeDir, platform: "darwin" });
       expect(again.rcPaths).toEqual([]);
     } finally {
       await fs.rm(homeDir, { recursive: true, force: true });
       await fs.rm(panelHome, { recursive: true, force: true });
     }
+  });
+
+  it("writes arpm.cmd and a PowerShell profile hook on Windows", async () => {
+    const binDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-arpm-win-"));
+    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-arpm-win-home-"));
+    const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-arpm-win-panel-"));
+    try {
+      const installed = installArpmShim({
+        execPath: "C:\\Program Files\\Agent Resume\\Agent Resume.exe",
+        cliPath: "C:\\Program Files\\Agent Resume\\resources\\app.asar\\arpm.js",
+        panelHome: "C:\\Users\\test\\.agent-resume-panel",
+        binDir,
+        platform: "win32"
+      });
+      expect(installed.path.endsWith("arpm.cmd")).toBe(true);
+      const content = readFileSync(installed.path, "utf8");
+      expect(isManagedArpmShim(content)).toBe(true);
+      expect(content).toContain("ELECTRON_RUN_AS_NODE=1");
+      expect(content).toContain('set "AGENT_RESUME_PANEL_HOME=C:\\Users\\test\\.agent-resume-panel"');
+      // Paths with spaces stay quoted; `%*` forwards the user's arguments.
+      expect(content).toContain('"C:\\Program Files\\Agent Resume\\Agent Resume.exe"');
+      expect(content).toContain("%*");
+
+      const shell = installArpmShell({ panelHome, homeDir, platform: "win32" });
+      expect(shell.hookPath.endsWith("arpm.ps1")).toBe(true);
+      const hook = readFileSync(shell.hookPath, "utf8");
+      expect(hook).toContain("Set-Location -LiteralPath $target");
+      // The hook names the shim by absolute path, so it works in a session
+      // whose PATH does not yet include the shim directory.
+      expect(hook).toMatch(/& '[^']*[\\/]arpm\.cmd' go \$arguments\[1\] --print-cwd/);
+      // Both PowerShell hosts get a profile entry.
+      expect(shell.rcPaths).toHaveLength(2);
+      for (const profilePath of shell.rcPaths) {
+        const profile = readFileSync(profilePath, "utf8");
+        expect(profile).toContain(ARPM_PROFILE_BEGIN);
+        expect(profile).toContain("$env:Path = ");
+      }
+    } finally {
+      await fs.rm(binDir, { recursive: true, force: true });
+      await fs.rm(homeDir, { recursive: true, force: true });
+      await fs.rm(panelHome, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the batch shim free of POSIX quoting", () => {
+    const shim = buildArpmCmdShim({
+      execPath: "C:\\Apps\\Agent Resume.exe",
+      cliPath: "C:\\Apps\\arpm.js",
+      panelHome: "C:\\Users\\me\\panel"
+    });
+    expect(shim).not.toContain("#!/bin/sh");
+    expect(shim).not.toContain("'");
+    expect(shim.startsWith("@echo off")).toBe(true);
   });
 });

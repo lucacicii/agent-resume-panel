@@ -470,6 +470,12 @@ function TaskDesktopRuntime(): React.JSX.Element {
 
 const windowMode = getDesktopWindowMode();
 document.documentElement.dataset.windowMode = windowMode;
+// Set before the first render: `styles.css` keys the macOS-only chrome
+// (traffic-light clearance, drag strips, the SF font stack) off this attribute,
+// and applying it from an effect would flash the 78px header on Windows.
+// The bridge is always present in Electron; jsdom tests fall back to POSIX.
+document.documentElement.dataset.platform =
+  typeof window.agentResume?.platform === "string" ? window.agentResume.platform : "darwin";
 
 const host = document.getElementById("react-chrome");
 if (host) {

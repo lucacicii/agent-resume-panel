@@ -1,3 +1,5 @@
+import { avoidWindowsReservedName } from "../platform";
+
 const NOTE_FILENAME_RE = /^(\d{4}-\d{2}-\d{2})-(\d+)\.md$/;
 
 /** Local calendar date as YYYY-MM-DD. */
@@ -67,7 +69,8 @@ export function normalizeNoteFilename(input: string): string | undefined {
   if (!safeStem) {
     return undefined;
   }
-  return `${safeStem}.md`;
+  // `CON.md` cannot exist on Windows whatever the directory.
+  return `${avoidWindowsReservedName(safeStem)}.md`;
 }
 
 export function rewriteAssetReferences(content: string, oldFilename: string, newFilename: string): string {

@@ -619,7 +619,16 @@ async function readCachedText(file: string): Promise<string> { const stat = awai
 async function readCachedJsonLines<T>(file: string): Promise<T[]> { const raw = await readCachedText(file); const out: T[] = []; for (const line of raw.split(/\r?\n/)) { if (!line.trim()) continue; try { out.push(JSON.parse(line) as T); } catch { /* partial trailing row */ } } return out; }
 async function readCachedJsonLinesSafe<T>(file: string): Promise<T[]> { try { return await readCachedJsonLines<T>(file); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; } }
 async function cachedFiles(key: string, load: () => Promise<string[]>): Promise<string[]> { const cached = listCache.get(key); if (cached && cached.expiresAt > Date.now()) return cached.value; const value = await load(); listCache.set(key, { expiresAt: Date.now() + 1_500, value }); return value; }
-function claudePath(file: string): string { const dir = path.basename(path.dirname(file)); return dir.startsWith("-") ? `/${dir.slice(1).replaceAll("-", "/")}` : os.homedir(); }
+function claudePath(file: string): string {
+  const dir = path.basename(path.dirname(file));
+  // POSIX: `/Users/alice/repo` is stored as `-Users-alice-repo`.
+  if (dir.startsWith("-")) return `/${dir.slice(1).replaceAll("-", "/")}`;
+  // Windows: `C:\Users\alice\repo` is stored as `C--Users-alice-repo` — both the
+  // drive colon and the separators become `-`.
+  const drive = /^([A-Za-z])--(.+)$/.exec(dir);
+  if (drive) return `${drive[1]}:\\${drive[2]!.replaceAll("-", "\\")}`;
+  return os.homedir();
+}
 async function grokCwd(summaryFile: string): Promise<string> { const group = path.dirname(path.dirname(summaryFile)); try { return (await readCachedText(path.join(group, ".cwd"))).trim(); } catch { try { return decodeURIComponent(path.basename(group)); } catch { return path.basename(group); } } }
 function parseOpenCodeModel(raw?: string): string | undefined { if (!raw) return undefined; try { const value = JSON.parse(raw); return value.id && value.providerID ? `${value.providerID}/${value.id}` : value.id || value.providerID || raw; } catch { return raw; } }
 function providerHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): string { switch (provider) { case "codex": return options.codexHome; case "claude": return options.claudeHome; case "agy": return options.antigravityHome; case "grok": return options.grokHome; case "opencode": return options.opencodeHome; case "pi": return options.piHome; case "prime": return options.primeHome; case "omp": return options.ompHome; case "cursor": return options.cursorHome; case "cursor-ide": return options.cursorIdeUserDataHome; } }

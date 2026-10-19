@@ -274,8 +274,7 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       await vscode.env.clipboard.writeText(buildResumeCommand(session));
-      vscode.window.showInformationMessage(t("notification.resumeCommandCopied"));
-    }),
+      vscode.window.showInformationMessage(t("notification.resumeCommandCopied"));    }),
     ...menuCommand("agentResume.openFolder", (node?: unknown) => openFolder(tree, node)),
     ...menuCommand("agentResume.openProject", (nodeOrSession?: unknown) =>
       openFolderAndResume(context, tree, nodeOrSession)

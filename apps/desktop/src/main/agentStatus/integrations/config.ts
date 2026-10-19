@@ -11,7 +11,8 @@
  *   - a file we cannot parse is left alone and reported, never rewritten.
  */
 
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { atomicWriteFileSync } from "@agent-resume/core";
 
 type HookCommandEntry = {
   type: "command";
@@ -70,9 +71,10 @@ export function writeJsonObjectIfChanged(
 ): boolean {
   const serialized = canonicalJson(next);
   if (previous === serialized) return false;
-  const temporary = `${file}.agent-resume.tmp`;
-  writeFileSync(temporary, serialized, { mode: 0o600 });
-  renameSync(temporary, file);
+  // The hook config sits in the user's home and is read by the agent on every
+  // event, so it must never be observed half-written. The shared writer also
+  // retries the Windows rename when an agent or indexer holds the file open.
+  atomicWriteFileSync(file, serialized, { mode: 0o600 });
   return true;
 }
 

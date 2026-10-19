@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { expandHome } from "@agent-resume/core";
+import { expandHome, isPathInside } from "@agent-resume/core";
 import {
   compareQuickAccessPathMatches,
   matchQuickAccessPath,
@@ -86,7 +86,7 @@ function indexedEntry(
   const normalized = relativePath.trim().replace(/\\/g, "/").replace(/^\.\//, "");
   if (!normalized || normalized.includes("\0")) return null;
   const absolute = path.resolve(root, normalized);
-  if (absolute !== root && !absolute.startsWith(root + path.sep)) return null;
+  if (!isPathInside(root, absolute)) return null;
   return { path: absolute, relativePath: normalized, kind };
 }
 

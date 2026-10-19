@@ -14,6 +14,8 @@ import {
   suggestSessionRenameAction,
   buildNewSessionCommand,
   buildResumeCommand,
+  shellQuoteFor,
+  defaultShellKind,
   supportsNewSessionYoloMode,
   MCP_SESSION_ENV,
   type NewSessionExecutionMode,
@@ -153,7 +155,7 @@ import {
   taskWindowStateForSender,
   type TaskWindowDeps
 } from "./taskWindows";
-import { applyNativeThemeSource, applyWindowBackgrounds, markTranslucentWindow, windowBackgroundColor, WINDOW_BACKGROUND_TRANSPARENT } from "./windowAppearance";
+import { applyNativeThemeSource, applyWindowBackgrounds, markTranslucentWindow, translucentWindowOptions, windowBackgroundColor } from "./windowAppearance";
 import { currentAccentColor, subscribeAccentColorChange } from "./systemAccent";
 import { attachDefaultContextMenu, sanitizeContextMenuItems, showContextMenu } from "./contextMenu";
 import { confirmDialogOptions } from "./confirmDialog";
@@ -418,6 +420,9 @@ function startAgentStatus(panelHome: string): void {
  */
 async function ensureAgentStatusLoginItem(panelHome: string): Promise<void> {
   if (!app.isPackaged) return;
+  // launchd is macOS-only. Windows registers the daemon through an HKCU `Run`
+  // value (see `windowsLoginItem.ts`); other platforms have no login item.
+  if (process.platform !== "darwin" && process.platform !== "win32") return;
   if (process.env.AGENT_RESUME_AGENT_STATUS_LOGIN_ITEM === "0") {
     console.log("[agent-resume] login item disabled by AGENT_RESUME_AGENT_STATUS_LOGIN_ITEM=0");
     return;
@@ -523,9 +528,22 @@ function systemTerminalSettings(settings: PanelSettings) {
   };
 }
 
-/** POSIX single-quote so paths with spaces or quotes survive the PTY shell. */
+/** Quote a path for the embedded pane's shell. */
 function shellQuoteArg(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
+  return shellQuoteFor(terminalShellKind(), value);
+}
+
+/**
+ * Dialect of the shell an embedded pane will run.
+ *
+ * The pane resolves its shell from the same environment the app sees, so this
+ * only needs the platform default; a Windows pane is PowerShell unless the
+ * user set `AGENT_RESUME_SHELL` to cmd.
+ */
+function terminalShellKind(): ReturnType<typeof defaultShellKind> {
+  const preferred = process.env.AGENT_RESUME_SHELL?.trim().toLowerCase();
+  if (process.platform === "win32" && preferred?.endsWith("cmd.exe")) return "cmd";
+  return defaultShellKind();
 }
 
 /**
@@ -927,7 +945,11 @@ function windowForPaneKey(paneKey: string): BrowserWindow | null {
 }
 
 function syncSessionDotsTray(): void {
-  if (process.platform !== "darwin") return;
+  // The tray is the app's always-available entry point on macOS (menu bar) and
+  // Windows (notification area). Linux tray support depends on the desktop
+  // environment's StatusNotifier implementation, so it stays off there.
+  if (process.platform !== "darwin" && process.platform !== "win32") return;
+  const isMac = process.platform === "darwin";
   const notes = listOpenStandaloneNotes();
   const workbenches = workbenchStatusRows();
   const items = composeTrayItems(notes, workbenches);
@@ -936,29 +958,36 @@ function syncSessionDotsTray(): void {
   const tooltip = trayTooltip(items, extra);
   if (!sessionDotsTray) {
     sessionDotsTray = new Tray(image);
-    sessionDotsTray.setIgnoreDoubleClickEvents(true);
-    sessionDotsTray.on("click", (_event, bounds, position) => {
-      const current = composeTrayItems(listOpenStandaloneNotes(), workbenchStatusRows());
-      if (current.length === 0) {
-        revealMainWindow();
-        return;
-      }
-      const trayBounds = sessionDotsTray?.getBounds() || bounds;
-      const cursor = screen.getCursorScreenPoint();
-      const index = hitTestTrayDotFromScreen(cursor.x, trayBounds, current.length, position);
-      const target = index == null ? current[0] : current[index];
-      if (!target) {
-        revealMainWindow();
-        return;
-      }
-      if (target.kind === "note") {
-        void openStandaloneNoteById(target.noteId).catch((error) => {
-          void recordAppError({ source: "session-dots", message: "Could not focus floating note from tray.", error });
-        });
-        return;
-      }
-      void revealWorkbench({ workbenchId: target.workbenchId, noteId: target.noteId });
-    });
+    if (isMac) {
+      sessionDotsTray.setIgnoreDoubleClickEvents(true);
+      sessionDotsTray.on("click", (_event, bounds, position) => {
+        const current = composeTrayItems(listOpenStandaloneNotes(), workbenchStatusRows());
+        if (current.length === 0) {
+          revealMainWindow();
+          return;
+        }
+        const trayBounds = sessionDotsTray?.getBounds() || bounds;
+        const cursor = screen.getCursorScreenPoint();
+        const index = hitTestTrayDotFromScreen(cursor.x, trayBounds, current.length, position);
+        const target = index == null ? current[0] : current[index];
+        if (!target) {
+          revealMainWindow();
+          return;
+        }
+        if (target.kind === "note") {
+          void openStandaloneNoteById(target.noteId).catch((error) => {
+            void recordAppError({ source: "session-dots", message: "Could not focus floating note from tray.", error });
+          });
+          return;
+        }
+        void revealWorkbench({ workbenchId: target.workbenchId, noteId: target.noteId });
+      });
+    } else {
+      // Windows convention: a left click restores the app, a right click opens
+      // the menu (`setContextMenu` handles that natively). Per-dot hit testing
+      // is a menu-bar affordance; the notification area is too small for it.
+      sessionDotsTray.on("click", () => revealMainWindow());
+    }
   } else {
     sessionDotsTray.setImage(image);
   }
@@ -1678,7 +1707,7 @@ async function resumeCatalogSession(
   }
 
   const contextFile = await taskContextFileForSession(session, cwd);
-  const command = buildResumeCommand(session, contextFile);
+  const command = buildResumeCommand(session, contextFile, terminalShellKind());
 
   if (mode === "external-system") {
     await openSessionInSystemTerminal(
@@ -1739,13 +1768,15 @@ function createWindow(): void {
     show: false,
     // A non-opaque window with the macOS sidebar material behind it: the toolbar
     // and the sidebars are translucent tokens, the content paints itself opaque
-    // (`styles.css` § real macOS material).
-    vibrancy: "sidebar",
-    visualEffectState: "followWindow",
-    backgroundColor: WINDOW_BACKGROUND_TRANSPARENT,
+    // (`styles.css` § real macOS material). Other platforms get the opaque themed
+    // background instead — see `translucentWindowOptions`.
+    ...translucentWindowOptions(),
     ...(icon ? { icon } : {}),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,
+    // Windows draws a native menu bar; the app's own toolbar carries the same
+    // commands, so hide it and let Alt reveal it on demand.
+    autoHideMenuBar: process.platform !== "darwin",
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "preload.js"),
       contextIsolation: true,
@@ -1754,7 +1785,7 @@ function createWindow(): void {
     }
   });
 
-  markTranslucentWindow(mainWindow);
+  if (process.platform === "darwin") markTranslucentWindow(mainWindow);
   mainWindow.once("ready-to-show", () => {
     mainWindowReadyToShow = true;
     showMainWindowIfReady();
@@ -1813,10 +1844,11 @@ function openSettingsWindow(options?: { pane?: unknown }): void {
     title: desktopT(uiSettingsCache, "desktop.settings.title"),
     show: false,
     // Same treatment as the board: sidebar over the material, form stays opaque.
-    vibrancy: "sidebar",
-    visualEffectState: "followWindow",
-    backgroundColor: WINDOW_BACKGROUND_TRANSPARENT,
+    ...translucentWindowOptions(),
     ...(icon ? { icon } : {}),
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,
+    autoHideMenuBar: process.platform !== "darwin",
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "preload.js"),
       contextIsolation: true,
@@ -1825,7 +1857,7 @@ function openSettingsWindow(options?: { pane?: unknown }): void {
     }
   });
   settingsWindow = win;
-  markTranslucentWindow(win);
+  if (process.platform === "darwin") markTranslucentWindow(win);
   win.once("ready-to-show", () => {
     if (!win.isDestroyed()) win.show();
   });
@@ -2013,7 +2045,12 @@ async function installApplicationMenu(): Promise<void> {
     label: t("desktop.menu.window"),
     submenu: [
       { role: "minimize", label: t("desktop.menu.minimize") },
-      { role: "zoom", label: t("desktop.menu.zoom") },
+      // `zoom` is macOS's green-button zoom. Windows has no such role; the
+      // window menu there lists open windows and relies on the title-bar
+      // controls for maximize/restore.
+      ...(isMac
+        ? [{ role: "zoom" as const, label: t("desktop.menu.zoom") }]
+        : []),
       { type: "separator" },
       ...(() => {
         const windows = BrowserWindow.getAllWindows().filter((win) => !win.isDestroyed() && win.isVisible());
@@ -2029,8 +2066,12 @@ async function installApplicationMenu(): Promise<void> {
           }
         }));
       })(),
-      { type: "separator" },
-      { role: "front", label: t("desktop.menu.bringAllToFront") }
+      ...(isMac
+        ? [
+            { type: "separator" as const },
+            { role: "front" as const, label: t("desktop.menu.bringAllToFront") }
+          ]
+        : [])
     ]
   };
 
@@ -2243,7 +2284,7 @@ function taskWindowDeps(): TaskWindowDeps {
     ...(icon ? { icon } : {}),
     onCreated: (win) => {
       // Workbench windows are translucent too: window header and task/session list.
-      markTranslucentWindow(win);
+      if (process.platform === "darwin") markTranslucentWindow(win);
       registerTaskWindowCloseGuard(win);
       void loadWorkbenchMeta();
     },
@@ -2386,6 +2427,11 @@ function registerIpc(): void {
       const noteId = typeof args?.noteId === "string" ? args.noteId : "";
       const state = noteId ? standaloneNoteWindows.get(noteId) : undefined;
       if (!state || state.window.isDestroyed()) return { ok: false };
+      // `setDocumentEdited` / `setRepresentedFilename` are macOS window chrome:
+      // the edited dot in the close button and the proxy icon. Windows has no
+      // equivalent, and the call is a no-op there, so skip it rather than
+      // pretending the state was applied.
+      if (process.platform !== "darwin") return { ok: true };
       state.window.setDocumentEdited(args?.dirty === true);
       if (!state.representedFilename) {
         try {
@@ -3206,7 +3252,8 @@ function registerIpc(): void {
               args.provider,
               cwd,
               executionMode,
-              await taskContextFile(args.taskNoteId, cwd)
+              await taskContextFile(args.taskNoteId, cwd),
+              terminalShellKind()
             );
       const unsupportedYolo = requestedYolo && !yoloSupported;
       const warning = unsupportedYolo
@@ -4186,9 +4233,33 @@ app.on("browser-window-focus", (_event, win) => {
 app.on("did-resign-active", () => {
   windowBeforeDeactivation = lastActiveWindow;
 });
+// `did-resign-active` is macOS-only; on Windows the same "user left the app"
+// moment is the last window losing focus.
+if (process.platform !== "darwin") {
+  app.on("browser-window-blur", () => {
+    windowBeforeDeactivation = lastActiveWindow;
+  });
+}
 
 // Fail closed: never open a GUI instance when an outdated MCP client still passes
 // the removed --agent-resume-mcp flag (that path used to spawn Dock icons).
+/**
+ * One instance per user, on every platform.
+ *
+ * macOS enforces this in the app bundle, but a Windows shortcut, a `start`
+ * from a script, or a second click on the taskbar icon starts a second copy:
+ * two processes then register the same global shortcuts, race the SQLite
+ * catalog, and each try to own the agent-status daemon. The lock makes the
+ * second launch a request to reveal the first one's window instead.
+ */
+function acquireSingleInstance(): boolean {
+  if (!app.requestSingleInstanceLock()) return false;
+  app.on("second-instance", () => {
+    revealMainWindow();
+  });
+  return true;
+}
+
 if (process.argv.includes("--agent-resume-mcp")) {
   void recordAppError({
     source: "startup",
@@ -4198,9 +4269,16 @@ if (process.argv.includes("--agent-resume-mcp")) {
       "Open Desktop Settings → MCP once, or re-copy config for Grok/Cursor."
   });
   app.exit(1);
+} else if (!acquireSingleInstance()) {
+  // Another instance owns the app: it was already told to reveal its window by
+  // the `second-instance` handler, so this process has nothing left to do.
 } else {
 app.whenReady().then(async () => {
   initI18nService(path.join(app.getAppPath()));
+  // Taskbar grouping, jump lists, and toast notifications key off this id; it
+  // must match `win32metadata.AppUserModelId` in pack-win.mjs and the AUMID the
+  // daemon posts toasts under (agentStatus/notify.ts).
+  if (process.platform === "win32") app.setAppUserModelId("com.thunder-luc.agent-resume");
   applyAppIcon();
   registerIpc();
   registerAcpIpc({

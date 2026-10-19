@@ -33,13 +33,21 @@ export type AgentStatusPaths = {
  * temp directory instead — short, per-user, and recreated on every daemon start
  * (the endpoint file is the discovery source of truth, and it records the real
  * socket path).
+ *
+ * Windows has no socket files: the transport is a named pipe in the `\\.\pipe\`
+ * namespace, which is already per-machine and access-controlled by the pipe's
+ * security descriptor. The name is stable, so two daemons for the same panel
+ * home still collide the way the unix socket does.
  */
 export const AGENT_STATUS_SOCKET_MAX_BYTES = 100;
 
 function agentStatusSocketPath(panelHome: string): string {
-  const uid = typeof process.getuid === "function" ? process.getuid() : 0;
   // Per-panel-home suffix so two profiles never share one socket.
   const profile = createHash("sha1").update(panelHome).digest("hex").slice(0, 8);
+  if (process.platform === "win32") {
+    return `\\\\.\\pipe\\agent-resume-status-${profile}`;
+  }
+  const uid = typeof process.getuid === "function" ? process.getuid() : 0;
   return path.join(os.tmpdir(), `agent-resume-status-${uid}-${profile}.sock`);
 }
 

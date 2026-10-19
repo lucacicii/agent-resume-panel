@@ -1,71 +1,71 @@
+/**
+ * Command lines the extension types into a user's terminal.
+ *
+ * VS Code owns the terminal, so the shell is whatever the user configured
+ * (PowerShell and cmd on Windows, zsh/bash elsewhere). The quoting therefore
+ * has to come from the platform layer rather than from a private POSIX copy.
+ */
+
+import { defaultShellKind, joinForShell } from "@agent-resume/core";
 import { AgentProvider, AgentSession } from "../history";
 
 /** Resume runs in the assigned project (user-move aware); providers restore by session id. */
 export function buildResumeCommand(session: AgentSession): string {
-  const cwd = session.projectPath;
-  if (session.provider === "codex") {
-    return `codex resume --cd ${shellQuote(cwd)} ${shellQuote(session.id)}`;
-  }
-  if (session.provider === "agy") {
-    return `agy --conversation ${shellQuote(session.id)}`;
-  }
-  if (session.provider === "grok") {
-    return `grok --cwd ${shellQuote(cwd)} --resume ${shellQuote(session.id)}`;
-  }
-  if (session.provider === "opencode") {
-    return `opencode --session ${shellQuote(session.id)}`;
-  }
-  if (session.provider === "pi") {
-    return `pi --session ${shellQuote(session.id)}`;
-  }
-  if (session.provider === "prime") {
-    return `prime-agent --resume ${shellQuote(session.id)}`;
-  }
-  if (session.provider === "omp") {
-    return `omp -r ${shellQuote(session.id)}`;
-  }
-  if (session.provider === "cursor") {
-    return `cursor-agent --workspace ${shellQuote(cwd)} --resume ${shellQuote(session.id)}`;
-  }
-  if (session.provider === "cursor-ide") {
-    throw new Error("Cursor IDE chats cannot be resumed by command; open the project in Cursor instead.");
-  }
+  return joinForShell(buildResumeArgv(session), defaultShellKind());
+}
 
-  return `claude --resume ${shellQuote(session.id)}`;
+export function buildResumeArgv(session: AgentSession): string[] {
+  const cwd = session.projectPath;
+  switch (session.provider) {
+    case "codex":
+      return ["codex", "resume", "--cd", cwd, session.id];
+    case "agy":
+      return ["agy", "--conversation", session.id];
+    case "grok":
+      return ["grok", "--cwd", cwd, "--resume", session.id];
+    case "opencode":
+      return ["opencode", "--session", session.id];
+    case "pi":
+      return ["pi", "--session", session.id];
+    case "prime":
+      return ["prime-agent", "--resume", session.id];
+    case "omp":
+      return ["omp", "-r", session.id];
+    case "cursor":
+      return ["cursor-agent", "--workspace", cwd, "--resume", session.id];
+    case "cursor-ide":
+      throw new Error("Cursor IDE chats cannot be resumed by command; open the project in Cursor instead.");
+    default:
+      return ["claude", "--resume", session.id];
+  }
 }
 
 export function buildNewSessionCommand(provider: AgentProvider, projectPath: string): string {
-  if (provider === "codex") {
-    return `codex --cd ${shellQuote(projectPath)}`;
-  }
-  if (provider === "agy") {
-    return "agy";
-  }
-  if (provider === "grok") {
-    return `grok --cwd ${shellQuote(projectPath)}`;
-  }
-  if (provider === "opencode") {
-    return `opencode ${shellQuote(projectPath)}`;
-  }
-  if (provider === "pi") {
-    return "pi";
-  }
-  if (provider === "prime") {
-    return "prime-agent";
-  }
-  if (provider === "omp") {
-    return "omp";
-  }
-  if (provider === "cursor") {
-    return `cursor-agent --workspace ${shellQuote(projectPath)}`;
-  }
-  if (provider === "cursor-ide" || provider === "chat") {
-    throw new Error(`New terminal sessions are not supported for ${provider}.`);
-  }
-
-  return "claude";
+  return joinForShell(buildNewSessionArgv(provider, projectPath), defaultShellKind());
 }
 
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
+export function buildNewSessionArgv(provider: AgentProvider, projectPath: string): string[] {
+  switch (provider) {
+    case "codex":
+      return ["codex", "--cd", projectPath];
+    case "agy":
+      return ["agy"];
+    case "grok":
+      return ["grok", "--cwd", projectPath];
+    case "opencode":
+      return ["opencode", projectPath];
+    case "pi":
+      return ["pi"];
+    case "prime":
+      return ["prime-agent"];
+    case "omp":
+      return ["omp"];
+    case "cursor":
+      return ["cursor-agent", "--workspace", projectPath];
+    case "cursor-ide":
+    case "chat":
+      throw new Error(`New terminal sessions are not supported for ${provider}.`);
+    default:
+      return ["claude"];
+  }
 }

@@ -14,7 +14,9 @@ import {
   ensureExtensionCatalogSchema,
   getMachineId,
   NotesStore,
+  isPathInside,
   resolvePreviewHomes,
+  renamePathWithRetry,
   runSqlite,
   runSqliteJson,
   type NativeConversationProvider,
@@ -446,7 +448,7 @@ async function writeZip(destination: string, files: Array<{ absolute: string; ar
     await done;
     const stat = await fsp.stat(partial);
     if (stat.size > MAX_ARCHIVE_BYTES) throw new Error("Backup archive exceeds the 2 GB limit.");
-    await fsp.rename(partial, destination);
+    await renamePathWithRetry(partial, destination);
   } catch (error) {
     await fsp.rm(partial, { force: true });
     throw error;
@@ -851,7 +853,7 @@ class IcloudDriveBackupStorageProvider implements BackupStorageProvider {
     const partial = `${destination}.${randomBytes(6).toString("hex")}.partial`;
     try {
       await options.write(partial);
-      await fsp.rename(partial, destination);
+      await renamePathWithRetry(partial, destination);
       const manifest = await readZipManifestFromFile(destination);
       if (!manifest) throw new Error("The backup could not be read after it was written.");
       return { file: destination, item: storedItemFromManifest(options.fileName, manifest) };
@@ -1226,7 +1228,7 @@ async function replaceFile(source: string, destination: string): Promise<void> {
   await fsp.copyFile(source, temp);
   await fsp.rm(`${destination}-wal`, { force: true });
   await fsp.rm(`${destination}-shm`, { force: true });
-  await fsp.rename(temp, destination);
+  await renamePathWithRetry(temp, destination);
 }
 
 /**
@@ -1273,9 +1275,7 @@ async function restoreRecovery(settings: PanelSettings, recoveryFile: string): P
 }
 
 function assertPathWithin(root: string, candidate: string): void {
-  const resolvedRoot = path.resolve(root);
-  const resolvedCandidate = path.resolve(candidate);
-  if (resolvedCandidate !== resolvedRoot && !resolvedCandidate.startsWith(`${resolvedRoot}${path.sep}`)) throw new Error("Native conversation restore attempted to write outside a configured Agent home.");
+  if (!isPathInside(root, candidate)) throw new Error("Native conversation restore attempted to write outside a configured Agent home.");
 }
 
 async function lstatFile(file: string): Promise<import("node:fs").Stats | undefined> {
@@ -1325,7 +1325,7 @@ async function copyAtomically(source: string, destination: string, mtimeMs?: num
   try {
     await fsp.copyFile(source, temp);
     if (mtimeMs != null) await fsp.utimes(temp, new Date(mtimeMs), new Date(mtimeMs));
-    await fsp.rename(temp, destination);
+    await renamePathWithRetry(temp, destination);
   } catch (error) {
     await fsp.rm(temp, { force: true });
     throw error;
@@ -1383,7 +1383,7 @@ async function mergeNativeJsonl(provider: "codex" | "claude", source: string, de
   try {
     await fsp.writeFile(temporary, output, { encoding: "utf8", mode: 0o600 });
     if (mtime != null) await fsp.utimes(temporary, new Date(mtime), new Date(mtime));
-    await fsp.rename(temporary, destination);
+    await renamePathWithRetry(temporary, destination);
   } catch (error) {
     await fsp.rm(temporary, { force: true });
     throw error;
@@ -1763,7 +1763,7 @@ export async function selectStoredBackupForImport(
     } finally {
       // WebDAV downloads into a temp directory; iCloud returns the stored file
       // itself, which must survive. Only sweep paths this process created.
-      if (path.resolve(file).startsWith(`${path.resolve(os.tmpdir())}${path.sep}`)) {
+      if (isPathInside(os.tmpdir(), file)) {
         await fsp.rm(path.dirname(file), { recursive: true, force: true });
       }
     }

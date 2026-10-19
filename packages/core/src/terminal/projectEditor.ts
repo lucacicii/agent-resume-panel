@@ -3,6 +3,8 @@ import { access } from "node:fs/promises";
 import * as path from "node:path";
 import { createUiText } from "../i18n/uiText";
 import { expandHome } from "../pathUtils";
+import { spawnSpecFor } from "../executable";
+import { quotePosix } from "../platform";
 import { loadSettings } from "../settings/store";
 import type { WorkbenchProjectEditor } from "../settings/types";
 
@@ -21,7 +23,10 @@ interface EditorDefinition {
   commands: string[];
   macAppName: string;
   macAppPaths: string[];
+  windowsPaths: string[];
 }
+
+const LOCAL_APP_DATA = "%LOCALAPPDATA%\\Programs";
 
 const EDITORS: EditorDefinition[] = [
   {
@@ -29,28 +34,32 @@ const EDITORS: EditorDefinition[] = [
     label: "VS Code",
     commands: ["code"],
     macAppName: "Visual Studio Code",
-    macAppPaths: ["/Applications/Visual Studio Code.app", "~/Applications/Visual Studio Code.app"]
+    macAppPaths: ["/Applications/Visual Studio Code.app", "~/Applications/Visual Studio Code.app"],
+    windowsPaths: [`${LOCAL_APP_DATA}\\Microsoft VS Code\\bin\\code.cmd`]
   },
   {
     id: "vscodium",
     label: "VSCodium",
     commands: ["codium"],
     macAppName: "VSCodium",
-    macAppPaths: ["/Applications/VSCodium.app", "~/Applications/VSCodium.app"]
+    macAppPaths: ["/Applications/VSCodium.app", "~/Applications/VSCodium.app"],
+    windowsPaths: [`${LOCAL_APP_DATA}\\VSCodium\\bin\\codium.cmd`]
   },
   {
     id: "cursor",
     label: "Cursor",
     commands: ["cursor"],
     macAppName: "Cursor",
-    macAppPaths: ["/Applications/Cursor.app", "~/Applications/Cursor.app"]
+    macAppPaths: ["/Applications/Cursor.app", "~/Applications/Cursor.app"],
+    windowsPaths: [`${LOCAL_APP_DATA}\\cursor\\resources\\app\\bin\\cursor.cmd`]
   },
   {
     id: "windsurf",
     label: "Windsurf",
     commands: ["windsurf"],
     macAppName: "Windsurf",
-    macAppPaths: ["/Applications/Windsurf.app", "~/Applications/Windsurf.app"]
+    macAppPaths: ["/Applications/Windsurf.app", "~/Applications/Windsurf.app"],
+    windowsPaths: [`${LOCAL_APP_DATA}\\Windsurf\\bin\\windsurf.cmd`]
   }
 ];
 
@@ -95,7 +104,10 @@ export async function openProjectInEditor(
   if (editor.launchKind === "mac-app") {
     await runDetached("open", ["-a", editor.command, cwd]);
   } else {
-    await runDetached(editor.command, [cwd]);
+    // On Windows `code` is `code.cmd`: spawning it directly fails, so the
+    // editor is launched through cmd.exe with the path kept as one argument.
+    const spec = spawnSpecFor(editor.command, [cwd]);
+    await runDetached(spec.file, spec.args);
   }
   return editor;
 }
@@ -124,12 +136,27 @@ async function resolveEditorDefinition(definition: EditorDefinition): Promise<Pr
       }
     }
   }
+
+  if (process.platform === "win32") {
+    // The CLI shim is only on PATH when the user asked the installer to add it.
+    for (const candidate of definition.windowsPaths) {
+      const expanded = expandHome(candidate);
+      if (await pathExists(expanded)) {
+        return {
+          id: definition.id,
+          label: definition.label,
+          command: expanded,
+          launchKind: "cli"
+        };
+      }
+    }
+  }
   return null;
 }
 
 async function commandExists(command: string): Promise<boolean> {
   const checker = process.platform === "win32" ? "where.exe" : "/usr/bin/env";
-  const args = process.platform === "win32" ? [command] : ["sh", "-lc", `command -v ${shellQuote(command)}`];
+  const args = process.platform === "win32" ? [command] : ["sh", "-lc", `command -v ${quotePosix(command)}`];
   return new Promise((resolve) => {
     const child = spawn(checker, args, { stdio: "ignore" });
     child.once("error", () => resolve(false));
@@ -146,9 +173,6 @@ async function pathExists(value: string): Promise<boolean> {
   }
 }
 
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
-}
 
 function runDetached(command: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {

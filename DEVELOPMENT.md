@@ -49,14 +49,24 @@ corepack enable      # once per Node install; shims pnpm@packageManager
 pnpm install --frozen-lockfile
 ```
 
-**Do not copy `node_modules` between machines** (especially Intel Mac ↔ Apple Silicon). Sync git + lockfile only, then reinstall.
+**Do not copy `node_modules` between machines** (especially across operating systems or Intel Mac ↔ Apple Silicon). Sync git + lockfile only, then reinstall.
 
-### Desktop (macOS)
+On Windows, run the same commands from PowerShell or `cmd` — `fnm`, Corepack, and pnpm all support Windows. `pnpm run reinstall` is cross-platform (`scripts/reinstall.mjs`) and replaces the old `rm -rf` cleanup.
 
-| | Intel Mac | Apple Silicon |
-|--|-----------|---------------|
-| `pnpm install` / `pnpm run dev:desktop` | ✅ | ✅ |
-| `pnpm run pack:desktop` (universal) | ✅ | ✅ |
+### Desktop (macOS / Windows)
+
+| | macOS Intel | macOS Apple Silicon | Windows x64 / arm64 |
+|--|-------------|---------------------|---------------------|
+| `pnpm install` / `pnpm run dev:desktop` | ✅ | ✅ | ✅ |
+| `pnpm run pack:desktop` | ✅ DMG | ✅ DMG | ✅ portable `.zip` |
+
+`pnpm run pack:desktop` dispatches on the host platform to `apps/desktop/scripts/pack-mac.mjs` or `pack-win.mjs`; the explicit forms are `pnpm run pack:desktop:mac` and `pnpm run pack:desktop:win`. Windows artifacts land at `apps/desktop/release/Agent Resume-<version>-win32-<arch>.zip` (plus an optional `-setup.exe` when `AGENT_RESUME_WIN_INSTALLER=nsis`); macOS keeps producing DMGs.
+
+Windows notes:
+
+- **node-pty** uses its bundled ConPTY prebuilds (`prebuilds/win32-{x64,arm64}/pty.node`); there is no `spawn-helper` and nothing to rebuild after `pnpm install`.
+- **PowerShell 7 is optional**: when `pwsh.exe` is present the terminal prefers it, otherwise it falls back to `powershell.exe` or `cmd.exe`.
+- **Tests select suites by host**: `pnpm run test:desktop` runs the platform-neutral suites everywhere, plus `test:mac-app` / `test:launchd` on macOS and `test:win-app` on Windows.
 
 After install or when Electron / node-pty / pack fails with env-looking errors:
 
@@ -110,7 +120,7 @@ pnpm run build:all
 
 Release notes live in [`apps/extension/CHANGELOG.md`](apps/extension/CHANGELOG.md). Update that file before each Open VSX publish.
 
-Desktop release notes live in [`apps/desktop/CHANGELOG.md`](apps/desktop/CHANGELOG.md). Update that file before `pnpm run release:desktop:mac`.
+Desktop release notes live in [`apps/desktop/CHANGELOG.md`](apps/desktop/CHANGELOG.md). Update that file before `pnpm run release:desktop`.
 
 Publish (requires an [Open VSX access token](https://github.com/eclipse/openvsx/wiki/Deploying-Extensions)):
 

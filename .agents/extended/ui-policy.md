@@ -17,10 +17,10 @@ The desktop app follows the [Apple macOS Human Interface Guidelines](https://dev
 
 The window is Chromium, but everything the operating system can draw must be drawn by the operating system.
 
-- **Menu bar** — one application menu built in the main process (`installApplicationMenu` in `src/main/main.ts`) with File / Edit / View / Window / Help. Every keyboard shortcut the renderer implements must also be registered as a menu item accelerator, because on macOS the menu bar is where shortcuts are discovered. `Reload`, `Force Reload`, and `Toggle Developer Tools` are development-only (`!app.isPackaged`).
+- **Menu bar** — one application menu built in the main process (`installApplicationMenu` in `src/main/main.ts`) with File / Edit / View / Window / Help. Every keyboard shortcut the renderer implements must also be registered as a menu item accelerator, because on macOS the menu bar is where shortcuts are discovered. On Windows the menu is auto-hidden (`autoHideMenuBar`), so accelerators must still work without the visible menu. `Reload`, `Force Reload`, and `Toggle Developer Tools` are development-only (`!app.isPackaged`).
 - **Context menus** — native `Menu.buildFromTemplate().popup({ window, x, y })` through the preload contract. A DOM menu is allowed only when the surface cannot be expressed as an `NSMenu` (tag grids, agent/model pickers, colour and icon pickers, scrolling lists), and then it must implement first-item focus, `ArrowUp`/`ArrowDown`/`Home`/`End`/`Enter`/`Escape`, type-select, `role="menu"` plus `role="menuitem"`, and edge flipping driven by `screen.getDisplayNearestPoint`. Never clamp a menu with `window.innerWidth - <constant>`.
 - **Dialogs** — `dialog.showMessageBox` for alerts and confirmations (`type: "warning"`, cancel first, destructive action last, `cancelId`, `defaultId`). `window.confirm` / `window.alert` / `window.prompt` are forbidden: they are Chromium dialogs, not `NSAlert`. File and folder selection uses `dialog.showOpenDialog` / `dialog.showSaveDialog`, never `<input type="file">`.
-- **Notifications** — Electron `Notification`, not `osascript`.
+- **Notifications** — use Electron `Notification` for in-app alerts. The Electron-free agent-status daemon uses the platform's native path instead: `osascript` on macOS, a PowerShell WinRT toast on Windows posted under the AUMID `com.thunder-luc.agent-resume`. Never build an in-renderer toast that imitates a system notification.
 - **Menu bar item (Tray)** — a template image plus `setContextMenu`; a coloured status dot may be shown in addition, never as the only affordance.
 
 ### System appearance
@@ -31,13 +31,21 @@ The window is Chromium, but everything the operating system can draw must be dra
 - **Known platform gap:** the material itself does not blur on macOS 15.7 + Electron 43 — the chrome over a pure-white backdrop and over a dark one measured within noise, in light and dark appearance, with `vibrancy` alone, `vibrancy` + transparent `backgroundColor`, and `vibrancy` + `transparent: true`. So the pass-through is visible but **unblurred**. Do not drop the transparency because of that, and re-run `pnpm --filter @agent-resume/desktop` QA (`qa-capture.mjs` + `qa-pixels.mjs`) after an Electron upgrade to see whether the blur returns.
 - `prefers-reduced-motion` disables transforms and transitions; `prefers-reduced-transparency` falls back to opaque surfaces; `systemPreferences.getAnimationSettings()` is available for main-process decisions.
 
-### Windows
+### Application windows
 
-- Main, workbench, note, and browser windows use `titleBarStyle: "hiddenInset"`, `trafficLightPosition: { x: 14, y: 14 }`, `backgroundColor` from `windowAppearance.ts`, `show: false` + `ready-to-show`, and restored bounds. Window open/close is never animated.
+- Main, workbench, note, and browser windows use `titleBarStyle: "hiddenInset"`, `trafficLightPosition: { x: 14, y: 14 }`, `backgroundColor` from `windowAppearance.ts`, `show: false` + `ready-to-show`, and restored bounds. Window open/close is never animated. These window-chrome rules are macOS-only; see **Windows platform** below.
 - The window title is visible to the user (header text or the system title bar); document-like windows use `setDocumentEdited`, `setRepresentedFilename`, `app.addRecentDocument`, `open-file`, and `tabbingIdentifier`.
 - Native fullscreen is handled: traffic-light inset padding and drag regions are removed while fullscreen.
 - Settings is a real window (`mode=settings`, ⌘,), not a modal overlay with a backdrop. Closing it never touches the board behind it.
 - Closing a window on macOS does not quit the app; `window-all-closed` keeps background work alive.
+
+### Windows platform
+
+- Windows uses `titleBarStyle: "default"`, opaque (non-vibrancy) window chrome, and `autoHideMenuBar: true`; the macOS translucency, traffic-light, and Dock rules above do not apply.
+- The system accent colour comes from `BrowserWindow.getAccentColor()` and drives the same `--color-accent` tokens; when Windows accent highlighting is disabled, fall back to the default blue.
+- The tray lives in the notification area: left click restores the app, right click opens the context menu (per-dot hit testing is a macOS menu-bar affordance).
+- Terminal shells are PowerShell 7 (`pwsh.exe`, preferred when installed), Windows PowerShell (`powershell.exe`), or `cmd.exe`, running under ConPTY.
+- The agent-status daemon uses a `\\.\pipe\agent-resume-status-*` named pipe and an HKCU `Run` login item (a `.cmd` shim setting `ELECTRON_RUN_AS_NODE`); hooks are `.cmd` wrappers started by `cmd.exe`.
 
 ### Controls, type, and layout
 
@@ -70,7 +78,7 @@ After any desktop UI change:
 - `pnpm --filter @agent-resume/desktop run test:renderer`
 - `pnpm run build:desktop` before distribution
 - `pnpm run i18n:check` after locale or `t()` changes (update `scripts/desktop-i18n-catalog.json` first, then `pnpm run merge:desktop-i18n`)
-- `pnpm --filter @agent-resume/desktop run dev:mac` on macOS, then walk the checklist below
+- `pnpm --filter @agent-resume/desktop run dev:mac` on macOS (or `pnpm run dev:desktop` on Windows), then walk the relevant checklist below
 
 ### macOS conformance checklist
 
@@ -86,3 +94,12 @@ After any desktop UI change:
 8. Menu bar item: template icon, left click opens a menu, right click works.
 9. Dock: context menu present; dragging a note file onto the icon opens it.
 10. Layout holds at 860px (minimum) and 1120px (default) window width.
+
+### Windows conformance checklist
+
+1. Windows chrome: standard title bar, opaque surfaces, menu auto-hidden until Alt is pressed.
+2. Accelerators and context menus work without the visible menu bar.
+3. System accent colour and light/dark switch apply live; disabling accent highlighting falls back cleanly.
+4. Tray: left click restores the app, right click opens the menu.
+5. Terminal: PowerShell 7 (if installed), Windows PowerShell, and `cmd.exe` all start under ConPTY; running agents report status.
+6. Agent-status daemon: `\\.\pipe\agent-resume-status-*` is live, the HKCU `Run` login item is registered, and a blocked pane with no window attached raises a WinRT toast.

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { defaultShellKind, joinForShell } from "@agent-resume/core";
 
 interface TerminalEntry {
   terminal: vscode.Terminal;
@@ -17,7 +18,10 @@ export async function createTerminal(params: {
     cwd: params.cwd ?? undefined
   });
   terminals.set(terminalId, { terminal });
-  const shellCommand = [params.command, ...(params.args ?? [])].join(" ");
+  // The agent sent argv; the terminal's shell is the user's, so quoting has to
+  // match it. Joining with spaces (the old behaviour) split any argument that
+  // contained one.
+  const shellCommand = joinForShell([params.command, ...(params.args ?? [])], defaultShellKind());
   terminal.show(true);
   terminal.sendText(shellCommand, true);
   return { terminalId };

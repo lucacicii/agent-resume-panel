@@ -123,7 +123,15 @@ describe("codex hooks", () => {
       "Stop",
       "UserPromptSubmit"
     ]);
-    expect(hookCommands(file).every((command) => command.includes("agent-resume-status-codex.sh"))).toBe(true);
+    expect(
+      hookCommands(file).every((command) =>
+        command.includes(
+          process.platform === "win32"
+            ? "agent-resume-status-codex.cmd"
+            : "agent-resume-status-codex.sh"
+        )
+      )
+    ).toBe(true);
     // The `hooks` feature is enabled by default, so the user's config is untouched.
     expect(existsSync(path.join(ctx.home ?? "", ".codex", "config.toml"))).toBe(false);
   });

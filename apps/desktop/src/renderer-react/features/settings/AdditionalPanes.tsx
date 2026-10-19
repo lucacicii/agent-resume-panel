@@ -566,7 +566,7 @@ export function NotesPane({ draft, setDraft, commit, t }: { draft: NotesDraft; s
         <p className="settings-footnote">{t("desktop.settings.standaloneNoteShortcutDesc")}</p>
         <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.standaloneNoteShortcut")}</span><input
           value={formatShortcutForDisplay(draft.newStandaloneNoteShortcut)}
-          placeholder="⌘D"
+          placeholder={formatShortcutForDisplay("CommandOrControl+D")}
           readOnly
           aria-label={t("desktop.settings.standaloneNoteShortcut")}
           onKeyDown={(event) => {
@@ -578,7 +578,7 @@ export function NotesPane({ draft, setDraft, commit, t }: { draft: NotesDraft; s
         <p className="settings-footnote">{t("desktop.settings.recentStandaloneNoteShortcutDesc")}</p>
         <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.recentStandaloneNoteShortcut")}</span><input
           value={formatShortcutForDisplay(draft.recentStandaloneNoteShortcut)}
-          placeholder="⌘⇧D"
+          placeholder={formatShortcutForDisplay("CommandOrControl+Shift+D")}
           readOnly
           aria-label={t("desktop.settings.recentStandaloneNoteShortcut")}
           onKeyDown={(event) => {

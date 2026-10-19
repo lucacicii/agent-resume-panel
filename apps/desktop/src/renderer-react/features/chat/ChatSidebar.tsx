@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import type { ThunderConversationSummary } from "@agent-resume/core";
 import { contextMenuPoint, showContextMenuAt } from "../../nativeContextMenu";
+import { isMacRenderer } from "../../platform";
 
 interface ChatSidebarProps {
   conversations: ThunderConversationSummary[];
@@ -76,6 +77,8 @@ export function ChatSidebar({
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
+  // Windows uses Ctrl+N, matching the CommandOrControl+N menu accelerator.
+  const newChatShortcut = isMacRenderer() ? "⌘N" : "Ctrl+N";
 
   const startEditing = (sessionId: string, currentTitle: string) => {
     setEditingId(sessionId);
@@ -141,11 +144,11 @@ export function ChatSidebar({
           type="button"
           className="tb-new-chat-btn"
           onClick={onNewSession}
-          title="Start new conversation (⌘N)"
+          title={`Start new conversation (${newChatShortcut})`}
         >
           <ThemeIcon name="message-square-plus" size={ICON_SIZE.dense} />
           <span>New Chat</span>
-          <kbd className="tb-sidebar-kbd">⌘N</kbd>
+          <kbd className="tb-sidebar-kbd">{newChatShortcut}</kbd>
         </button>
 
         {/* Search Input */}

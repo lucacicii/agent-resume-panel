@@ -22443,3 +22443,40 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   color: var(--color-label-tertiary);
   padding: 8px 2px;
 }
+
+/* ==========================================================================
+   Windows chrome
+   ==========================================================================
+   The macOS layout reserves room for traffic lights (78px in the header, 40px
+   in the sidebar) and makes whole surfaces draggable. Windows has native title
+   bar buttons and no drag regions outside a frameless window, so those
+   reservations become dead space and the drag cursors make controls feel
+   unresponsive. `data-platform` is set on <html> before the first render
+   (`renderer-react/main.tsx`).
+   ========================================================================== */
+
+html[data-platform="win32"] .mac-top,
+html[data-platform="win32"] .standalone-note-window-head,
+html[data-platform="win32"][data-window-mode="task"] .wb-window-header {
+  padding-left: var(--space-4);
+  -webkit-app-region: no-drag;
+}
+
+html[data-platform="win32"] .app-sidebar,
+html[data-platform="win32"] .app-sidebar-top,
+html[data-platform="win32"] .browser-chrome.is-window {
+  -webkit-app-region: no-drag;
+}
+
+/* The strip exists only to sit under the traffic lights. */
+html[data-platform="win32"] .app-sidebar-top {
+  display: none;
+}
+
+/* Windows system fonts; Segoe UI is the HIG equivalent of SF Pro, and Cascadia
+   Mono ships with Windows Terminal / VS Code (Consolas is the universal
+   fallback). */
+html[data-platform="win32"] {
+  --font-family-system: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-family-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+}

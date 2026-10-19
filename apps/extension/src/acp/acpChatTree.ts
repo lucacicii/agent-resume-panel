@@ -1,3 +1,4 @@
+import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { basenameOrPath } from "../history/pathUtils";
@@ -182,7 +183,7 @@ function chatItem(
 function groupByProject(records: AcpSessionRecord[]): AcpChatTreeNode[] {
   const byPath = new Map<string, AcpSessionRecord[]>();
   for (const record of records) {
-    const projectPath = path.resolve(record.projectPath || process.env.HOME || "");
+    const projectPath = path.resolve(record.projectPath || os.homedir());
     const bucket = byPath.get(projectPath) ?? [];
     bucket.push(record);
     byPath.set(projectPath, bucket);

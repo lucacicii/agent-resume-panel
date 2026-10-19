@@ -10,7 +10,9 @@ export const DEFAULT_AGENT_HOMES = {
   claudeHome: "~/.claude",
   antigravityHome: "~/.gemini",
   grokHome: "~/.grok",
-  opencodeHome: "~/.local/share/opencode",
+  // OpenCode keeps configuration under %APPDATA% and data under %LOCALAPPDATA%
+  // on Windows; the XDG-style path below is only its POSIX home.
+  opencodeHome: process.platform === "win32" ? "%LOCALAPPDATA%\\opencode" : "~/.local/share/opencode",
   piHome: "~/.pi/agent",
   primeHome: "~/.prime/agent",
   ompHome: "~/.omp/agent",
