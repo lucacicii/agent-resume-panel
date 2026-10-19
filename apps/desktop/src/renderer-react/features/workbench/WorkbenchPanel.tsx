@@ -3900,7 +3900,10 @@ export function WorkbenchPanel(): ReactPortal | null {
   const loadTasks = useCallback(async () => {
     if (typeof desktopApi().notesListTasks !== "function") return;
     try {
-      const items = await desktopApi().notesListTasks();
+      // Archived tasks are not part of the workbench's context switching or its
+      // move-to-task targets; an open window keeps its own task through the
+      // scope payload even after the task is archived.
+      const items = await desktopApi().notesListTasks({ includeArchived: false });
       setTasks(items.map(taskFromRecord));
     } catch {
       /* the sidebar list is best-effort; the board remains the source of truth */
@@ -6364,12 +6367,25 @@ export function WorkbenchPanel(): ReactPortal | null {
     closeQuickAccess();
     window.dispatchEvent(new CustomEvent("agent-resume:view-gtd"));
   };
-  /** Switching tasks is the palette's context switch: workbench roots follow the task. */
-  const openQuickAccessTask = (task: WorkbenchTask) => {
+  /**
+   * Switching tasks from the palette opens (or focuses) the target task's own
+   * window. This window owns exactly one workbench, so it cannot host another
+   * task in place.
+   */
+  const openQuickAccessTask = async (task: WorkbenchTask) => {
     closeQuickAccess();
-    window.dispatchEvent(new CustomEvent("agent-resume:view-open-task", {
-      detail: { ...task, projects: task.projects ?? [] }
-    }));
+    try {
+      const workbenches = await ensureTaskWorkbenches(task.noteId);
+      const workbenchId = workbenches[0]?.workbenchId;
+      if (!workbenchId) {
+        setStatus({ text: t("desktop.gtd.windowNoWorkbench"), kind: "error" });
+        return;
+      }
+      const opened = await desktopApi().taskWindowOpen({ noteId: task.noteId, workbenchId, title: task.title });
+      if (!opened.ok) setStatus({ text: t("desktop.gtd.windowLimit", opened.limit), kind: "error" });
+    } catch (error) {
+      setStatus({ text: statusError(error), kind: "error" });
+    }
   };
   const quickAccessCommands: QuickAccessCommand[] = [
     // 1. Navigation / 导航

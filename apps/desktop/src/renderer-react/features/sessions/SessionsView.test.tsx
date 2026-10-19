@@ -110,6 +110,8 @@ describe("SessionsView", () => {
     expect(await screen.findByText("Fix renderer")).toBeTruthy();
     expect(screen.getByText("1 sessions")).toBeTruthy();
     expect(window.agentResume.sessionFacets).toHaveBeenCalled();
+    // The task filter offers active tasks only.
+    expect(window.agentResume.notesListTasks).toHaveBeenCalledWith({ includeArchived: false });
     expect(await screen.findByRole("button", { name: "codex 2" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "All" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Unmarked 2" })).toBeTruthy();
