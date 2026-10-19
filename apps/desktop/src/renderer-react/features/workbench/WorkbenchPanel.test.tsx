@@ -11583,4 +11583,66 @@ describe("WorkbenchPanel", () => {
       host.remove();
     }
   });
+
+  it("previews an inactive terminal tab from its headless screen", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let nextPtyId = 0;
+    const agentStatusScreen = vi.fn(async ({ paneId }: { paneId: number }) => ({
+      paneId,
+      agent: "shell",
+      state: "idle",
+      source: "hook",
+      authority: "hook",
+      screenText: `$ screen ${paneId}\nready\n`,
+      oscTitle: "",
+      oscProgress: "",
+      cursorHidden: false,
+      toolRunning: false,
+      at: 1
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      createScratchDir: async () => "/scratch/work",
+      terminalSpawn: async () => ({ id: ++nextPtyId }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput: vi.fn(async () => ({ ok: true })),
+      agentStatusScreen
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(2));
+
+    const tabs = Array.from(document.querySelectorAll<HTMLElement>(".is-terminal-group .wb-terminal-tab"));
+    expect(tabs).toHaveLength(2);
+    expect(tabs[1].classList.contains("active")).toBe(true);
+
+    // The active tab has nothing to preview; the inactive one opens after the
+    // intent delay and reads the pane mirror for its own PTY.
+    fireEvent.pointerOver(tabs[1]);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 450)); });
+    expect(document.querySelector(".wb-tab-preview")).toBeNull();
+
+    fireEvent.pointerOver(tabs[0]);
+    await waitFor(() => {
+      expect(document.querySelector(".wb-tab-preview")?.textContent).toContain("$ screen 1");
+    }, { timeout: 1_500 });
+    expect(agentStatusScreen).toHaveBeenCalledWith({ paneId: 1 });
+  });
 });
