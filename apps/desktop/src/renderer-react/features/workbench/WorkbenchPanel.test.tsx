@@ -10335,18 +10335,19 @@ describe("WorkbenchPanel", () => {
     // Entering a task lands on the Sessions tab (its session list).
     await waitFor(() => expect(document.querySelectorAll(".wb-left-tab")[0]?.classList.contains("active")).toBe(true));
 
+    // "Open note" directly opens the task's note in the detail pane.
     fireEvent.click(await screen.findByRole("button", { name: "Open note" }));
+    await waitFor(() => expect(document.querySelector(".wb-note-pane")).not.toBeNull());
+    expect(notesRead).toHaveBeenCalledWith({ noteId: "wi-1" });
+    expect(screen.getByPlaceholderText("Edit Markdown…")).toBeTruthy();
+
+    // Switching to the Notes tab shows the task's note tree.
+    fireEvent.click(document.querySelectorAll(".wb-left-tab")[1]);
     expect(document.querySelectorAll(".wb-left-tab")[1]?.classList.contains("active")).toBe(true);
 
     // Task filter: only the task's note tree is listed.
     const row = await screen.findByRole("button", { name: "Realtime status" });
     expect(screen.queryByRole("button", { name: "Scratch pad" })).toBeNull();
-
-    // Clicking a note opens it in the right detail pane for editing.
-    fireEvent.click(row);
-    await waitFor(() => expect(document.querySelector(".wb-note-pane")).not.toBeNull());
-    expect(notesRead).toHaveBeenCalledWith({ noteId: "wi-1" });
-    expect(screen.getByPlaceholderText("Edit Markdown…")).toBeTruthy();
 
     // "All" reveals non-task notes.
     const filterTabs = document.querySelectorAll<HTMLButtonElement>(".wb-note-filter .wb-left-tab");

@@ -6783,7 +6783,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               <button
                 type="button"
                 className="wb-icon-btn"
-                onClick={() => setLeftTab("note")}
+                onClick={() => openNotePane(taskScope.noteId, taskScope.title)}
                 aria-label={t("desktop.workbench.taskOpenNote")}
                 title={t("desktop.workbench.taskOpenNote")}
               >
