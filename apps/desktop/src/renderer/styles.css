@@ -190,6 +190,11 @@
   --wb-terminal-surface: rgba(245, 245, 247, 0.88);
   --wb-terminal-tab-active-label: rgba(0, 0, 0, 0.88);
 
+  /* Recessed tab-group track: a top inner shadow for the well and a bottom
+     highlight where the well meets the strip surface. */
+  --wb-tab-track-inset: inset 0 1px 3px rgba(0, 0, 0, 0.18);
+  --wb-tab-track-edge: inset 0 -0.5px 0 rgba(255, 255, 255, 0.7);
+
   /* Workbench git graph lanes */
   --wb-git-lane-0: #007aff;
   --wb-git-lane-1: #af52de;
@@ -254,6 +259,8 @@
   --shadow-segment-thumb: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
   --wb-terminal-surface: rgba(245, 245, 247, 0.88);
   --wb-terminal-tab-active-label: rgba(0, 0, 0, 0.88);
+  --wb-tab-track-inset: inset 0 1px 3px rgba(0, 0, 0, 0.18);
+  --wb-tab-track-edge: inset 0 -0.5px 0 rgba(255, 255, 255, 0.7);
 
   /* Markdown Typography & Element Colors (Light Mode) */
   --color-md-h1: #111827;
@@ -322,6 +329,8 @@
   --shadow-segment-thumb: 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
   --wb-terminal-surface: rgba(30, 30, 30, 0.88);
   --wb-terminal-tab-active-label: rgba(255, 255, 255, 0.88);
+  --wb-tab-track-inset: inset 0 1px 4px rgba(0, 0, 0, 0.55);
+  --wb-tab-track-edge: inset 0 -0.5px 0 rgba(255, 255, 255, 0.1);
 
   /* Markdown Typography & Element Colors (Dark Mode) */
   --color-md-h1: #ffffff;
@@ -471,6 +480,8 @@ html[data-theme="dark"][data-task-accent] {
     --shadow-segment-thumb: 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
     --wb-terminal-surface: rgba(30, 30, 30, 0.88);
     --wb-terminal-tab-active-label: rgba(255, 255, 255, 0.88);
+    --wb-tab-track-inset: inset 0 1px 4px rgba(0, 0, 0, 0.55);
+    --wb-tab-track-edge: inset 0 -0.5px 0 rgba(255, 255, 255, 0.1);
 
     /* Markdown Typography & Element Colors (Dark Mode system preference) */
     --color-md-h1: #ffffff;
@@ -9156,22 +9167,24 @@ body.is-pane-resizing-v * {
   display: none;
 }
 
-/* Each group is one hue-tinted, recessed track holding its action label,
+/* Each group is one hue-tinted, recessed well holding its action label,
    optional worktree control, and tabs. The active tab is the only raised
-   segment inside it. */
+   segment inside it. The well is 30px tall with a 3px inset, so the inner
+   shadow and bottom highlight have room to read as depth. */
 .wb-terminal-tabs {
   --wb-tab-accent: var(--color-label-secondary);
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  min-height: 28px;
-  height: 28px;
-  padding: 2px;
+  min-height: 30px;
+  height: 30px;
+  padding: 3px;
   border-bottom: none;
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--wb-tab-accent) 18%, transparent);
-  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 34%, transparent),
-              inset 0 1px 3px color-mix(in srgb, var(--wb-tab-accent) 22%, transparent);
+  background: color-mix(in srgb, var(--wb-tab-accent) 14%, var(--color-fill-secondary));
+  box-shadow: var(--wb-tab-track-inset),
+              var(--wb-tab-track-edge),
+              inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 30%, transparent);
   overflow: hidden;
   flex-shrink: 0;
   transition: background var(--duration-fast) var(--ease-out),
@@ -9220,12 +9233,13 @@ body.is-pane-resizing-v * {
   --wb-tab-accent: var(--color-teal);
 }
 
-/* The track holding the active pane gains tint and a stronger hairline;
-   the label itself stays flat so only the thumb is a filled segment. */
+/* The well holding the active pane gains tint; the depth shadows stay so the
+   group keeps reading as inset. The label itself stays flat. */
 .wb-terminal-tabs:has(.wb-terminal-tab.active) {
-  background: color-mix(in srgb, var(--wb-tab-accent) 24%, transparent);
-  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 44%, transparent),
-              inset 0 1px 3px color-mix(in srgb, var(--wb-tab-accent) 28%, transparent);
+  background: color-mix(in srgb, var(--wb-tab-accent) 22%, var(--color-fill-secondary));
+  box-shadow: var(--wb-tab-track-inset),
+              var(--wb-tab-track-edge),
+              inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 42%, transparent);
 }
 
 .wb-pane-tab-group-count {
@@ -9279,7 +9293,7 @@ body.is-pane-resizing-v * {
 /* Only a list that actually has tabs gets the action/tab divider. The inset
    shadow stays out of layout, so offsetLeft keeps the same origin. */
 .wb-terminal-tabs-list:has(> .wb-terminal-tab) {
-  box-shadow: inset 0.5px 0 0 color-mix(in srgb, var(--wb-tab-accent) 24%, transparent);
+  box-shadow: inset 0.5px 0 0 color-mix(in srgb, var(--wb-tab-accent) 26%, transparent);
 }
 
 /* An empty list would leave a dangling flex gap at the capsule's right end. */
@@ -9299,8 +9313,9 @@ body.is-pane-resizing-v * {
   left: 0;
   height: 100%;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--wb-tab-accent) 32%, var(--color-control-bg));
-  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 46%, transparent);
+  background: color-mix(in srgb, var(--wb-tab-accent) 26%, var(--color-control-bg));
+  box-shadow: var(--shadow-segment-thumb),
+              inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 40%, transparent);
   pointer-events: none;
   z-index: 0;
   will-change: transform;
