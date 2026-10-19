@@ -1344,6 +1344,32 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".wb-list-meta")?.textContent).toBe("Test task · search \"Thunder two\" · 1 sessions");
   });
 
+  it("scopes Thunder rows to the task's own links and workspace, not shared project roots", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    window.agentResume = thunderWorkbenchApi({
+      notesTaskWorkspace: async () => ({ dir: "/work/tasks/wi-new", exists: true }),
+      thunderChatListConversations: async () => [
+        // Started by the task that previously owned /work/app (now archived):
+        // nothing links it to this task, so it must not surface here.
+        thunderConversation({ id: "old-chat", title: "Archived task chat", workspace: "/work/app" }),
+        // Launched from this task's neutral workspace.
+        thunderConversation({ id: "workspace-chat", title: "Task workspace chat", workspace: "/work/tasks/wi-new" }),
+        // Explicitly linked from a pane, even though its cwd is elsewhere.
+        thunderConversation({ id: "linked-chat", title: "Linked chat", workspace: "/elsewhere" })
+      ]
+    });
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateTaskDirectory("/work/app", { noteId: "wi-new", sessions: ["thunder:linked-chat"] });
+
+    await screen.findByText("Task workspace chat");
+    expect(screen.getByText("Linked chat")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText("Archived task chat")).toBeNull());
+  });
+
   it("gives a Thunder row the overlay session menu plus its two Thunder actions", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
