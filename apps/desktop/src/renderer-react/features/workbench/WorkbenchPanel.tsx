@@ -2035,8 +2035,14 @@ export function WorkbenchPanel(): ReactPortal | null {
   ).sort((a, b) => b.createdAt - a.createdAt), [selectedPendingSessions, sessionQuery]);
   /**
    * Thunder conversations are not in the catalog. When a task is scoped they are
-   * limited to the task's workspace (or an explicit `thunder:` link); otherwise
-   * every conversation is listed, mirroring the catalog's "all" page.
+   * limited to the task's neutral workspace (or an explicit `thunder:` link);
+   * otherwise every conversation is listed, mirroring the catalog's "all" page.
+   *
+   * Project roots are deliberately not matched: every task sharing those
+   * repositories would otherwise inherit each other's (including archived
+   * tasks') conversations. Conversations started inside a task run in its
+   * neutral workspace, and panes link their conversation to the task, so both
+   * cases are covered without the broad path match.
    *
    * Scope and search stay separate memos: the meta row needs a denominator for
    * "how many rows could be here", which a query-filtered list cannot answer.
@@ -2044,17 +2050,13 @@ export function WorkbenchPanel(): ReactPortal | null {
   const scopedThunderConversations = useMemo(() => {
     const scoped = sessionFilter === "task" && taskScope && taskSessionsKnown;
     if (!scoped) return thunderConversations;
-    const scopePaths = new Set(
-      [selectedProject, ...scopeProjects]
-        .filter((path): path is string => Boolean(path))
-        .map((path) => projectPathKey(path))
-    );
     const linkedKeys = new Set(taskSessionKeys);
+    const workspace = taskWorkspaceDir ? projectPathKey(taskWorkspaceDir) : "";
     return thunderConversations.filter((conversation) => {
-      const workspace = projectPathKey(conversation.workspace || "");
-      return Boolean(workspace && scopePaths.has(workspace)) || linkedKeys.has(`thunder:${conversation.id}`);
+      if (linkedKeys.has(`thunder:${conversation.id}`)) return true;
+      return Boolean(workspace && projectPathKey(conversation.workspace || "") === workspace);
     });
-  }, [thunderConversations, sessionFilter, taskScope, taskSessionsKnown, selectedProject, scopeProjects, taskSessionKeys]);
+  }, [thunderConversations, sessionFilter, taskScope, taskSessionsKnown, taskSessionKeys, taskWorkspaceDir]);
 
   const visibleThunderConversations = useMemo(() => {
     const q = sessionQuery.trim().toLowerCase();
