@@ -2548,6 +2548,54 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(terminalInput).toHaveBeenLastCalledWith({ id: 1, data: "cd '/wt/app-review'\r" }));
   });
 
+  it("does not render the project cd switcher on an agent session, even in the shared workspace", async () => {
+    localStorage.setItem("wb-session-view-mode", "terminal");
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalSpawn = vi.fn(async () => ({ id: 1 }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES,
+        "desktop.workbench.sessionTarget": "New sessions start in: {0}",
+        "desktop.workbench.sharedWorkspace": "shared workspace",
+        "desktop.workbench.terminalSwitchProject": "Switch project"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Shared agent", projectPath: WORKSPACE_CWD, updatedAt: 1 }],
+      notesListTasks: async () => [
+        { noteId: "wi-multi", title: "Multi", gtdStatus: "next", work: { sessions: ["codex:session-1"], projects: ["/work/app", "/work/api"], primaryProject: "/work/app" } }
+      ],
+      notesEnsureTaskWorkspace: async () => ({ dir: WORKSPACE_CWD }),
+      notesTaskWorkspace: async () => ({ dir: WORKSPACE_CWD, exists: true }),
+      querySessionsPage: async () => ({
+        sessions: [{ provider: "codex", id: "session-1", title: "Shared agent", projectPath: WORKSPACE_CWD, updatedAt: 1 }],
+        total: 1
+      }),
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: WORKSPACE_CWD }),
+      terminalSpawn,
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateTaskDirectory("/work/app", { noteId: "wi-multi", projects: ["/work/app", "/work/api"], sessions: ["codex:session-1"] });
+
+    fireEvent.click(await screen.findByRole("button", { name: /Shared agent/ }));
+    await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+
+    // Sessions (whether split or full terminal) never show the shell cd switcher.
+    expect(document.querySelector(".wb-terminal-project-switcher")).toBeNull();
+  });
+
   it("pastes composer text into the TUI without submitting and logs a user send", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

@@ -7188,19 +7188,19 @@ export function WorkbenchPanel(): ReactPortal | null {
               );
             }
 
-            // The floating cd switcher belongs on a terminal that started in the
-            // task's shared workspace: from there every referenced repository is
-            // one cd away, which is the whole point of the control.
+            // The floating cd switcher belongs strictly on shell terminals
+            // (pane.group === "terminal") in the task's shared workspace:
+            // sessions run agents (Claude, Codex, …) with their own prompt flows
+            // and must never show this control.
             const isSharedTerminal = Boolean(
-              taskScope
+              pane.group === "terminal"
+              && taskScope
               && scopeProjects.length > 0
               && (
                 (taskWorkspaceDir && projectPathKey(pane.cwd) === projectPathKey(taskWorkspaceDir))
-                || (
-                  pane.group === "terminal"
-                  && (!pane.projectPath || (taskWorkspaceDir && projectPathKey(pane.projectPath) === projectPathKey(taskWorkspaceDir)))
-                )
-                || (pane.group === "terminal" && scopeProjects.length > 1)
+                || !pane.projectPath
+                || (taskWorkspaceDir && projectPathKey(pane.projectPath) === projectPathKey(taskWorkspaceDir))
+                || scopeProjects.length > 1
               )
             );
 
