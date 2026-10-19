@@ -26,6 +26,17 @@ function terminalThemeLabelKey(id: string): string {
   return TERMINAL_THEME_LABEL_KEYS[id] || "desktop.settings.terminalThemeDefaultDark";
 }
 
+/**
+ * IPC rejections arrive as `Error invoking remote method 'x': WebdavError: …`.
+ * Strip the transport wrapper so the pane shows the message the main process wrote.
+ */
+function errorMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  return raw
+    .replace(/^Error invoking remote method '[^']*':\s*/, "")
+    .replace(/^[A-Za-z]+Error:\s*/, "");
+}
+
 export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: WorkbenchDraft; setDraft: (value: WorkbenchDraft) => void; commit: (value: WorkbenchDraft) => void; t: Translate }) {
   /**
    * Immediate controls (toggles, selects, list add/remove of concrete values) commit
@@ -260,7 +271,9 @@ export function BackupPane({ t }: { t: Translate }) {
   const [storedItems, setStoredItems] = useState<Awaited<ReturnType<ReturnType<typeof desktopApi>["backupListStored"]>>>([]);
   const [selectedId, setSelectedId] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
-  const [includeNativeConversations, setIncludeNativeConversations] = useState(true);
+  // Native conversations dominate the archive and make uploads slow and fragile;
+  // keep them opt-in so the default backup stays small enough to finish.
+  const [includeNativeConversations, setIncludeNativeConversations] = useState(false);
   const [pendingImport, setPendingImport] = useState<Awaited<ReturnType<ReturnType<typeof desktopApi>["backupSelectImport"]>>>(null);
   const [pendingPassword, setPendingPassword] = useState("");
   const [restoreNativeConversations, setRestoreNativeConversations] = useState(false);
@@ -290,7 +303,7 @@ export function BackupPane({ t }: { t: Translate }) {
         setStoredItems(items);
         setSelectedId((current) => items.some((item) => item.backupId === current) ? current : items[0]?.backupId || "");
       } catch (error) {
-        if (!canceled) setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+        if (!canceled) setBackupStatus({ text: errorMessage(error), kind: "error" });
       }
     })();
     return () => { canceled = true; };
@@ -332,7 +345,7 @@ export function BackupPane({ t }: { t: Translate }) {
         : { text: `${exportedText}${warningText}`, kind: result.warnings?.length ? "warning" : "ok" });
       if (target !== "local-file" && !result.canceled) refreshStored();
     } catch (error) {
-      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setBackupStatus({ text: errorMessage(error), kind: "error" });
     } finally {
       setBackupBusy(false);
     }
@@ -351,7 +364,7 @@ export function BackupPane({ t }: { t: Translate }) {
         showPreview(preview);
       }
     } catch (error) {
-      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setBackupStatus({ text: errorMessage(error), kind: "error" });
     } finally {
       setBackupBusy(false);
     }
@@ -373,7 +386,7 @@ export function BackupPane({ t }: { t: Translate }) {
       showPreview(preview);
       setLegacyPassword("");
     } catch (error) {
-      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setBackupStatus({ text: errorMessage(error), kind: "error" });
     } finally {
       setBackupBusy(false);
     }
@@ -394,7 +407,7 @@ export function BackupPane({ t }: { t: Translate }) {
       setPendingPassword("");
       setBackupStatus({ text: t("desktop.backup.imported", result.fileCount || 0), kind: "ok" });
     } catch (error) {
-      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setBackupStatus({ text: errorMessage(error), kind: "error" });
     } finally {
       setBackupBusy(false);
     }
@@ -413,7 +426,7 @@ export function BackupPane({ t }: { t: Translate }) {
       setBackupStatus({ text: t("desktop.backup.webdavSaved"), kind: "ok" });
       refreshStored();
     } catch (error) {
-      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setBackupStatus({ text: errorMessage(error), kind: "error" });
     } finally {
       setWebdavBusy(false);
     }
@@ -434,7 +447,7 @@ export function BackupPane({ t }: { t: Translate }) {
         ? { text: `${t("desktop.backup.webdavTestOk")} ${result.message}`, kind: "ok" }
         : { text: `${t("desktop.backup.webdavTestFailed")} ${result.message}`, kind: "error" });
     } catch (error) {
-      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setBackupStatus({ text: errorMessage(error), kind: "error" });
     } finally {
       setWebdavBusy(false);
     }
@@ -619,7 +632,7 @@ export function LogsPane({ t }: { t: Translate }) {
       setEntries(rows);
       setStatus({ text: t("desktop.logs.summaryStatus", rows.length), kind: "ok" });
     } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setStatus({ text: errorMessage(error), kind: "error" });
     }
   }, [t]);
 
@@ -638,7 +651,7 @@ export function LogsPane({ t }: { t: Translate }) {
       await load();
       setStatus({ text: t("desktop.logs.cleared"), kind: "ok" });
     } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setStatus({ text: errorMessage(error), kind: "error" });
     } finally {
       setBusy(false);
     }
@@ -743,7 +756,7 @@ export function UsagePane({ t, initialDetailTab }: { t: Translate; initialDetail
       setData({ summary, events, runs });
       setStatus({ text: t("desktop.usage.summaryStatus", days, summary.eventCount), kind: "ok" });
     } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setStatus({ text: errorMessage(error), kind: "error" });
     }
   }, [days, t]);
 

@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { XMLValidator } from "fast-xml-parser";
 import {
   createWebdavSession,
+  describeTransportError,
   normalizeWebdavConfig,
   parseMultistatus,
   WebdavError,
@@ -63,6 +64,27 @@ async function tempFile(contents: string): Promise<string> {
   const file = path.join(dir, "payload.bin");
   await fs.writeFile(file, contents);
   return file;
+}
+
+/**
+ * Same lifecycle as startServer, but hands the request over before the body is
+ * read so a test can drop the socket in the middle of an upload.
+ */
+async function startRawServer(handler: (request: http.IncomingMessage, response: http.ServerResponse) => void): Promise<FakeServer> {
+  const requests: FakeServer["requests"] = [];
+  const server = http.createServer((request, response) => {
+    requests.push({ method: request.method ?? "", path: request.url ?? "", headers: request.headers });
+    handler(request, response);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address() as AddressInfo;
+  const fake: FakeServer = {
+    url: `http://127.0.0.1:${address.port}`,
+    requests,
+    close: () => new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+  };
+  servers.push(fake);
+  return fake;
 }
 
 function configFor(url: string, folder = "Agent Resume/Backups"): WebdavConfig {
@@ -262,6 +284,114 @@ describe("createWebdavSession", () => {
     const error = await createWebdavSession(configFor(url)).propfind(1).catch((caught: unknown) => caught);
     expect((error as WebdavError).message).toMatch(/refused the connection|could not reach/i);
     expect((error as WebdavError).message).not.toContain("secret");
+  });
+
+  it("names a mid-upload connection drop instead of reporting an unreachable server", async () => {
+    const server = await startRawServer((request, response) => {
+      let received = 0;
+      request.on("data", (chunk: Buffer) => {
+        received += chunk.length;
+        if (received >= 64 * 1024) request.socket.destroy();
+      });
+      request.on("end", () => response.writeHead(201).end());
+    });
+    const file = await tempFile("x".repeat(512 * 1024));
+    const session = createWebdavSession(configFor(server.url));
+
+    // The backup path always listens for progress, which makes the client count
+    // the bytes it has sent so a failed upload can report them.
+    const error = await session.putFile(file, "big.zip", () => undefined).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(WebdavError);
+    expect((error as WebdavError).message).toMatch(/connection .*closed while uploading big\.zip/i);
+    expect((error as WebdavError).message).toMatch(/EPIPE|UND_ERR_SOCKET|ECONNRESET/);
+    expect((error as WebdavError).message).toMatch(/of 512 KB sent/);
+    expect((error as WebdavError).message).not.toMatch(/Could not reach/);
+    // The transfer is retried once, then reported.
+    expect(server.requests.filter((request) => request.method === "PUT")).toHaveLength(2);
+  });
+
+  it("retries a dropped upload once and finishes it", async () => {
+    let putAttempts = 0;
+    const server = await startRawServer((request, response) => {
+      const attempt = ++putAttempts;
+      let received = 0;
+      request.on("data", (chunk: Buffer) => {
+        received += chunk.length;
+        if (attempt === 1 && received >= 32 * 1024) request.socket.destroy();
+      });
+      request.on("end", () => response.writeHead(201).end());
+    });
+    const file = await tempFile("y".repeat(256 * 1024));
+    const session = createWebdavSession(configFor(server.url));
+
+    await expect(session.putFile(file, "retry.zip")).resolves.toBeUndefined();
+    expect(putAttempts).toBe(2);
+  });
+
+  it("does not retry an authentication failure on upload", async () => {
+    const server = await startServer((_request, response) => response.writeHead(401).end(), { requireAuth: true });
+    const file = await tempFile("z".repeat(1024));
+    const session = createWebdavSession(configFor(server.url));
+
+    const error = await session.putFile(file, "denied.zip").catch((caught: unknown) => caught);
+
+    expect((error as WebdavError).message).toMatch(/authentication failed/i);
+    expect(server.requests.filter((request) => request.method === "PUT")).toHaveLength(1);
+  });
+});
+
+describe("describeTransportError", () => {
+  const context = "uploading big.zip";
+
+  it("separates a closed connection from an unreachable server", () => {
+    const message = describeTransportError(
+      { name: "TypeError", message: "fetch failed", cause: { name: "SocketError", code: "UND_ERR_SOCKET", message: "other side closed" } },
+      "dav.example.com",
+      context,
+      12_000
+    );
+    expect(message).toMatch(/connection .*closed while uploading big\.zip/i);
+    expect(message).not.toMatch(/Could not reach/);
+  });
+
+  it("reports a stalled upload as a timeout", () => {
+    const message = describeTransportError(
+      { name: "TypeError", message: "fetch failed", cause: { name: "HeadersTimeoutError", code: "UND_ERR_HEADERS_TIMEOUT", message: "Headers Timeout Error" } },
+      "dav.example.com",
+      context,
+      301_000
+    );
+    expect(message).toMatch(/stopped responding while uploading big\.zip/);
+  });
+
+  it("keeps the underlying code in the fallback instead of dropping it", () => {
+    const message = describeTransportError(
+      { name: "TypeError", message: "fetch failed", cause: { name: "Error", code: "EIO", message: "i/o error" } },
+      "dav.example.com",
+      context,
+      40
+    );
+    expect(message).toMatch(/Could not reach the WebDAV server at dav\.example\.com/);
+    expect(message).toContain("EIO");
+    expect(message).toContain("uploading big.zip");
+  });
+
+  it("walks an AggregateError to find the transport code", () => {
+    const message = describeTransportError(
+      { name: "TypeError", message: "fetch failed", cause: { name: "AggregateError", errors: [{ code: "ENETUNREACH", message: "no route" }] } },
+      "dav.example.com",
+      context,
+      10
+    );
+    expect(message).toMatch(/no network route/i);
+  });
+
+  it("still names unresolved hosts, refusals, and certificates", () => {
+    const host = "dav.example.com";
+    expect(describeTransportError({ cause: { code: "ENOTFOUND" } }, host, context, 5)).toMatch(/Could not resolve/);
+    expect(describeTransportError({ cause: { code: "ECONNREFUSED" } }, host, context, 5)).toMatch(/refused the connection/);
+    expect(describeTransportError({ cause: { code: "ERR_TLS_CERT_ALTNAME_INVALID" } }, host, context, 5)).toMatch(/TLS certificate/);
   });
 });
 

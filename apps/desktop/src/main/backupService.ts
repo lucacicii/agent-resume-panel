@@ -22,6 +22,7 @@ import {
   type PanelSettings
 } from "@agent-resume/core";
 import { loadPanelDbPaths } from "./panelDatabases";
+import { recordAppError } from "./appErrorLog";
 import { createWebdavSession, type WebdavEntry } from "./webdavClient";
 import { parseManagedBackupFileName, readZipEntry } from "./zipManifest";
 
@@ -1730,7 +1731,11 @@ export async function exportStoredBackup(
         write: (partial) => fsp.copyFile(zip, partial),
         onProgress: options.onProgress
       });
-      await pruneManagedBackups(provider, sourceMachineId);
+      // The archive is already on the server. A failed cleanup must not turn a
+      // successful export into an error the user reads as a lost backup.
+      await pruneManagedBackups(provider, sourceMachineId).catch((error: unknown) => {
+        void recordAppError({ source: "backup", level: "warn", message: "The backup was saved, but pruning older backups failed.", error });
+      });
       reportProgress(options.onProgress, "export", "complete", 100);
       return { ...built.result, file: published.file, storedItem: published.item };
     } finally {

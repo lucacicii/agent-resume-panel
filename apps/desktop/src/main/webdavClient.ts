@@ -48,14 +48,34 @@ export interface WebdavSession {
 const CONTROL_TIMEOUT_MS = 30_000;
 const RANGE_TIMEOUT_MS = 20_000;
 const TRANSFER_TIMEOUT_MS = 30 * 60_000;
+/** Pause before the single retry of a transient transport failure. */
+const RETRY_DELAY_MS = 750;
 export const DEFAULT_WEBDAV_FOLDER = "Agent Resume/Backups";
 const USER_AGENT = "Agent-Resume-Desktop";
 
+export interface WebdavErrorOptions {
+  /** The original fetch rejection, kept so the cause chain can be logged. */
+  cause?: unknown;
+  /** What the session was doing, e.g. `uploading backup.zip`. */
+  context?: string;
+  /** True when retrying the same request can plausibly succeed. */
+  retryable?: boolean;
+  /** The transport code from the underlying error (`EPIPE`, `UND_ERR_SOCKET`, …). */
+  causeCode?: string;
+}
+
 /** Rejected before any network call; messages never echo the password. */
 export class WebdavError extends Error {
-  constructor(message: string, readonly status?: number) {
-    super(message);
+  readonly context?: string;
+  readonly retryable: boolean;
+  readonly causeCode?: string;
+
+  constructor(message: string, readonly status?: number, options: WebdavErrorOptions = {}) {
+    super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = "WebdavError";
+    this.context = options.context;
+    this.retryable = options.retryable === true;
+    this.causeCode = options.causeCode;
   }
 }
 
@@ -125,21 +145,136 @@ function describeStatus(status: number, context: string): string {
 }
 
 async function toWebdavError(response: Response, context: string): Promise<WebdavError> {
-  return new WebdavError(describeStatus(response.status, context), response.status);
+  return new WebdavError(describeStatus(response.status, context), response.status, { context });
 }
 
-/** Map transport failures without ever including the request headers. */
-function describeTransportError(error: unknown, host: string): string {
+/** The connection died while bytes were moving; retrying is worthwhile. */
+const CLOSED_CODES = new Set([
+  "EPIPE",
+  "ECONNRESET",
+  "ECONNABORTED",
+  "UND_ERR_SOCKET",
+  "UND_ERR_CLOSED",
+  "ERR_STREAM_PREMATURE_CLOSE"
+]);
+/** undici or the socket gave up: a stall, not a refusal. */
+const TIMEOUT_CODES = new Set(["UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT", "ETIMEDOUT"]);
+const CONNECT_TIMEOUT_CODES = new Set(["UND_ERR_CONNECT_TIMEOUT"]);
+const UNREACHABLE_CODES = new Set(["ENETUNREACH", "EHOSTUNREACH", "ENETDOWN"]);
+
+/** Transient enough that one retry is worth attempting. */
+const RETRYABLE_CODES = new Set([...CLOSED_CODES, ...TIMEOUT_CODES, ...CONNECT_TIMEOUT_CODES]);
+
+interface TransportCause {
+  name?: string;
+  code?: string;
+  message?: string;
+}
+
+/**
+ * Walk the wrapped errors undici produces (`fetch` -> `cause`, sometimes an
+ * `AggregateError`) and return the first entry that carries a transport code.
+ */
+function transportCause(error: unknown): TransportCause {
+  let current: unknown = error;
+  for (let depth = 0; current && depth < 5; depth += 1) {
+    const node = current as {
+      name?: unknown;
+      code?: unknown;
+      message?: unknown;
+      cause?: unknown;
+      errors?: unknown;
+    };
+    if (typeof node.code === "string") {
+      return {
+        ...(typeof node.name === "string" ? { name: node.name } : {}),
+        code: node.code,
+        ...(typeof node.message === "string" ? { message: node.message } : {})
+      };
+    }
+    if (Array.isArray(node.errors)) {
+      const nested = node.errors.find((item) => typeof (item as { code?: unknown } | undefined)?.code === "string");
+      if (nested) {
+        current = nested;
+        continue;
+      }
+    }
+    current = node.cause;
+  }
+  return {};
+}
+
+function isCertificateCode(code: string): boolean {
+  return /^(ERR_TLS_|ERR_SSL_|CERT_)/.test(code)
+    || code === "DEPTH_ZERO_SELF_SIGNED_CERT"
+    || code === "SELF_SIGNED_CERT_IN_CHAIN"
+    || code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE";
+}
+
+function formatElapsed(elapsedMs: number): string {
+  if (elapsedMs < 10_000) return `${Math.max(1, Math.round(elapsedMs / 1000))}s`;
+  if (elapsedMs < 60_000) return `${Math.round(elapsedMs / 1000)}s`;
+  return `${Math.round(elapsedMs / 60_000)} min`;
+}
+
+/**
+ * Map transport failures without ever including the request headers.
+ *
+ * Every branch keeps the operation and, for the catch-all, the underlying code,
+ * so a failure says *what* broke instead of only that something did.
+ */
+export function describeTransportError(error: unknown, host: string, context: string, elapsedMs: number): string {
   const name = (error as { name?: string } | undefined)?.name;
-  if (name === "TimeoutError" || name === "AbortError") return `The WebDAV server at ${host} did not respond in time.`;
-  const code = (error as { cause?: { code?: string } } | undefined)?.cause?.code
-    ?? (error as { code?: string } | undefined)?.code;
+  if (name === "TimeoutError" || name === "AbortError") {
+    return `The WebDAV server at ${host} did not respond in time while ${context}.`;
+  }
+  const cause = transportCause(error);
+  const code = cause.code;
   if (code === "ENOTFOUND" || code === "EAI_AGAIN") return `Could not resolve the WebDAV host ${host}.`;
   if (code === "ECONNREFUSED") return `The WebDAV server at ${host} refused the connection.`;
-  if (code === "CERT_HAS_EXPIRED" || code === "DEPTH_ZERO_SELF_SIGNED_CERT" || code === "SELF_SIGNED_CERT_IN_CHAIN" || code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") {
+  if (code && CLOSED_CODES.has(code)) {
+    return `The connection to the WebDAV server at ${host} closed while ${context} after ${formatElapsed(elapsedMs)} (${code}). Check the network, VPN, or proxy, then try again.`;
+  }
+  if (code && TIMEOUT_CODES.has(code)) {
+    return `The WebDAV server at ${host} stopped responding while ${context} (${code}, after ${formatElapsed(elapsedMs)}).`;
+  }
+  if (code && CONNECT_TIMEOUT_CODES.has(code)) {
+    return `Could not connect to the WebDAV server at ${host} while ${context} (${code}, timed out after ${formatElapsed(elapsedMs)}).`;
+  }
+  if (code && UNREACHABLE_CODES.has(code)) {
+    return `There is no network route to the WebDAV server at ${host}. Check the VPN or proxy connection.`;
+  }
+  if (code && isCertificateCode(code)) {
     return `The TLS certificate for ${host} could not be verified. Use a certificate the system trusts.`;
   }
-  return `Could not reach the WebDAV server at ${host}.`;
+  const detail = [cause.name, code].filter(Boolean).join(" ");
+  return `Could not reach the WebDAV server at ${host} while ${context} (${detail || cause.message || name || "unknown error"}).`;
+}
+
+function withTransferProgress(error: WebdavError, sent: number, total: number): WebdavError {
+  const message = error.message.replace(/\.$/, "");
+  return new WebdavError(`${message} (${formatBytes(sent)} of ${formatBytes(total)} sent).`, error.status, {
+    ...(error.cause === undefined ? {} : { cause: error.cause }),
+    ...(error.context === undefined ? {} : { context: error.context }),
+    retryable: error.retryable,
+    ...(error.causeCode === undefined ? {} : { causeCode: error.causeCode })
+  });
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function parseMtime(value: string | undefined): number {
@@ -156,20 +291,48 @@ export function createWebdavSession(config: WebdavConfig): WebdavSession {
 
   const fileUrl = (name: string): string => `${folderUrl}/${encodeURIComponent(name)}`;
 
-  const request = async (url: string, init: RequestInit, context: string, timeoutMs = CONTROL_TIMEOUT_MS): Promise<Response> => {
-    try {
-      return await fetch(url, {
-        ...init,
-        signal: AbortSignal.timeout(timeoutMs),
-        redirect: "manual",
-        headers: {
-          Authorization: authorization,
-          "User-Agent": `${USER_AGENT}`,
-          ...(init.headers as Record<string, string> | undefined)
+  const request = async (
+    url: string,
+    init: RequestInit,
+    context: string,
+    timeoutMs = CONTROL_TIMEOUT_MS,
+    options: { retry?: boolean } = {}
+  ): Promise<Response> => {
+    // Bodyless and string-bodied requests can be replayed; a streamed PUT cannot,
+    // so putFile opts out and retries by rebuilding its body.
+    const attempts = options.retry === false ? 1 : 2;
+    for (let attempt = 1; ; attempt += 1) {
+      const startedAt = Date.now();
+      try {
+        return await fetch(url, {
+          ...init,
+          // A fresh signal per attempt: a retry must not inherit the previous deadline.
+          signal: AbortSignal.timeout(timeoutMs),
+          redirect: "manual",
+          headers: {
+            Authorization: authorization,
+            "User-Agent": `${USER_AGENT}`,
+            ...(init.headers as Record<string, string> | undefined)
+          }
+        });
+      } catch (error) {
+        const cause = transportCause(error);
+        const retryable = cause.code !== undefined && RETRYABLE_CODES.has(cause.code);
+        if (retryable && attempt < attempts) {
+          await delay(RETRY_DELAY_MS);
+          continue;
         }
-      });
-    } catch (error) {
-      throw new WebdavError(describeTransportError(error, host));
+        throw new WebdavError(
+          describeTransportError(error, host, context, Date.now() - startedAt),
+          undefined,
+          {
+            cause: error,
+            context,
+            retryable,
+            ...(cause.code === undefined ? {} : { causeCode: cause.code })
+          }
+        );
+      }
     }
   };
 
@@ -257,20 +420,46 @@ export function createWebdavSession(config: WebdavConfig): WebdavSession {
   const putFile = async (localPath: string, remoteName: string, onBytes?: (sent: number, total: number) => void): Promise<void> => {
     const info = await fsp.stat(localPath);
     const url = fileUrl(remoteName);
-    const body = await openBody(localPath, info.size, onBytes);
-    try {
-      const response = await request(url, {
-        method: "PUT",
-        body: body.value,
-        headers: { "Content-Type": "application/octet-stream", "Content-Length": String(info.size) },
-        // Only needed for the streaming body; harmless otherwise.
-        ...(body.duplex ? { duplex: "half" } : {})
-      } as RequestInit, `uploading ${remoteName}`, TRANSFER_TIMEOUT_MS);
-      await assertOk(response, `uploading ${remoteName}`);
-      await response.arrayBuffer().catch(() => undefined);
-    } finally {
-      // A failed or aborted PUT must not leave the file handle open.
-      body.dispose?.();
+    const context = `uploading ${remoteName}`;
+    // Furthest byte count across attempts, so the error describes how far the
+    // transfer actually got rather than the last (possibly instant) failure.
+    let furthestSent = 0;
+    // A dropped connection must not lose a long upload: rebuild the stream and
+    // send it once more. The remote name is stable, so a retry overwrites the
+    // partial file instead of leaving a second copy behind.
+    for (let attempt = 1; ; attempt += 1) {
+      let sent = 0;
+      const body = await openBody(localPath, info.size, onBytes
+        ? (bytes, total) => {
+            sent = bytes;
+            onBytes(bytes, total);
+          }
+        : undefined);
+      try {
+        const response = await request(url, {
+          method: "PUT",
+          body: body.value,
+          headers: { "Content-Type": "application/octet-stream", "Content-Length": String(info.size) },
+          // Only needed for the streaming body; harmless otherwise.
+          ...(body.duplex ? { duplex: "half" } : {})
+        } as RequestInit, context, TRANSFER_TIMEOUT_MS, { retry: false });
+        await assertOk(response, context);
+        await response.arrayBuffer().catch(() => undefined);
+        return;
+      } catch (error) {
+        furthestSent = Math.max(furthestSent, sent);
+        const retryable = error instanceof WebdavError && error.retryable;
+        if (retryable && attempt === 1) {
+          onBytes?.(0, info.size);
+          await delay(RETRY_DELAY_MS);
+          continue;
+        }
+        if (error instanceof WebdavError && furthestSent > 0) throw withTransferProgress(error, furthestSent, info.size);
+        throw error;
+      } finally {
+        // A failed or aborted PUT must not leave the file handle open.
+        body.dispose?.();
+      }
     }
   };
 
