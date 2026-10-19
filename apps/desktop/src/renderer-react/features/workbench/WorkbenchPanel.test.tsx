@@ -2462,6 +2462,92 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".wb-terminal-project-switcher")).not.toBeNull();
   });
 
+  it("cds the project chip to the worktree checkout the terminal scope selected", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    // The native checkout menu answers with the id of the picked row, so the
+    // test can drive the same selector a person uses over the terminal tabs.
+    let menuItems: Array<{ id?: string; label?: string }> = [];
+    const contextMenuShow = vi.fn(async (args: { items: Array<{ id?: string; label?: string }> }): Promise<string | null> => {
+      menuItems = args.items;
+      return menuItems.find((item) => item.label?.includes("feat/review"))?.id ?? null;
+    });
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES,
+        "desktop.workbench.sessionTarget": "New sessions start in: {0}",
+        "desktop.workbench.sharedWorkspace": "shared workspace",
+        "desktop.workbench.terminalSwitchProject": "Switch project",
+        "desktop.workbench.terminalCdProject": "cd to {0}",
+        "desktop.workbench.terminalCdSharedWorkspace": "Shared workspace",
+        "desktop.workbench.terminalCdActionTitle": "Run cd to {0} in terminal",
+        "desktop.workbench.worktreeSelect": "Worktree checkout",
+        "desktop.workbench.worktreeMainCheckout": "Main checkout",
+        "desktop.workbench.worktreePin": "Pin this panel to a checkout",
+        "desktop.workbench.worktreeUnpin": "Unpin"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListTasks: async () => [],
+      notesEnsureTaskWorkspace: async () => ({ dir: WORKSPACE_CWD }),
+      notesTaskWorkspace: async () => ({ dir: WORKSPACE_CWD, exists: true }),
+      notesGetWorktreeSettings: async () => ({ enabled: false, baseBranch: {}, dismissed: { "/wt/app-review": 1 } }),
+      workbenchListWorktrees: async () => ({
+        root: "/wt",
+        repos: [{
+          repoRoot: "/work/app",
+          label: "app",
+          exists: true,
+          isGitRepo: true,
+          baseBranch: "main",
+          worktrees: [
+            { path: "/work/app", branch: "main", head: "aaa1111", detached: false, bare: false, locked: false, prunable: false, isMain: true, missing: false, merged: false, createdAtMs: null },
+            { path: "/wt/app-review", branch: "feat/review", head: "bbb2222", detached: false, bare: false, locked: false, prunable: false, isMain: false, missing: false, merged: false, createdAtMs: 1 }
+          ]
+        }]
+      }),
+      contextMenuShow,
+      createScratchDir: async () => "/scratch/work",
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateTaskDirectory("/work/app", { noteId: "wi-multi", projects: ["/work/app", "/work/api"] });
+    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-project-switcher")).not.toBeNull());
+
+    // With the repository at its main checkout the chip is a plain cd: no
+    // worktree badge, main path in the tooltip.
+    const appChip = screen.getByRole("button", { name: "cd to app" });
+    expect(appChip.querySelector(".wb-terminal-project-chip-worktree")).toBeNull();
+    expect(appChip.getAttribute("title")).toContain("/work/app");
+
+    // Select the worktree for the terminal scope — the same selector that sits
+    // beside the New terminal button.
+    fireEvent.click(document.querySelector<HTMLElement>(".wb-terminal-tabs.is-terminal-group .wb-worktree-select")!);
+    await waitFor(() => expect(contextMenuShow).toHaveBeenCalled());
+    await waitFor(() => expect(appChip.querySelector(".wb-terminal-project-chip-worktree")?.textContent).toBe("⌥ feat/review"));
+    expect(appChip.getAttribute("title")).toContain("/wt/app-review");
+
+    // The chip follows the selection: cd lands in the worktree checkout, not
+    // the main one.
+    fireEvent.click(appChip);
+    await waitFor(() => expect(terminalInput).toHaveBeenLastCalledWith({ id: 1, data: "cd '/wt/app-review'\r" }));
+  });
+
   it("pastes composer text into the TUI without submitting and logs a user send", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
