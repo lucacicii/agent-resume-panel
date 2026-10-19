@@ -192,8 +192,9 @@
 
   /* Recessed tab-group track: a top inner shadow for the well and a bottom
      highlight where the well meets the strip surface. */
-  --wb-tab-track-inset: inset 0 1px 3px rgba(0, 0, 0, 0.18);
-  --wb-tab-track-edge: inset 0 -0.5px 0 rgba(255, 255, 255, 0.7);
+  --wb-tab-track-base: rgba(0, 0, 0, 0.1);
+  --wb-tab-track-inset: inset 0 2px 4px rgba(0, 0, 0, 0.22);
+  --wb-tab-track-edge: inset 0 -1px 0 rgba(255, 255, 255, 0.85);
 
   /* Workbench git graph lanes */
   --wb-git-lane-0: #007aff;
@@ -259,8 +260,9 @@
   --shadow-segment-thumb: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
   --wb-terminal-surface: rgba(245, 245, 247, 0.88);
   --wb-terminal-tab-active-label: rgba(0, 0, 0, 0.88);
-  --wb-tab-track-inset: inset 0 1px 3px rgba(0, 0, 0, 0.18);
-  --wb-tab-track-edge: inset 0 -0.5px 0 rgba(255, 255, 255, 0.7);
+  --wb-tab-track-base: rgba(0, 0, 0, 0.1);
+  --wb-tab-track-inset: inset 0 2px 4px rgba(0, 0, 0, 0.22);
+  --wb-tab-track-edge: inset 0 -1px 0 rgba(255, 255, 255, 0.85);
 
   /* Markdown Typography & Element Colors (Light Mode) */
   --color-md-h1: #111827;
@@ -329,8 +331,9 @@
   --shadow-segment-thumb: 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
   --wb-terminal-surface: rgba(30, 30, 30, 0.88);
   --wb-terminal-tab-active-label: rgba(255, 255, 255, 0.88);
-  --wb-tab-track-inset: inset 0 1px 4px rgba(0, 0, 0, 0.55);
-  --wb-tab-track-edge: inset 0 -0.5px 0 rgba(255, 255, 255, 0.1);
+  --wb-tab-track-base: rgba(0, 0, 0, 0.38);
+  --wb-tab-track-inset: inset 0 2px 5px rgba(0, 0, 0, 0.65);
+  --wb-tab-track-edge: inset 0 -1px 0 rgba(255, 255, 255, 0.12);
 
   /* Markdown Typography & Element Colors (Dark Mode) */
   --color-md-h1: #ffffff;
@@ -480,8 +483,9 @@ html[data-theme="dark"][data-task-accent] {
     --shadow-segment-thumb: 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
     --wb-terminal-surface: rgba(30, 30, 30, 0.88);
     --wb-terminal-tab-active-label: rgba(255, 255, 255, 0.88);
-    --wb-tab-track-inset: inset 0 1px 4px rgba(0, 0, 0, 0.55);
-    --wb-tab-track-edge: inset 0 -0.5px 0 rgba(255, 255, 255, 0.1);
+    --wb-tab-track-base: rgba(0, 0, 0, 0.38);
+    --wb-tab-track-inset: inset 0 2px 5px rgba(0, 0, 0, 0.65);
+    --wb-tab-track-edge: inset 0 -1px 0 rgba(255, 255, 255, 0.12);
 
     /* Markdown Typography & Element Colors (Dark Mode system preference) */
     --color-md-h1: #ffffff;
@@ -9181,7 +9185,7 @@ body.is-pane-resizing-v * {
   padding: 3px;
   border-bottom: none;
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--wb-tab-accent) 14%, var(--color-fill-secondary));
+  background: color-mix(in srgb, var(--wb-tab-accent) 16%, var(--wb-tab-track-base));
   box-shadow: var(--wb-tab-track-inset),
               var(--wb-tab-track-edge),
               inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 30%, transparent);
@@ -9236,7 +9240,7 @@ body.is-pane-resizing-v * {
 /* The well holding the active pane gains tint; the depth shadows stay so the
    group keeps reading as inset. The label itself stays flat. */
 .wb-terminal-tabs:has(.wb-terminal-tab.active) {
-  background: color-mix(in srgb, var(--wb-tab-accent) 22%, var(--color-fill-secondary));
+  background: color-mix(in srgb, var(--wb-tab-accent) 22%, var(--wb-tab-track-base));
   box-shadow: var(--wb-tab-track-inset),
               var(--wb-tab-track-edge),
               inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 42%, transparent);
@@ -9313,7 +9317,7 @@ body.is-pane-resizing-v * {
   left: 0;
   height: 100%;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--wb-tab-accent) 26%, var(--color-control-bg));
+  background: color-mix(in srgb, var(--wb-tab-accent) 10%, var(--color-control-bg));
   box-shadow: var(--shadow-segment-thumb),
               inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 40%, transparent);
   pointer-events: none;
