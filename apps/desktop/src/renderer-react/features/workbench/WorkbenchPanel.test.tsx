@@ -4511,6 +4511,9 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelectorAll('[data-pane-group="terminal"] .wb-terminal-tab')).toHaveLength(1);
     expect(document.querySelectorAll('[data-pane-group="session"] .wb-terminal-tab')).toHaveLength(0);
     expect(document.querySelector('[data-pane-group="code"]')).toBeNull();
+    // Counts ride inside the group capsules; an empty group has no number to show.
+    expect(document.querySelector('[data-pane-group="terminal"] .wb-pane-tab-group-count')?.textContent).toBe("1");
+    expect(document.querySelector('[data-pane-group="session"] .wb-pane-tab-group-count')).toBeNull();
 
     fireEvent.click(newSessionButton);
     await waitFor(() => expect(newSessionButton.disabled).toBe(true));
@@ -4526,6 +4529,7 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
     expect(document.querySelectorAll('[data-pane-group="terminal"] .wb-terminal-tab')).toHaveLength(1);
     expect(document.querySelectorAll('[data-pane-group="session"] .wb-terminal-tab')).toHaveLength(1);
+    expect(document.querySelector('[data-pane-group="session"] .wb-pane-tab-group-count')?.textContent).toBe("1");
   });
 
   it("asks for a CLI or ACP target when the default new-session target is empty", async () => {
