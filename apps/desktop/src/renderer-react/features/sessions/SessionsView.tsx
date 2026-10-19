@@ -162,7 +162,7 @@ export function SessionsView({ active }: { active: boolean }): React.JSX.Element
           ? desktopApi().listSessionGtdStatuses()
           : Promise.resolve({} as Record<string, GtdStatus>),
         typeof desktopApi().notesListTasks === "function"
-          ? desktopApi().notesListTasks()
+          ? desktopApi().notesListTasks({ includeArchived: false })
           : Promise.resolve([] as Array<Parameters<typeof taskFromRecord>[0]>)
       ]);
       if (nextFacets) setFacets(nextFacets);

@@ -7639,8 +7639,25 @@ describe("WorkbenchPanel", () => {
     host.id = "react-workbench";
     document.body.append(host);
     let openCommands: () => void = () => undefined;
-    const onOpenTask = vi.fn();
-    window.addEventListener("agent-resume:view-open-task", onOpenTask);
+    const taskWindowOpen = vi.fn(async () => ({ ok: true, created: true, limit: 8 }));
+    const listTaskWorkbenches = vi.fn(async ({ taskNoteId }: { taskNoteId: string }) => [{
+      workbenchId: `wb-${taskNoteId}`,
+      taskNoteId,
+      name: "",
+      projectPath: null,
+      position: 0,
+      layoutJson: null,
+      createdAtMs: 1,
+      updatedAtMs: 1
+    }]);
+    const notesListTasks = vi.fn(async (options?: { includeArchived?: boolean }) => [
+      {
+        noteId: "task-1", title: "Ship palette", filename: "ship-palette.md", gtdStatus: "next", updatedAtMs: 2,
+        work: { next: "Cut release", sessions: ["codex:session-1"], projects: ["/work/app"], primaryProject: "/work/app" }
+      },
+      { noteId: "task-2", title: "Fix board", filename: "fix-board.md", gtdStatus: "inbox", updatedAtMs: 1, work: { sessions: [] } },
+      { noteId: "task-archived", title: "Old board", filename: "old-board.md", gtdStatus: "done", updatedAtMs: 0, archivedAtMs: 1, work: { sessions: [] } }
+    ].filter((record) => options?.includeArchived !== false || record.archivedAtMs === undefined));
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.workbench.quickAccessDialog": "Quick Access",
@@ -7664,13 +7681,10 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [],
-      notesListTasks: async () => [
-        {
-          noteId: "task-1", title: "Ship palette", filename: "ship-palette.md", gtdStatus: "next", updatedAtMs: 2,
-          work: { next: "Cut release", sessions: ["codex:session-1"], projects: ["/work/app"], primaryProject: "/work/app" }
-        },
-        { noteId: "task-2", title: "Fix board", filename: "fix-board.md", gtdStatus: "inbox", updatedAtMs: 1, work: { sessions: [] } }
-      ],
+      notesListTasks,
+      ensureTaskWorkbench: async () => ({ ok: true }),
+      listTaskWorkbenches,
+      taskWindowOpen
     } as unknown as typeof window.agentResume;
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
@@ -7681,15 +7695,20 @@ describe("WorkbenchPanel", () => {
     expect(await screen.findByRole("option", { name: /Ship palette/ })).toBeTruthy();
     expect(screen.getByText("Tasks")).toBeTruthy();
     expect(screen.getByText("Next: Cut release")).toBeTruthy();
+    // Archived tasks are not palette targets.
+    expect(notesListTasks).toHaveBeenCalledWith({ includeArchived: false });
+    expect(screen.queryByRole("option", { name: /Old board/ })).toBeNull();
 
     fireEvent.change(input, { target: { value: ">board" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(onOpenTask).toHaveBeenCalledWith(expect.objectContaining({
-      detail: expect.objectContaining({ noteId: "task-2", title: "Fix board" })
+    // The window owns one workbench, so switching tasks opens the target's window.
+    await waitFor(() => expect(taskWindowOpen).toHaveBeenCalledWith({
+      noteId: "task-2",
+      workbenchId: "wb-task-2",
+      title: "Fix board"
     }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Quick Access" })).toBeNull());
-    window.removeEventListener("agent-resume:view-open-task", onOpenTask);
   });
 
   it("shows the live status on a session tab", async () => {
