@@ -6026,7 +6026,6 @@ body.is-pane-resizing-v * {
 /* Panes inherit the detail surface instead of stacking their own tints, so the
    terminal, editor, diff, split transcript, and tab strips stay translucent. */
 .wb-detail .wb-pane-tab-groups,
-.wb-detail .wb-terminal-tabs,
 .wb-detail .wb-terminal-host,
 .wb-detail .wb-terminal-loading,
 .wb-detail .wb-editor-pane,
@@ -9157,19 +9156,27 @@ body.is-pane-resizing-v * {
   display: none;
 }
 
-/* Each group is a color-coded capsule plus its pill tabs. */
+/* Each group is one hue-tinted capsule holding its action label, optional
+   worktree control, and tabs. The active tab is the only pill inside it. */
 .wb-terminal-tabs {
+  --wb-tab-accent: var(--color-label-secondary);
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  min-height: 32px;
-  height: 32px;
-  padding: 0;
+  min-height: 28px;
+  height: 28px;
+  padding: 2px;
   border-bottom: none;
-  background: transparent;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--wb-tab-accent) 10%, transparent);
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 22%, transparent);
+  overflow: hidden;
   flex-shrink: 0;
+  transition: background var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
 }
 
+/* Flat inside the capsule; hover still paints a pill around the action. */
 .wb-terminal-tabs .wb-pane-tab-group-label {
   display: inline-flex;
   align-items: center;
@@ -9181,7 +9188,7 @@ body.is-pane-resizing-v * {
   padding: 0 var(--space-1-5);
   border: none;
   border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--wb-tab-accent) 12%, transparent);
+  background: transparent;
   color: color-mix(in srgb, var(--wb-tab-accent) 82%, var(--color-label-primary));
   font-size: var(--font-size-micro);
   font-weight: var(--font-weight-medium);
@@ -9211,10 +9218,11 @@ body.is-pane-resizing-v * {
   --wb-tab-accent: var(--color-teal);
 }
 
-/* The group holding the active pane wears the stronger capsule. */
-.wb-terminal-tabs:has(.wb-terminal-tab.active) > .wb-pane-tab-group-label {
-  background: color-mix(in srgb, var(--wb-tab-accent) 20%, transparent);
-  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 38%, transparent);
+/* The capsule holding the active pane gains tint and a stronger hairline;
+   the label itself stays flat so only the thumb is a pill. */
+.wb-terminal-tabs:has(.wb-terminal-tab.active) {
+  background: color-mix(in srgb, var(--wb-tab-accent) 16%, transparent);
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 34%, transparent);
 }
 
 .wb-pane-tab-group-count {
@@ -9259,9 +9267,21 @@ body.is-pane-resizing-v * {
   gap: var(--space-0-5);
   flex: 1 1 auto;
   min-width: 0;
-  height: 32px;
+  height: 100%;
+  padding-left: var(--space-1);
   overflow-x: auto;
   scrollbar-width: none;
+}
+
+/* Only a list that actually has tabs gets the action/tab divider. The inset
+   shadow stays out of layout, so offsetLeft keeps the same origin. */
+.wb-terminal-tabs-list:has(> .wb-terminal-tab) {
+  box-shadow: inset 0.5px 0 0 color-mix(in srgb, var(--wb-tab-accent) 24%, transparent);
+}
+
+/* An empty list would leave a dangling flex gap at the capsule's right end. */
+.wb-terminal-tabs-list:empty {
+  display: none;
 }
 
 .wb-terminal-tabs-list::-webkit-scrollbar {
@@ -9272,12 +9292,12 @@ body.is-pane-resizing-v * {
    the scroller, so it moves with the content without a scroll listener. */
 .wb-pane-tab-thumb {
   position: absolute;
-  top: var(--space-0-5);
+  top: 0;
   left: 0;
-  height: 28px;
+  height: 100%;
   border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--wb-tab-accent) 18%, transparent);
-  box-shadow: var(--shadow-segment-thumb), inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--wb-tab-accent) 26%, transparent);
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 45%, transparent);
   pointer-events: none;
   z-index: 0;
   will-change: transform;
@@ -9285,6 +9305,7 @@ body.is-pane-resizing-v * {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .wb-terminal-tabs,
   .wb-pane-tab-thumb,
   .wb-terminal-tab,
   button.wb-pane-tab-group-label {
@@ -9320,7 +9341,7 @@ button.wb-pane-tab-group-label {
 }
 
 button.wb-pane-tab-group-label:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--wb-tab-accent) 20%, transparent);
+  background: color-mix(in srgb, var(--wb-tab-accent) 14%, transparent);
   color: color-mix(in srgb, var(--wb-tab-accent) 82%, var(--color-label-primary));
 }
 
@@ -9339,7 +9360,7 @@ button.wb-pane-tab-group-label.is-busy {
   min-width: 0;
   width: max-content;
   max-width: 200px;
-  height: calc(100% - var(--space-1));
+  height: 100%;
   border-radius: var(--radius-full);
   background: transparent;
   border-right: none;
@@ -9461,6 +9482,14 @@ button.wb-pane-tab-group-label.is-busy {
 .wb-terminal-tab.active .wb-terminal-tab-close:hover,
 .wb-terminal-tab.active .wb-terminal-tab-close:focus-visible {
   color: var(--wb-terminal-tab-active-label);
+}
+
+/* The capsule clips outer rings, and the local button reset already drops the
+   global one; give the close action its own inset ring and reveal it on focus. */
+.wb-terminal-tabs .wb-terminal-tab-close:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow: inset 0 0 0 2px var(--color-focus-ring);
 }
 
 .wb-terminal-tab-close svg {
