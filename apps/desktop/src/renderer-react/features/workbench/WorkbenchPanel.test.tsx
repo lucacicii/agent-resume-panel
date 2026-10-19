@@ -2354,6 +2354,114 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector<HTMLElement>(".wb-terminal-host")?.classList.contains("is-session")).toBe(false);
   });
 
+  it("shows the floating project cd switcher on a shell terminal opened in a multi-repo task workspace", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const ensureWorkspace = vi.fn(async () => ({ dir: WORKSPACE_CWD }));
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES,
+        "desktop.workbench.sessionTarget": "New sessions start in: {0}",
+        "desktop.workbench.sharedWorkspace": "shared workspace",
+        "desktop.workbench.terminalSwitchProject": "Switch project",
+        "desktop.workbench.terminalCdProject": "cd to {0}",
+        "desktop.workbench.terminalCdSharedWorkspace": "Shared workspace",
+        "desktop.workbench.terminalCdActionTitle": "Run cd to {0} in terminal"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListTasks: async () => [],
+      notesEnsureTaskWorkspace: ensureWorkspace,
+      notesTaskWorkspace: async () => ({ dir: WORKSPACE_CWD, exists: true }),
+      createScratchDir: async () => "/scratch/work",
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateTaskDirectory("/work/app", { noteId: "wi-multi", projects: ["/work/app", "/work/api"] });
+
+    // New terminal with no explicit target: a multi-repo task starts it in the
+    // shared workspace so the cd switcher can reach every repository.
+    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    await waitFor(() => expect(ensureWorkspace).toHaveBeenCalledWith({ noteId: "wi-multi" }));
+
+    const switcher = document.querySelector(".wb-terminal-project-switcher");
+    expect(switcher).not.toBeNull();
+    // One chip per referenced repository, plus the way back to the workspace.
+    expect(screen.getByRole("button", { name: "cd to app" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "cd to api" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "cd to Shared workspace" })).toBeTruthy();
+    expect(terminalInput).not.toHaveBeenCalled();
+  });
+
+  it("cds the shared-workspace terminal to a project when its chip is clicked", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES,
+        "desktop.workbench.sessionTarget": "New sessions start in: {0}",
+        "desktop.workbench.sharedWorkspace": "shared workspace",
+        "desktop.workbench.terminalSwitchProject": "Switch project",
+        "desktop.workbench.terminalCdProject": "cd to {0}",
+        "desktop.workbench.terminalCdSharedWorkspace": "Shared workspace",
+        "desktop.workbench.terminalCdActionTitle": "Run cd to {0} in terminal"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListTasks: async () => [],
+      notesEnsureTaskWorkspace: async () => ({ dir: WORKSPACE_CWD }),
+      notesTaskWorkspace: async () => ({ dir: WORKSPACE_CWD, exists: true }),
+      createScratchDir: async () => "/scratch/work",
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateTaskDirectory("/work/app", { noteId: "wi-multi", projects: ["/work/app", "/work/api"] });
+    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-project-switcher")).not.toBeNull());
+
+    // The chip writes a quoted `cd` + Enter to the PTY: the shell lands in the
+    // repository without the user typing a path. The pane stays put — the
+    // switcher is shell navigation, not a panel selection change.
+    fireEvent.click(screen.getByRole("button", { name: "cd to api" }));
+    await waitFor(() => expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "cd '/work/api'\r" }));
+
+    // And the workspace chip returns the shell to the neutral workspace.
+    fireEvent.click(screen.getByRole("button", { name: "cd to Shared workspace" }));
+    await waitFor(() => expect(terminalInput).toHaveBeenLastCalledWith({ id: 1, data: `cd '${WORKSPACE_CWD}'\r` }));
+    // The switcher itself never vanished: the pane kept its workspace scope.
+    expect(document.querySelector(".wb-terminal-project-switcher")).not.toBeNull();
+  });
+
   it("pastes composer text into the TUI without submitting and logs a user send", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

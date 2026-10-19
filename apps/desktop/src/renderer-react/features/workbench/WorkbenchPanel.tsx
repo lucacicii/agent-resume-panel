@@ -783,6 +783,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [terminals, setTerminals] = useState<TerminalPane[]>([]);
   const [pendingSessions, setPendingSessions] = useState<PendingWorkbenchSession[]>([]);
   const [terminalCreating, setTerminalCreating] = useState(false);
+  /** Last `cd` target per shell pane, for the project switcher's highlight. */
+  const [terminalCdTargets, setTerminalCdTargets] = useState<Record<string, string>>({});
   const [editors, setEditors] = useState<EditorPane[]>([]);
   const [imagePreview, setImagePreview, imagePreviewClosing] = useOverlayState<string>();
   const [diffs, setDiffs] = useState<DiffPane[]>([]);
@@ -3272,7 +3274,10 @@ export function WorkbenchPanel(): ReactPortal | null {
       // Where the terminal scope points decides this, so ⌘T lands in the checkout
       // you are working in rather than always in the main one.
       const cwd = worktreesRef.current.rootFor("terminal", base);
-      if (!selectedProject) selectProject(cwd);
+      // A pane is only visible under its own project scope: when the new terminal
+      // starts somewhere else than the current selection (the shared workspace of
+      // a multi-repo task), the selection follows or the pane lands hidden.
+      if (!selectedProject || projectPathKey(cwd) !== projectPathKey(selectedProject)) selectProject(cwd);
       addTerminal(t("desktop.workbench.terminalLabel", currentShellTerminals.length + 1), cwd, undefined, cwd);
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { setTerminalCreating(false); }
@@ -7204,21 +7209,21 @@ export function WorkbenchPanel(): ReactPortal | null {
               const targetCwd = worktrees.rootFor("terminal", targetPath) || targetPath;
               void desktopApi().terminalInput({ id: pane.ptyId, data: `cd ${shellQuotePath(targetCwd)}\r` });
               onTerminalInput(pane.key);
+              setTerminalCdTargets((current) => ({ ...current, [pane.key]: targetPath }));
               window.requestAnimationFrame(() => {
                 terminalRefs.current.get(pane.ptyId!)?.focus();
               });
             };
 
             const handleCdToProject = (projectPath: string) => {
+              // A pure shell `cd`: the pane stays scoped to the workspace it was
+              // opened in, so moving the panel selection here would just hide it.
               cdTerminalTo(projectPath);
-              setSessionTarget(projectPath);
-              selectProject(projectPath, { keepSessionKey: true, keepSide: true });
             };
 
             const handleCdToSharedWorkspace = () => {
               if (!taskWorkspaceDir) return;
               cdTerminalTo(taskWorkspaceDir);
-              setSessionTarget(null);
             };
 
             return (
@@ -7236,12 +7241,12 @@ export function WorkbenchPanel(): ReactPortal | null {
                             const label = aliases[path] || basename(path);
                             const targetCwd = worktrees.rootFor("terminal", path) || path;
                             const checkout = worktrees.checkouts.find((option) => !option.isMain && projectPathKey(option.path) === projectPathKey(targetCwd));
-                            const isActiveProject = sessionTarget && projectPathKey(sessionTarget) === projectPathKey(path);
+                            const isCdTarget = projectPathKey(terminalCdTargets[pane.key] || "") === projectPathKey(path);
                             return (
                               <button
                                 key={path}
                                 type="button"
-                                className={`wb-terminal-project-chip${isActiveProject ? " is-active" : ""}`}
+                                className={`wb-terminal-project-chip${isCdTarget ? " is-active" : ""}`}
                                 title={`${t("desktop.workbench.terminalCdActionTitle", label)} (${targetCwd})`}
                                 aria-label={t("desktop.workbench.terminalCdProject", label)}
                                 onClick={() => handleCdToProject(path)}
@@ -7254,7 +7259,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                           {taskWorkspaceDir ? (
                             <button
                               type="button"
-                              className={`wb-terminal-project-chip is-workspace${!sessionTarget ? " is-active" : ""}`}
+                              className={`wb-terminal-project-chip is-workspace${projectPathKey(terminalCdTargets[pane.key] || "") === projectPathKey(taskWorkspaceDir) ? " is-active" : ""}`}
                               title={`${t("desktop.workbench.terminalCdActionTitle", t("desktop.workbench.terminalCdSharedWorkspace"))} (${taskWorkspaceDir})`}
                               aria-label={t("desktop.workbench.terminalCdProject", t("desktop.workbench.terminalCdSharedWorkspace"))}
                               onClick={handleCdToSharedWorkspace}
