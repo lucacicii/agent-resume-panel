@@ -6,8 +6,12 @@ import * as http from "node:http";
 import type { AddressInfo } from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { XMLValidator } from "fast-xml-parser";
+
+// The export path records non-fatal failures; keep the suite from writing into
+// the developer's real ~/.agent-resume-panel log.
+vi.mock("./appErrorLog", () => ({ recordAppError: vi.fn(async () => undefined) }));
 import {
   getMachineId,
   NotesStore,
@@ -64,12 +68,12 @@ function encodePath(value: string): string {
   return value.split("/").map((segment) => encodeURIComponent(segment)).join("/");
 }
 
-async function startDav(): Promise<FakeDav> {
+async function startDav(options: { failPropfind?: boolean } = {}): Promise<FakeDav> {
   const entries = new Map<string, StoredEntry>([
     ["/", { body: Buffer.alloc(0), mtimeMs: Date.now(), isCollection: true }]
   ]);
   const methods: string[] = [];
-  const state = { supportsRange: true };
+  const state = { supportsRange: true, failPropfind: options.failPropfind === true };
 
   const server = http.createServer((request, response) => {
     methods.push(request.method ?? "");
@@ -120,6 +124,11 @@ async function startDav(): Promise<FakeDav> {
           return;
         }
         case "PROPFIND": {
+          // Simulates the connection dying on the post-upload cleanup listing.
+          if (state.failPropfind) {
+            request.socket.destroy();
+            return;
+          }
           if (!target?.isCollection) {
             response.writeHead(404).end();
             return;
@@ -358,6 +367,22 @@ describe("WebDAV managed backups", () => {
     await expect(fs.readFile(path.join(target.panelHome!, ".desktop", "workspaces", "task-1", "AGENTS.md"), "utf8")).resolves.toBe("address table");
     // Worktrees are machine-local runtime state and never travel.
     await expect(fs.access(path.join(target.panelHome!, ".desktop", "workspaces", "task-1", ".worktrees", "checkout", "big.bin"))).rejects.toMatchObject({ code: "ENOENT" });
+  }, 60_000);
+
+  it("keeps a saved backup when the post-upload cleanup fails", async () => {
+    const dav = await startDav({ failPropfind: true });
+    const source = await makeHome();
+    await preparePanelDatabases(source);
+
+    // Pruning runs after the ZIP is published; its listing resets here. The
+    // export already succeeded, so the failure must not surface as an error.
+    const exported = await exportStoredBackup(context(source, dav), "webdav", "test", {
+      includeNativeConversations: false
+    });
+
+    expect(exported.storedItem?.fileName).toMatch(/^agent-resume-.*\.zip$/);
+    const saved = [...dav.entries.keys()].filter((key) => key.endsWith(".zip"));
+    expect(saved).toHaveLength(1);
   }, 60_000);
 
   it("never writes API keys into the archive and keeps local ones on restore", async () => {

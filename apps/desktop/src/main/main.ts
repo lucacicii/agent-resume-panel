@@ -2609,18 +2609,33 @@ function registerIpc(): void {
     "backup:export",
     async (event, args?: { target?: unknown; includeNativeConversations?: unknown }) => {
       const target = backupTarget(args?.target);
+      let lastProgress: import("./backupService").BackupProgressEvent | undefined;
       const options = {
         includeNativeConversations: args?.includeNativeConversations !== false,
-        onProgress: backupProgress(event)
+        onProgress: (progress: import("./backupService").BackupProgressEvent) => {
+          lastProgress = progress;
+          backupProgress(event)(progress);
+        }
       };
       const ctx = await backupContext();
-      if (target !== "local-file") return exportStoredBackup(ctx, target, getAppVersion(), options);
-      const selected = await dialog.showSaveDialog({
-        defaultPath: `agent-resume-backup-${new Date().toISOString().slice(0, 10)}.zip`,
-        filters: [{ name: "Agent Resume backup", extensions: ["zip"] }]
-      });
-      if (selected.canceled || !selected.filePath) return { canceled: true };
-      return exportBackup(ctx.settings, selected.filePath, getAppVersion(), options);
+      try {
+        if (target !== "local-file") return await exportStoredBackup(ctx, target, getAppVersion(), options);
+        const selected = await dialog.showSaveDialog({
+          defaultPath: `agent-resume-backup-${new Date().toISOString().slice(0, 10)}.zip`,
+          filters: [{ name: "Agent Resume backup", extensions: ["zip"] }]
+        });
+        if (selected.canceled || !selected.filePath) return { canceled: true };
+        return await exportBackup(ctx.settings, selected.filePath, getAppVersion(), options);
+      } catch (error) {
+        // Keep the failure diagnosable: the renderer only receives the message.
+        void recordAppError({
+          source: "backup",
+          message: error instanceof Error ? error.message : String(error),
+          detail: `target=${target} phase=${lastProgress?.phase ?? "none"} percent=${lastProgress?.percent ?? 0} context=${(error as { context?: string }).context ?? "unknown"}`,
+          error
+        });
+        throw error;
+      }
     }
   );
 
