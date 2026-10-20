@@ -87,6 +87,55 @@ describe("AppSidebar", () => {
     await waitFor(() => expect(glide!.style.opacity).toBe("0"));
   });
 
+  it("places the highlight on first hover and glides it between rows", async () => {
+    renderSidebar({ view: "gtd" });
+    const notesRow = await screen.findByRole("button", { name: "Notes" });
+    const glide = document.querySelector<HTMLElement>(".app-sidebar-glide");
+    expect(glide).toBeTruthy();
+
+    // A hidden pill is placed at the row, not glided there.
+    fireEvent.pointerEnter(notesRow);
+    await waitFor(() => expect(glide!.style.opacity).toBe("1"));
+    expect(glide!.classList.contains("is-gliding")).toBe(false);
+
+    // Once on screen it travels to the next row.
+    fireEvent.pointerEnter(screen.getByRole("button", { name: "Schedule" }));
+    await waitFor(() => expect(glide!.classList.contains("is-gliding")).toBe(true));
+  });
+
+  it("fades the highlight out in place when the pointer leaves the nav", async () => {
+    renderSidebar({ view: "gtd" });
+
+    // jsdom does not lay out, so the rows need offsets for the pill to have a
+    // position to keep.
+    const rows = Array.from(document.querySelectorAll<HTMLElement>(".app-sidebar-row"));
+    const topDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetTop");
+    const heightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+    Object.defineProperty(HTMLElement.prototype, "offsetTop", {
+      configurable: true,
+      get(this: HTMLElement) {
+        const index = rows.indexOf(this);
+        return index < 0 ? 0 : index * 33;
+      }
+    });
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => 32 });
+
+    try {
+      const glide = document.querySelector<HTMLElement>(".app-sidebar-glide")!;
+      fireEvent.pointerEnter(screen.getByRole("button", { name: "Notes" }));
+      await waitFor(() => expect(glide.style.opacity).toBe("1"));
+      expect(glide.style.top).toBe("33px");
+
+      fireEvent.pointerLeave(document.querySelector(".app-sidebar-nav")!);
+      await waitFor(() => expect(glide.style.opacity).toBe("0"));
+      // The pill keeps its last position instead of retreating to the origin.
+      expect(glide.style.top).toBe("33px");
+    } finally {
+      if (topDescriptor) Object.defineProperty(HTMLElement.prototype, "offsetTop", topDescriptor);
+      if (heightDescriptor) Object.defineProperty(HTMLElement.prototype, "offsetHeight", heightDescriptor);
+    }
+  });
+
   it("renders the account row pinned to the rail bottom, outside the nav", async () => {
     renderSidebar({ view: "gtd" });
     const account = await screen.findByRole("button", { name: "Account" });

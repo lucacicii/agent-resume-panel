@@ -891,8 +891,11 @@ html[data-window-mode="main"] .mac-top {
   padding: 0 var(--space-2);
 }
 
-/* Gliding hover pill: one highlight that travels between rows. */
+/* Gliding hover pill: one highlight that travels between rows. The travel
+   duration is a custom property so the pill can be placed instantly (first
+   hover) or glide between rows (`.is-gliding`) with one transition rule. */
 .app-sidebar-glide {
+  --glide-travel-duration: 0ms;
   position: absolute;
   left: 8px;
   right: 8px;
@@ -900,9 +903,15 @@ html[data-window-mode="main"] .mac-top {
   background: var(--color-fill-secondary);
   pointer-events: none;
   transition:
-    top var(--duration-normal) var(--ease-glide),
-    height var(--duration-normal) var(--ease-glide),
+    top var(--glide-travel-duration) var(--ease-glide),
+    height var(--glide-travel-duration) var(--ease-glide),
     opacity var(--duration-fast) ease;
+}
+
+/* The pill only travels when it is already on screen and moves to another
+   row; a hidden pill is placed at the target row and fades in. */
+.app-sidebar-glide.is-gliding {
+  --glide-travel-duration: var(--duration-normal);
 }
 
 .app-sidebar-row {
@@ -16737,6 +16746,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 .notes-view-glide {
+  --glide-travel-duration: 0ms;
   position: absolute;
   left: 8px;
   right: 8px;
@@ -16744,9 +16754,15 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   background: var(--color-fill-secondary);
   pointer-events: none;
   transition:
-    top var(--duration-normal) var(--ease-glide),
-    height var(--duration-normal) var(--ease-glide),
+    top var(--glide-travel-duration) var(--ease-glide),
+    height var(--glide-travel-duration) var(--ease-glide),
     opacity var(--duration-fast) ease;
+}
+
+/* The pill only travels when it is already on screen and moves to another
+   row; a hidden pill is placed at the target row and fades in. */
+.notes-view-glide.is-gliding {
+  --glide-travel-duration: var(--duration-normal);
 }
 
 .notes-view-section {
