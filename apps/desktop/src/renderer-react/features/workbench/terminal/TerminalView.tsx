@@ -147,6 +147,30 @@ export function trackTuiRedraw(chunk: string, terminal: Terminal): void {
 }
 
 /**
+ * Place a normal-buffer terminal viewport on an absolute scrollback row. The
+ * public IBuffer typings only expose viewportY/baseY getters, so the internal
+ * Buffer field has to be set directly: a negative scrollLines flips xterm's
+ * "user is scrolling" flag, which would freeze follow-on output instead of
+ * staying anchored.
+ */
+function setTerminalViewportY(terminal: Terminal, targetY: number): void {
+  const core = (terminal as unknown as {
+    _core?: {
+      _bufferService?: { buffer?: { ydisp: number; ybase: number } };
+      viewport?: { syncScrollArea?: (immediate?: boolean) => void };
+    };
+  })._core;
+  const internal = core?._bufferService?.buffer;
+  if (!internal) return;
+  internal.ydisp = Math.max(0, Math.min(targetY, internal.ybase));
+  // xterm only re-derives the DOM scroll area from ydisp during its own layout
+  // passes. Left stale, the next native scroll event is read as a user scroll
+  // and snaps the viewport back to the old row.
+  core?.viewport?.syncScrollArea?.(true);
+  terminal.refresh(0, terminal.rows - 1);
+}
+
+/**
  * Re-anchor a session pane's normal-buffer viewport after the agent TUI
  * repainted the transcript from the top. `scrollToBottom` alone is not enough:
  * xterm's viewport is already at baseY, so a transcript shorter than the
@@ -169,17 +193,7 @@ function reanchorTuiViewport(terminal: Terminal): void {
     }
     if (lastContent >= 0 && lastContent < rows - 1) {
       const gap = rows - 1 - lastContent;
-      // The public IBuffer typings only expose viewportY/baseY getters. Set the
-      // internal Buffer field directly instead of scrollLines: a negative
-      // scrollLines flips xterm's "user is scrolling" flag, which would freeze
-      // follow-on output instead of staying anchored.
-      const internal = (terminal as unknown as {
-        _core?: { _bufferService?: { buffer?: { ydisp: number; ybase: number } } };
-      })._core?._bufferService?.buffer;
-      if (internal) {
-        internal.ydisp = Math.max(0, internal.ybase - gap);
-        terminal.refresh(0, rows - 1);
-      }
+      setTerminalViewportY(terminal, buffer.baseY - gap);
     }
   } catch {
     /* terminal disposed mid-redraw */
@@ -530,9 +544,29 @@ export const TerminalView = memo(function TerminalView({ pane, active, themeId, 
           return;
         }
         const buffer = terminal.buffer.active;
-        const wasAtNormalBufferBottom = buffer.type === "normal" && buffer.viewportY === buffer.baseY;
+        // A session TUI is normally anchored a few rows above baseY when its
+        // transcript is shorter than the screen (see reanchorTuiViewport).
+        // Bottom-follow detection has to include that gap: with the plain
+        // viewportY === baseY test, the fit below skipped re-anchoring and the
+        // transcript lost its tail rows whenever the composer changed height.
+        const wasFollowingBottom = buffer.type === "normal"
+          && (pane.group === "session" ? isTerminalAtBottom(terminal) : buffer.viewportY === buffer.baseY);
+        // Absolute row under the anchored transcript tail. Buffer content keeps
+        // its rows across a resize, so this is what must land on the new bottom
+        // screen row afterwards.
+        const anchoredBottomY = wasFollowingBottom && pane.group === "session" && buffer.viewportY < buffer.baseY
+          ? buffer.viewportY + terminal.rows - 1
+          : null;
         fitAddon.fit();
-        if (wasAtNormalBufferBottom && terminal.buffer.active.type === "normal") terminal.scrollToBottom();
+        if (terminal.buffer.active.type === "normal") {
+          if (anchoredBottomY !== null) {
+            // Buffer.resize keeps ydisp as-is instead of re-deriving it from the
+            // content, so the anchored tail would slip off the screen.
+            setTerminalViewportY(terminal, anchoredBottomY - (terminal.rows - 1));
+          } else if (wasFollowingBottom) {
+            terminal.scrollToBottom();
+          }
+        }
         // Only rebuild the WebGL glyph atlas when geometry or DPR actually changes.
         // Continuous ResizeObserver ticks would thrash clearTextureAtlas otherwise.
         const fitKey = `${terminal.cols}x${terminal.rows}@${window.devicePixelRatio || 1}`;
@@ -576,7 +610,12 @@ export const TerminalView = memo(function TerminalView({ pane, active, themeId, 
     const syncFollowState = () => {
       const buffer = terminal.buffer.active;
       if (buffer.type !== "normal") return;
-      followOutputRef.current = buffer.viewportY >= buffer.baseY;
+      // An anchored session TUI sits a few rows above baseY by design; the
+      // plain comparison would read a pointerup in that state as "user
+      // scrolled up" and stop following the transcript for good.
+      followOutputRef.current = pane.group === "session"
+        ? isTerminalAtBottom(terminal)
+        : buffer.viewportY >= buffer.baseY;
     };
     hostEl.addEventListener("wheel", syncFollowState);
     hostEl.addEventListener("pointerup", syncFollowState);
