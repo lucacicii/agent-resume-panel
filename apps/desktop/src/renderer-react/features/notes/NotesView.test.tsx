@@ -135,6 +135,30 @@ describe("NotesView", () => {
     expect(pane).toBeTruthy();
   });
 
+  it("places the highlight on first hover and glides it between rows", async () => {
+    const extra: TestRoot = {
+      noteId: "l-2", scope: "library", filename: "reading.md", relDir: "library",
+      relMdPath: "library/reading.md", title: "Reading list", createdAtMs: 1, updatedAtMs: 2
+    };
+    const allRoots = [...roots, extra];
+    renderNotes({
+      notesListRoot: async () => allRoots,
+      notesList: async () => allRoots
+    });
+    fireEvent.click(await screen.findByRole("tab", { name: "Notes" }));
+    await screen.findByText("Reading list");
+
+    const glide = document.querySelector<HTMLElement>(".notes-view-glide")!;
+    // The first library row is selected, so hovering another one is a fresh
+    // placement rather than a travel.
+    fireEvent.pointerEnter(screen.getByText("Scratch pad"));
+    await waitFor(() => expect(glide.style.opacity).toBe("1"));
+    expect(glide.classList.contains("is-gliding")).toBe(false);
+
+    fireEvent.pointerEnter(screen.getByText("Reading list"));
+    await waitFor(() => expect(glide.classList.contains("is-gliding")).toBe(true));
+  });
+
   it("follows onOpenNote from the editor pane", async () => {
     renderNotes();
     await screen.findByTestId("note-pane");
