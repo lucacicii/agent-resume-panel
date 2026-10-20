@@ -120,16 +120,22 @@ vi.mock("@xterm/xterm", () => ({ Terminal: class {
    *  internal `_core._bufferService.buffer` share one object per buffer. */
   _core: { _bufferService: { buffer: MockBuffer } };
   private normalBuffer: MockBuffer = {
-    type: "normal", viewportY: 0, baseY: 0, cursorY: 0, cursorX: 0, length: 24,
+    type: "normal", baseY: 0, cursorY: 0, cursorX: 0, length: 24,
     lines: [], ydisp: 0, ybase: 0,
+    /** xterm's viewportY is a getter over the internal ydisp; mirror that so a
+     *  viewport moved through the core buffer is visible on the public view. */
+    get viewportY() { return this.ydisp; },
+    set viewportY(value: number) { this.ydisp = value; },
     getLine: (y) => {
       const text = this.normalBuffer.lines[y];
       return text === undefined ? undefined : { translateToString: () => text };
     }
   };
   private alternateBuffer: MockBuffer = {
-    type: "alternate", viewportY: 0, baseY: 0, cursorY: 0, cursorX: 0, length: 24,
+    type: "alternate", baseY: 0, cursorY: 0, cursorX: 0, length: 24,
     lines: [], ydisp: 0, ybase: 0,
+    get viewportY() { return this.ydisp; },
+    set viewportY(value: number) { this.ydisp = value; },
     getLine: (y) => {
       const text = this.alternateBuffer.lines[y];
       return text === undefined ? undefined : { translateToString: () => text };
@@ -3738,6 +3744,72 @@ describe("WorkbenchPanel", () => {
     act(() => xtermMocks.resizeObservers.forEach((notify) => notify()));
     await waitFor(() => expect(terminalResize).toHaveBeenCalledWith({ id: 1, cols: 110, rows: 32 }));
     expect(terminal.scrollBottomCalls).toBe(1);
+  });
+
+  it("keeps the TUI transcript tail anchored when the composer resizes the terminal", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalResize = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    await waitFor(() => expect(terminalResize).toHaveBeenCalledWith({ id: 1, cols: 80, rows: 24 }));
+    terminalResize.mockClear();
+    const terminal = xtermMocks.instances[0];
+    const terminalHost = document.querySelector<HTMLElement>(".wb-terminal-host")!;
+    Object.defineProperties(terminalHost, {
+      clientWidth: { configurable: true, value: 800 },
+      clientHeight: { configurable: true, value: 500 }
+    });
+
+    // Anchored TUI over scrollback: the 10-row transcript tail (buffer rows
+    // 46..55) sits on the bottom screen row of the 24-row screen, so 14 blank
+    // rows below baseY pull the viewport up to row 32. Rows above carry the
+    // session history (content > one screen).
+    const lines = Array.from({ length: 88 }, (_, index) => (index < 46 ? `history-${index}` : ""));
+    for (let i = 46; i < 56; i += 1) lines[i] = `content-${i}`;
+    act(() => {
+      terminal.setBuffer("normal", 32, 46);
+      terminal.buffer.active.lines = lines;
+    });
+    expect(terminal.buffer.active.viewportY).toBe(32);
+    expect(terminal.scrollBottomCalls).toBe(0);
+
+    // Composer grows: the host loses 6 rows. The transcript tail must stay on
+    // the bottom screen row instead of slipping below the viewport, which left
+    // stale scrollback on screen and cut off the TUI's bottom rows.
+    xtermMocks.fitDimensions = { cols: 80, rows: 18 };
+    act(() => xtermMocks.resizeObservers.forEach((notify) => notify()));
+    await waitFor(() => expect(terminalResize).toHaveBeenCalledWith({ id: 1, cols: 80, rows: 18 }));
+    expect(terminal.buffer.active.viewportY).toBe(38);
+
+    // Shrinking the composer again restores the original anchor.
+    xtermMocks.fitDimensions = { cols: 80, rows: 24 };
+    act(() => xtermMocks.resizeObservers.forEach((notify) => notify()));
+    await waitFor(() => expect(terminalResize).toHaveBeenCalledWith({ id: 1, cols: 80, rows: 24 }));
+    expect(terminal.buffer.active.viewportY).toBe(32);
   });
 
   it("drops an Explorer file into the terminal and writes its shell-escaped absolute path", async () => {
