@@ -973,7 +973,32 @@ export function WorkbenchPanel(): ReactPortal | null {
     ? tasks.find((item) => item.noteId === taskScope.noteId)
     : undefined;
   const sideRootProjects = liveTaskEarly?.projects ?? taskScope?.projects ?? EMPTY_PROJECT_PATHS;
-  const worktrees = useTaskWorktrees({ noteId: taskScope?.noteId ?? null, repos: sideRootProjects });
+  const activeScopeKey = workbenchScope(activeWorkbenchId) ?? paneProjectKey(selectedProject);
+  const activePane = activePanes[activeScopeKey] || "";
+  const activePaneCwd = useMemo(() => {
+    if (!activePane) return null;
+    const terminal = terminals.find((p) => paneScopeKey(p) === activeScopeKey && p.key === activePane);
+    if (terminal?.cwd) return terminal.cwd;
+    const acp = acpChats.find((p) => paneScopeKey(p) === activeScopeKey && p.key === activePane);
+    if (acp?.projectPath) return acp.projectPath;
+    const thunder = thunderChats.find((p) => paneScopeKey(p) === activeScopeKey && p.key === activePane);
+    if (thunder?.projectPath) return thunder.projectPath;
+    const editor = editors.find((p) => paneScopeKey(p) === activeScopeKey && p.key === activePane);
+    if (editor?.projectPath) return editor.projectPath;
+    if (editor?.path) {
+      const idx = editor.path.lastIndexOf("/");
+      return idx > 0 ? editor.path.slice(0, idx) : null;
+    }
+    const diff = diffs.find((p) => paneScopeKey(p) === activeScopeKey && p.key === activePane);
+    if (diff?.projectPath) return diff.projectPath;
+    return null;
+  }, [activePane, activeScopeKey, terminals, acpChats, thunderChats, editors, diffs]);
+
+  const worktrees = useTaskWorktrees({
+    noteId: taskScope?.noteId ?? null,
+    repos: sideRootProjects,
+    activeCwd: activePaneCwd
+  });
   const worktreeReminders = useWorktreeReminders({
     noteId: taskScope?.noteId ?? null,
     // The task's own column, however it was changed — from this panel's header or
@@ -1037,6 +1062,17 @@ export function WorkbenchPanel(): ReactPortal | null {
   const filesRoots = useMemo(
     () => sideRepoRoots.map((root) => worktrees.rootFor("files", root)),
     [sideRepoRoots, worktrees.rootFor]
+  );
+  const formatExplorerRootLabel = useCallback(
+    (root: string) => {
+      const option = worktrees.checkouts.find((item) => projectPathKey(item.path) === projectPathKey(root));
+      if (!option) return basename(root);
+      if (option.isMain) {
+        return sideRepoRoots.length > 1 ? `${option.repoLabel} (main)` : option.repoLabel;
+      }
+      return `${option.repoLabel} [⌥ ${option.branchLabel}]`;
+    },
+    [sideRepoRoots.length, worktrees.checkouts]
   );
   /**
    * What the search reads. The search pane carries its own checkout selector, so
@@ -2246,7 +2282,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     });
     setSelectionAnchorKey((current) => current && !visibleKeys.has(current) ? "" : current);
   }, [visibleSessionRows]);
-  const activeScopeKey = workbenchScope(activeWorkbenchId) ?? paneProjectKey(selectedProject);
   const currentTerminals = terminals.filter((pane) => paneScopeKey(pane) === activeScopeKey);
   const currentSessionTerminals = currentTerminals.filter((pane) => pane.group === "session");
   const currentShellTerminals = currentTerminals.filter((pane) => pane.group === "terminal");
@@ -2271,7 +2306,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     [currentBrowsers, panelProject]
   );
   const currentNotePanes = notePanes.filter((pane) => paneScopeKey(pane) === activeScopeKey);
-  const activePane = activePanes[activeScopeKey] || "";
   const activeTerminal = currentTerminals.find((pane) => pane.key === activePane);
   const currentEditor = currentEditors.find((pane) => pane.key === activePane);
   const currentDiff = currentDiffs.find((pane) => pane.key === activePane);
@@ -7607,7 +7641,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               }}
             />;
           })}{terminalCreating && !currentTerminals.some((pane) => !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={ICON_SIZE.prominent} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length && !currentThunderChats.length && !currentBrowsers.length && !currentNotePanes.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side === "browser" ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel"><BrowserSidePanel active={active} browsers={panelBrowsers} projectPath={panelProject} onRequestCreate={() => void openBrowser(panelProject ?? undefined)} onOpenSource={(path, line) => void openFile(path, { path, line: line ?? 1, column: 1, endColumn: 1 }, projectForPath(path) || undefined)} onSendToSession={sendProbePromptToSession} /></aside></> : side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} roots={filesRoots} headExtra={worktreeControl("files")} activePath={currentFilePath} onOpenFile={(path) => void openFile(path, undefined, projectForPath(path) || undefined)} onOpenPreview={(path) => void openFile(path, undefined, projectForPath(path) || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message, root) => root ? reportReadFailure(message, [root]) : setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /> : side === "search" ? <WorkbenchSearchSidePane
+          {side === "browser" ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel"><BrowserSidePanel active={active} browsers={panelBrowsers} projectPath={panelProject} onRequestCreate={() => void openBrowser(panelProject ?? undefined)} onOpenSource={(path, line) => void openFile(path, { path, line: line ?? 1, column: 1, endColumn: 1 }, projectForPath(path) || undefined)} onSendToSession={sendProbePromptToSession} /></aside></> : side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} roots={filesRoots} formatRootLabel={formatExplorerRootLabel} headExtra={worktreeControl("files")} activePath={currentFilePath} onOpenFile={(path) => void openFile(path, undefined, projectForPath(path) || undefined)} onOpenPreview={(path) => void openFile(path, undefined, projectForPath(path) || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message, root) => root ? reportReadFailure(message, [root]) : setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /> : side === "search" ? <WorkbenchSearchSidePane
             headExtra={worktreeControl("search")}
             selectedProject={searchRoots.length ? searchRoots[0] : null}
             searchQuery={searchQuery}

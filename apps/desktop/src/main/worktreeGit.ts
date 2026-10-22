@@ -172,17 +172,24 @@ async function isAncestor(repoRoot: string, ancestor: string, descendant: string
   }
 }
 
-async function describeWorktree(entry: WorktreeEntry, repoRoot: string, baseBranch: string | null): Promise<TaskWorktreeInfo> {
+async function describeWorktree(
+  entry: WorktreeEntry,
+  repoRoot: string,
+  baseBranch: string | null,
+  realRoot?: string
+): Promise<TaskWorktreeInfo> {
   const stat = await fs.stat(entry.path).catch(() => null);
   // A checkout sitting on the base branch itself would trivially count as
   // "merged", which says nothing useful, so it is excluded.
   const comparable = Boolean(entry.head) && Boolean(baseBranch) && entry.branch !== baseBranch;
+  const canonicalPath = realPath(entry.path);
   return {
     ...entry,
-    path: realPath(entry.path),
+    path: canonicalPath,
     missing: stat === null,
     merged: comparable ? await isAncestor(repoRoot, entry.head, baseBranch as string) : false,
-    createdAtMs: stat ? stat.birthtimeMs || stat.ctimeMs : null
+    createdAtMs: stat ? stat.birthtimeMs || stat.ctimeMs : null,
+    managed: entry.isMain ? false : (realRoot ? isPathWithin(canonicalPath, realRoot) : false)
   };
 }
 
@@ -226,9 +233,12 @@ export async function worktreeListForTask(input: {
         if (entry.isMain) return true;
         const checkout = realPath(entry.path);
         // The task's own `.worktrees/` folder is not a checkout of anything.
-        return checkout !== realRoot && isPathWithin(checkout, realRoot);
+        if (checkout === realRoot) return false;
+        const owner = worktreeOwnerNoteId(input.panelHome, checkout);
+        if (owner && owner !== input.noteId) return false;
+        return true;
       });
-      const worktrees = await Promise.all(ours.map((entry) => describeWorktree(entry, repoRoot, baseBranch)));
+      const worktrees = await Promise.all(ours.map((entry) => describeWorktree(entry, repoRoot, baseBranch, realRoot)));
       return { ...bare, repoRoot, exists: true, isGitRepo: true, baseBranch, worktrees };
     })
   );

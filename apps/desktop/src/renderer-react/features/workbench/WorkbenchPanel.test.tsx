@@ -2554,6 +2554,70 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(terminalInput).toHaveBeenLastCalledWith({ id: 1, data: "cd '/wt/app-review'\r" }));
   });
 
+  it("automatically displays worktree branch labels in explorer for multi-root workspaces", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES,
+        "desktop.workbench.sidePanelExplorer": "Explorer"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListTasks: async () => [],
+      notesEnsureTaskWorkspace: async () => ({ dir: WORKSPACE_CWD }),
+      notesTaskWorkspace: async () => ({ dir: WORKSPACE_CWD, exists: true }),
+      notesGetWorktreeSettings: async () => ({ enabled: false, baseBranch: {} }),
+      workbenchListWorktrees: async () => ({
+        root: "/wt",
+        repos: [
+          {
+            repoRoot: "/work/app",
+            label: "app",
+            exists: true,
+            isGitRepo: true,
+            baseBranch: "main",
+            worktrees: [
+              { path: "/work/app", branch: "main", head: "aaa1111", detached: false, bare: false, locked: false, prunable: false, isMain: true, missing: false, merged: false, createdAtMs: null },
+              { path: "/wt/app-review", branch: "feat/review", head: "bbb2222", detached: false, bare: false, locked: false, prunable: false, isMain: false, missing: false, merged: false, createdAtMs: 1 }
+            ]
+          },
+          {
+            repoRoot: "/work/lib",
+            label: "lib",
+            exists: true,
+            isGitRepo: true,
+            baseBranch: "main",
+            worktrees: [
+              { path: "/work/lib", branch: "main", head: "ccc3333", detached: false, bare: false, locked: false, prunable: false, isMain: true, missing: false, merged: false, createdAtMs: null }
+            ]
+          }
+        ]
+      }),
+      workbenchReadDirectory: async () => ({ entries: [] }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateTaskDirectory("/work/app", { noteId: "wi-multi", projects: ["/work/app", "/work/lib"] });
+
+    // Open side files panel
+    fireEvent.click(screen.getByRole("button", { name: "Explorer" }));
+    await waitFor(() => expect(screen.getByText("app (main)")).not.toBeNull());
+    expect(screen.getByText("lib (main)")).not.toBeNull();
+  });
+
   it("does not render the project cd switcher on an agent session, even in the shared workspace", async () => {
     localStorage.setItem("wb-session-view-mode", "terminal");
     const host = document.createElement("div");

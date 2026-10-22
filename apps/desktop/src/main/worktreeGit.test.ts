@@ -155,12 +155,22 @@ describe("worktreeGit", () => {
     ]);
     expect(repo.worktrees[1]).toMatchObject({ branch: "feat/one", missing: false });
 
-    // A worktree created elsewhere — an agent that ignored the convention — is
-    // visible to git but belongs to no task root, so it stays out of the listing.
+    // A worktree created elsewhere (e.g. by an external agent or CLI) is
+    // also discovered and marked as unmanaged, but checkouts belonging to other tasks stay out.
     const outside = path.join(panelHome, "elsewhere");
     await git(repoRoot, ["worktree", "add", outside, "-b", "feat/outside"]);
+
+    const otherTaskRoot = taskWorktreeRoot(panelHome, "other-task");
+    await fs.mkdir(otherTaskRoot, { recursive: true });
+    const otherWorktree = path.join(otherTaskRoot, "app-other");
+    await git(repoRoot, ["worktree", "add", otherWorktree, "-b", "feat/other"]);
+
     const after = await listTask(panelHome, noteId, repoRoot);
-    expect(after.repos[0].worktrees.map((item) => item.path)).toEqual([repoRoot, created.path]);
+    expect(after.repos[0].worktrees.map((item) => item.path)).toEqual([repoRoot, created.path, outside]);
+    const outsideItem = after.repos[0].worktrees.find((item) => item.path === outside);
+    expect(outsideItem).toMatchObject({ branch: "feat/outside", managed: false });
+    const managedItem = after.repos[0].worktrees.find((item) => item.path === created.path);
+    expect(managedItem).toMatchObject({ branch: "feat/one", managed: true });
   });
 
   it("reports a checkout as merged only once its commit is in the base branch", async () => {

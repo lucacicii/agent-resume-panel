@@ -58,6 +58,7 @@ function worktreesWith(worktrees: TaskWorktreeInfo[]): TaskWorktrees {
     checkoutIsGone: async () => false,
     rootFor: (_scope, repoRoot) => repoRoot,
     checkoutFor: () => null,
+    activeCheckoutFor: () => null,
     isPinned: () => false,
     select: () => undefined,
     pin: () => undefined,
