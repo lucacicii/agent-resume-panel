@@ -30,6 +30,7 @@ const sidecarRoot = path.join(root, ".thunder-sidecar");
 
 export const THUNDER_TARGETS = { x64: "x86_64-apple-darwin", arm64: "aarch64-apple-darwin" };
 export const THUNDER_DAEMON_BIN = "thunder-daemon";
+export const THUNDER_STD_BIN = "thunder-std";
 export const THUNDER_TUI_BIN = "thunder-tui";
 
 /** Relative layout inside the bundle: `Contents/Resources/thunder` + `bin/thunder-daemon`. */
@@ -52,6 +53,11 @@ export function sidecarResourceDir(arch) {
 
 export function stagedBinaryPath(arch) {
   return path.join(sidecarResourceDir(arch), ...BUNDLE_SUBDIR, THUNDER_DAEMON_BIN);
+}
+
+/** Where the bundled `thunder-std` binary lands (beside the daemon). */
+export function stagedStdBinaryPath(arch) {
+  return path.join(sidecarResourceDir(arch), ...BUNDLE_SUBDIR, THUNDER_STD_BIN);
 }
 
 /** Where the bundled `thunder-tui` binary lands (beside the daemon). */
@@ -161,10 +167,15 @@ export function resolveThunderBinary({
     };
   }
 
-  const crateDir = path.join(checkout, "thunder-agent-daemon");
+  const isUnified = exists(path.join(checkout, "crates", "thunder-daemon"));
+  const crateDir = isUnified ? checkout : path.join(checkout, "thunder-agent-daemon");
+  const pkgName = isUnified ? "thunder-daemon" : "thunder-agent-daemon";
   const host = THUNDER_TARGETS[hostArch] ?? hostTarget();
   const crossCompile = target !== host;
-  const args = ["build", "--release", "-p", "thunder-agent-daemon"];
+  const args = ["build", "--release", "-p", pkgName];
+  if (isUnified) {
+    args.push("-p", "thunder-std");
+  }
   if (crossCompile) args.push("--target", target);
 
   const run = runCargo ?? defaultRunCargo;
@@ -308,6 +319,14 @@ export function stageThunderSidecar(arch, {
   fs.rmSync(stagedBinary, { force: true });
   fs.copyFileSync(resolved.binaryPath, stagedBinary);
   fs.chmodSync(stagedBinary, 0o755);
+
+  const stdSource = path.join(path.dirname(resolved.binaryPath), THUNDER_STD_BIN);
+  if (fs.existsSync(stdSource)) {
+    const stagedStd = stagedStdBinaryPath(arch);
+    fs.rmSync(stagedStd, { force: true });
+    fs.copyFileSync(stdSource, stagedStd);
+    fs.chmodSync(stagedStd, 0o755);
+  }
 
   const metadata = {
     arch,
