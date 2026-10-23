@@ -158,19 +158,6 @@ export interface ThunderMetricsSnapshot {
   wall_duration_ms?: number;
 }
 
-export interface ThunderAgentStatus {
-  session_id: string;
-  phase: ThunderAgentPhase;
-  /** Present only while `phase` is `tool`. */
-  tool?: string;
-  turn: number;
-  /** Free-form detail for a phase that needs one (an error message, say). */
-  detail?: string;
-  /** When this run started, not when this frame was made. */
-  started_at_ms: number;
-  seq: number;
-}
-
 export type ThunderAgentEvent =
   | {
       type: "turn_start";
@@ -204,35 +191,23 @@ export type ThunderAgentEvent =
         error?: string;
         is_error: boolean;
         duration_ms?: number;
-        telemetry?: ThunderTelemetryNotice;
       };
     }
   | {
       /**
-       * A host-defined event forwarded verbatim by the kernel. Thunder emits
-       * `kind: "file_change"` from the tool layer (payload
-       * `ThunderFileChangePayload`), `kind: "metrics_update"` from the telemetry
-       * plugin (`ThunderMetricsSnapshot`), and `kind: "agent_status"` from the
-       * execution-status plugin (`ThunderAgentStatus`). Other kinds are safe to
-       * ignore.
+       * A host-defined event forwarded verbatim by the kernel.
        *
-       * Note this is `type: "custom"` with a `kind` discriminator — NOT a
-       * top-level `type: "file_change"`. The kernel deliberately does not
-       * interpret custom events, so they arrive wrapped.
+       * The current kernel emits exactly two kinds — `budget_notice` (a run is
+       * nearing a ceiling) and `loop_recovered` (the context was rebuilt after a
+       * stall). The `file_change` / `metrics_update` / `agent_status` kinds this
+       * union used to document died with the plugin framework.
+       *
+       * `type: "custom"` with a `kind` discriminator, NOT a top-level
+       * `type: "file_change"`: the kernel does not interpret custom events.
        */
       type: "custom";
       kind: string;
       payload: Record<string, unknown>;
-    }
-  | {
-      type: "telemetry_notice";
-      turn: number;
-      tool_call_id: string;
-      layer: string;
-      action: string;
-      ground_truth: string;
-      self_healed?: string;
-      guidance?: string;
     }
   | {
       type: "turn_end";
