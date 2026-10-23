@@ -1001,5 +1001,5 @@ export type {
 } from "./thunder/types";
 
 /** The approval modes in the order `Shift+Tab` cycles them (a value, not a type). */
-export { THUNDER_PERMISSION_MODES } from "./thunder/types";
+export { THUNDER_PERMISSION_MODES, normalizeThunderPermissionMode } from "./thunder/types";
 

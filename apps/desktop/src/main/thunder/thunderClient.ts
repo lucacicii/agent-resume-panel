@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as readline from "node:readline";
 import { randomUUID } from "node:crypto";
-import { loadSettings } from "@agent-resume/core";
+import { loadSettings, normalizeThunderPermissionMode } from "@agent-resume/core";
 import { buildAugmentedPath } from "../processPath";
 import {
   describeThunderResolution,
@@ -436,11 +436,16 @@ export class ThunderClient {
         // the session-scoped listeners. This is the only way a surface learns
         // the mode moved when nothing is running — including when the *model*
         // got a plan approved mid-run.
+        const mode = normalizeThunderPermissionMode(msg.mode);
+        if (!mode) {
+          console.warn(`[thunder-client:mode] unknown mode '${msg.mode}' — ignored`);
+          break;
+        }
         const payload: ThunderModeChanged = {
           sessionId: msg.session_id,
           taskId: msg.task_id,
-          mode: msg.mode as ThunderPermissionMode,
-          previous: msg.previous as ThunderPermissionMode | undefined,
+          mode,
+          previous: normalizeThunderPermissionMode(msg.previous) || undefined,
           source: msg.source === "plan_approved"
             ? "planApproved"
             : msg.source === "run_option"
@@ -861,12 +866,11 @@ export class ThunderClient {
      */
     headless?: boolean;
     /**
-     * Permission mode for this run (`plan` / `ask` / `acceptEdits` / `yolo`).
+     * Permission mode for this run: `plan` or `yolo`.
      *
-     * Stated explicitly rather than inherited, because the inherited value comes
-     * from `~/.thunder/config.json`'s `agent.defaultMode` — a global setting that
-     * would otherwise silently change how every schedule behaves. An unattended
-     * run wants `yolo`; a read-only sweep wants `plan`.
+     * Stated explicitly rather than inherited, because an unattended caller
+     * must not depend on whatever mode the session happens to remember. A
+     * scheduled run wants `yolo`; a read-only sweep wants `plan`.
      */
     mode?: string;
     /**
@@ -1042,17 +1046,18 @@ export class ThunderClient {
       10_000
     );
     if (res === null || !res?.mode) return null;
-    return { mode: res.mode as ThunderPermissionMode, rules: res.rules ?? [] };
+    const mode = normalizeThunderPermissionMode(res.mode);
+    if (!mode) return null;
+    return { mode, rules: res.rules ?? [] };
   }
 
   /**
    * Set the mode a session is judged by.
    *
    * Takes effect on the session's next run *and* on a run already in flight, at
-   * its next tool call. Only the four canonical values are sent: Thunder's
-   * parser also accepts pre-0.4 aliases (`bypass_permissions`, `never`, ...),
-   * but those are a compatibility layer for old config files, not a value space
-   * a UI should be able to reach.
+   * its next tool call. Only the two implemented modes are ever sent; the
+   * daemon's tolerance for the retired `ask` / `acceptEdits` names is a
+   * leftover of its parser, not a value space a UI should be able to reach.
    *
    * Rejects when the daemon refuses (an unknown mode, or a daemon predating
    * `set_mode`) — that rejection is what lets a caller roll its optimistic
@@ -1068,7 +1073,7 @@ export class ThunderClient {
       10_000
     );
     if (res === null) return null;
-    return { mode: (res?.mode as ThunderPermissionMode) ?? mode };
+    return { mode: normalizeThunderPermissionMode(res?.mode) || mode };
   }
 
   /**

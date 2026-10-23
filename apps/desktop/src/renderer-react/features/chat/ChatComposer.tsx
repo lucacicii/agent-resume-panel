@@ -100,29 +100,25 @@ const GTD_STATUS_LABELS: Record<string, string> = {
 };
 
 /**
- * Chip labels for the four approval modes, in `Shift+Tab` order.
+ * Chip labels for the two approval modes, in `Shift+Tab` order.
  *
  * Kept short because they are what the *trigger* shows; the meaning lives in
  * `PERMISSION_MODE_HINTS`, which only fits in a menu or a tooltip.
  */
 const PERMISSION_MODE_LABELS: Record<ThunderPermissionMode, string> = {
   plan: "Plan",
-  ask: "Ask",
-  acceptEdits: "Accept Edits",
   yolo: "YOLO"
 };
 
 /**
- * One line per mode, worded from the gate matrix in thunder's `mode.rs`.
+ * One line per mode — Thunder implements these two and nothing between them.
  *
- * `plan` and `yolo` are the two a user has to recognise at a glance and they
- * are opposites, which is the argument for spelling them out rather than
- * trusting the name.
+ * `plan` and `yolo` are opposites, which is the argument for spelling them out
+ * rather than trusting the name: one refuses every write, the other asks
+ * nothing at all.
  */
 const PERMISSION_MODE_HINTS: Record<ThunderPermissionMode, string> = {
   plan: "Read-only. Writes are refused — the plan text is the deliverable",
-  ask: "Reads run free; anything that changes something waits for you",
-  acceptEdits: "Edits inside the working area run without asking; the rest asks",
   yolo: "Never asks — every call runs"
 };
 
@@ -1360,9 +1356,9 @@ export function ChatComposer({
   }, [currentModel]);
 
   /**
-   * The four modes, all of them, with the active one check-marked by
+   * The modes, both of them, with the active one check-marked by
    * `NativeMenuSelect`. Listing the alternatives is the point: the chip alone
-   * would say which mode is on, never what the others mean.
+   * would say which mode is on, never what the other one means.
    */
   const permissionModeOptions = useMemo(
     () => THUNDER_PERMISSION_MODES.map((value) => ({ value, label: PERMISSION_MODE_LABELS[value] })),
