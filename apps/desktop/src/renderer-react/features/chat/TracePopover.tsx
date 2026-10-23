@@ -1,24 +1,18 @@
 import React, { useState } from "react";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
-import type { ThunderTaskTrace, ThunderTelemetryNotice } from "@agent-resume/core";
 import type { TraceSpan } from "./useTraceCollector";
 
 interface TracePopoverProps {
   isOpen: boolean;
   onClose: () => void;
-  trace: ThunderTaskTrace | null;
+  /** Collected client-side from the run's own events — thunder keeps no server trace. */
   spans: TraceSpan[];
-  telemetryNotices: ThunderTelemetryNotice[];
-  isCollecting: boolean;
 }
 
 export function TracePopover({
   isOpen,
   onClose,
-  trace,
-  spans,
-  telemetryNotices,
-  isCollecting
+  spans
 }: TracePopoverProps): React.JSX.Element | null {
   const [expandedSpanIds, setExpandedSpanIds] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
@@ -35,11 +29,7 @@ export function TracePopover({
   };
 
   const handleCopyJson = () => {
-    const data = {
-      trace,
-      spans,
-      telemetryNotices
-    };
+    const data = { spans };
     navigator.clipboard.writeText(JSON.stringify(data, null, 2)).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -53,17 +43,20 @@ export function TracePopover({
     turnMap.set(span.turn, list);
   }
 
-  const durationSec = trace?.duration_ms
-    ? (trace.duration_ms / 1000).toFixed(2)
+  // Both come from the spans themselves now: there is no server-side trace to ask
+  // how long the run took, and every span carries its own start and duration.
+  const running = spans.some((span) => span.status === "running");
+  const failed = spans.some((span) => span.status === "failed");
+  const finished = spans.filter((span) => span.type === "turn");
+  const durationSec = finished.length
+    ? (
+        (Math.max(...finished.map((span) => span.startedAtMs + (span.durationMs ?? 0))) -
+          Math.min(...finished.map((span) => span.startedAtMs))) /
+        1000
+      ).toFixed(2)
     : undefined;
 
-  const status = isCollecting
-    ? "running"
-    : trace?.finish_reason === "error"
-    ? "failed"
-    : trace
-    ? "completed"
-    : "idle";
+  const status = running ? "running" : failed ? "failed" : spans.length ? "completed" : "idle";
 
   return (
     <div className="tb-trace-overlay" onClick={onClose}>
@@ -102,20 +95,10 @@ export function TracePopover({
               <span className="tb-trace-status-dot" />
               {status.toUpperCase()}
             </span>
-            {trace?.model && (
-              <span className="tb-trace-pill tb-trace-model">{trace.model}</span>
-            )}
             {durationSec && (
               <span className="tb-trace-pill tb-trace-duration">
                 <ThemeIcon name="clock" size={ICON_SIZE.inline} />
                 {durationSec}s
-              </span>
-            )}
-            {trace?.stats && (
-              <span className="tb-trace-pill tb-trace-tokens">
-                {(trace.stats.total_prompt_tokens || 0) +
-                  (trace.stats.total_completion_tokens || 0)}{" "}
-                tokens
               </span>
             )}
           </div>
@@ -123,45 +106,13 @@ export function TracePopover({
 
         {/* Content Body */}
         <div className="tb-trace-body">
-          {/* Telemetry System Notices (Ground Truth) */}
-          {telemetryNotices.length > 0 && (
-            <div className="tb-trace-section">
-              <div className="tb-trace-section-header">
-                <ThemeIcon name="shield-check" size={ICON_SIZE.dense} />
-                <span>System Telemetry Notices ({telemetryNotices.length})</span>
-              </div>
-              <div className="tb-trace-telemetry-list">
-                {telemetryNotices.map((notice, idx) => (
-                  <div key={`notice_${idx}`} className="tb-trace-telemetry-item">
-                    <div className="tb-trace-telemetry-layer">
-                      <span className="tb-trace-tag">{notice.layer}</span>
-                      <span className="tb-trace-telemetry-action">{notice.action}</span>
-                    </div>
-                    <div className="tb-trace-telemetry-truth">
-                      <span className="tb-trace-label">Ground Truth:</span> {notice.ground_truth}
-                    </div>
-                    {notice.self_healed && (
-                      <div className="tb-trace-telemetry-healed">
-                        <span className="tb-trace-label">Self-Healed:</span> {notice.self_healed}
-                      </div>
-                    )}
-                    {notice.guidance && (
-                      <div className="tb-trace-telemetry-guide">
-                        <span className="tb-trace-label">Guidance:</span> {notice.guidance}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Timeline Spans */}
           {spans.length === 0 ? (
             <div className="tb-trace-empty">
               <ThemeIcon name="activity" size={ICON_SIZE.prominent} />
-              <p>No active execution trace available for this turn.</p>
-              <span>Traces track prompts, thinking, bash commands, file changes, and telemetry.</span>
+              <p>No spans for this run yet.</p>
+              <span>Spans are collected from the run itself: turns, thinking, tokens and tool calls.</span>
             </div>
           ) : (
             <div className="tb-trace-timeline">
@@ -206,12 +157,6 @@ export function TracePopover({
                               )}
                               {span.type === "tool" && !isBash && !isWrite && (
                                 <ThemeIcon name="wrench" size={ICON_SIZE.inline} />
-                              )}
-                              {span.type === "file" && (
-                                <ThemeIcon name="file-diff" size={ICON_SIZE.inline} />
-                              )}
-                              {span.type === "telemetry" && (
-                                <ThemeIcon name="shield-check" size={ICON_SIZE.inline} />
                               )}
                             </span>
 

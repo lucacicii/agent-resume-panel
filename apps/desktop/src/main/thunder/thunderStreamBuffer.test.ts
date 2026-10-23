@@ -14,16 +14,6 @@ function observed(event: Record<string, unknown>): ThunderObservedEvent {
 }
 
 /** A `custom/agent_status` payload, shaped as thunder's plugin writes it. */
-function agentStatus(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
-    session_id: "sess_1",
-    phase: "thinking",
-    turn: 1,
-    started_at_ms: 1_000,
-    seq: 1,
-    ...overrides
-  };
-}
 
 describe("thunderStreamBuffer", () => {
   afterEach(() => {
@@ -115,49 +105,19 @@ describe("thunderStreamBuffer", () => {
     expect(snapshot.events).toHaveLength(0);
   });
 
-  it("keeps the latest run status for a renderer that arrives mid-run", () => {
+  it("keeps thunder's own custom frames in the replayable events", () => {
     const snapshot = createActiveStreamSnapshot({ sessionId: "sess_6", taskId: "task_6" });
 
     accumulateStreamEvent(
       snapshot,
-      observed({ type: "custom", kind: "agent_status", payload: agentStatus({ seq: 1, phase: "thinking" }) })
-    );
-    accumulateStreamEvent(
-      snapshot,
-      observed({
-        type: "custom",
-        kind: "agent_status",
-        payload: agentStatus({ seq: 2, phase: "tool", tool: "bash" })
-      })
+      observed({ type: "custom", kind: "budget_notice", payload: { reason: "near_limit" } })
     );
 
-    expect(snapshot.agentStatus).toMatchObject({ phase: "tool", tool: "bash", seq: 2 });
-  });
-
-  it("leaves metrics and status frames where the renderer can find them", () => {
-    const snapshot = createActiveStreamSnapshot({ sessionId: "sess_7", taskId: "task_7" });
-
-    accumulateStreamEvent(
-      snapshot,
-      observed({ type: "custom", kind: "metrics_update", payload: { session_id: "sess_7", live_tps: 12 } })
-    );
-    accumulateStreamEvent(
-      snapshot,
-      observed({ type: "custom", kind: "agent_status", payload: agentStatus({ seq: 1 }) })
-    );
-
-    // Metrics are re-derived from the snapshot field, so only the frames a
-    // consumer replays are kept — and the status is one of them.
-    expect(snapshot.metrics).toMatchObject({ live_tps: 12 });
+    // `agent_status` / `metrics_update` came from plugins the kernel no longer
+    // has, so the buffer keeps only what thunder actually sends — and it keeps
+    // the frame itself, because the replay is what shows a mid-run arrival what
+    // happened.
     expect(snapshot.events.map((entry) => entry.event.type)).toEqual(["custom"]);
-    expect((snapshot.events[0]!.event as { kind?: string }).kind).toBe("agent_status");
-  });
-
-  it("ignores a status frame with no payload", () => {
-    const snapshot = createActiveStreamSnapshot({ sessionId: "sess_8", taskId: "task_8" });
-
-    accumulateStreamEvent(snapshot, observed({ type: "custom", kind: "agent_status" }));
-
-    expect(snapshot.agentStatus).toBeUndefined();
+    expect((snapshot.events[0]!.event as { kind?: string }).kind).toBe("budget_notice");
   });
 });

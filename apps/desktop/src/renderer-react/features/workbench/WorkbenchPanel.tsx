@@ -62,11 +62,9 @@ import { sessionDotStatusClass } from "./sessionStatus/dotStatus";
 import {
   useAcpStatus,
   useAgentStatus,
-  useThunderChatStatus,
   type AcpStatusEvent,
   type SessionDotRuntime,
-  type SessionDotStatus,
-  type ThunderStatusEvent
+  type SessionDotStatus
 } from "./sessionStatus";
 import { COMPOSER_TIP_LIMIT, EMPTY_COMPOSER_WORKSPACE_PROJECTS, type ComposerSendTip, type ComposerWorkspaceProject } from "./TerminalComposer";
 import { TerminalComposerStack } from "./TerminalComposerStack";
@@ -1451,21 +1449,14 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const statusView = useAgentStatus(statusPanes);
   const acpStatus = useAcpStatus();
-  const thunderStatus = useThunderChatStatus();
   const sessionRuntimeByPaneKey = useMemo(() => {
     const merged = new Map<string, SessionDotRuntime>(statusView.byPaneKey);
     for (const pane of acpChats) {
       const runtime = acpStatus.byChatId.get(pane.recordId);
       if (runtime) merged.set(pane.key, runtime);
     }
-    // Thunder runs answer for themselves: a daemon verdict (if the pane ever
-    // had one) is about the process, not about what the agent is doing.
-    for (const pane of thunderChats) {
-      const runtime = pane.sessionId ? thunderStatus.bySessionId.get(pane.sessionId) : undefined;
-      if (runtime) merged.set(pane.key, runtime);
-    }
     return merged;
-  }, [acpChats, acpStatus.byChatId, statusView.byPaneKey, thunderChats, thunderStatus.bySessionId]);
+  }, [acpChats, acpStatus.byChatId, statusView.byPaneKey, thunderChats]);
   const activeSessionDots = useMemo(
     () => collectActiveSessionDots(terminals, acpChats, sessionTitles, sessionRuntimeByPaneKey, thunderChats),
     [acpChats, sessionRuntimeByPaneKey, sessionTitles, terminals, thunderChats]
@@ -1483,15 +1474,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     const off = subscribe((raw) => acpStatus.ingest(raw as AcpStatusEvent));
     return () => off();
   }, [acpStatus.ingest]);
-
-  // Thunder runs report their own phase over the chat event stream, which every
-  // window receives — so the dots follow a run started anywhere.
-  useEffect(() => {
-    const subscribe = desktopApi().onThunderChatEvent;
-    if (typeof subscribe !== "function") return;
-    const off = subscribe((raw) => thunderStatus.ingest(raw as ThunderStatusEvent));
-    return () => off();
-  }, [thunderStatus.ingest]);
 
   // One stream: report this window's panes to main, which merges every window
   // (plus daemon-only panes) and fans the result back out. The board and the

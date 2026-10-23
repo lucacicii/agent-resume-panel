@@ -7,10 +7,7 @@ import { ChatTimeline } from "./ChatTimeline";
 import { buildTimelineItems, scrollTopForAnchor } from "./timelineModel";
 import { ChatComposer } from "./ChatComposer";
 import { ChatQuestionBubble } from "./ChatQuestionBubble";
-import { ChatUiRequestCard } from "./ChatUiRequestCard";
-import { ChatPlanReviewBlock } from "./ChatPlanReviewBlock";
 import { ChatEmptyState } from "./ChatEmptyState";
-import { AgentStatusChip } from "./AgentStatusChip";
 import { TurnDetailOverlay, TurnDots } from "./TurnDots";
 import { TracePopover } from "./TracePopover";
 import { ChatChangesPopover } from "./ChatChangesPopover";
@@ -21,9 +18,6 @@ import type {
   ThunderModelInfo,
   ThunderQuestionItem,
   ThunderFileChangeRecord,
-  ThunderTaskTrace,
-  ThunderTelemetryNotice,
-  ThunderAgentStatus
 } from "@agent-resume/core";
 import type { ChatRunMetrics, LiveSegment, LiveTurn, RenderedChatMessage } from "./useThunderChat";
 import type { TraceSpan } from "./useTraceCollector";
@@ -82,32 +76,18 @@ interface ChatMainProps {
   onEditPrompt?: (text: string) => void;
   prefillPrompt?: { text: string; id: number } | null;
   daemonOnline?: boolean;
-  currentTrace?: ThunderTaskTrace | null;
   traceSpans?: TraceSpan[];
   fileChanges?: ThunderFileChangeRecord[];
-  telemetryNotices?: ThunderTelemetryNotice[];
-  isCollectingTrace?: boolean;
   lastRunMetrics?: ChatRunMetrics | null;
   streamingMetrics?: { tokensCount: number; tps: number; reasoningCount?: number } | null;
   sessionTotalTokens?: number;
   currentContextTokens?: number;
   contextWindowLimit?: number;
   /** What thunder says the run is doing; `null` when nothing is running. */
-  agentStatus?: ThunderAgentStatus | null;
   /** Question the agent is blocked on, rendered as a bubble. */
   pendingQuestion?: { questionId: string; taskId: string; questions: ThunderQuestionItem[] } | null;
   onAnswerQuestion?: (answers: Record<string, string> | undefined, cancelled?: boolean) => void | Promise<void>;
   onDismissQuestion?: () => void | Promise<void>;
-  /**
-   * Dialog the daemon is blocking on (`ui_request`) — a plan approval, an
-   * `ask`-mode permission prompt, or a plugin's own question.
-   */
-  pendingUiRequest?: import("@agent-resume/core").ThunderUiRequest | null;
-  onAnswerUiRequest?: (answer: {
-    value?: string;
-    confirmed?: boolean;
-    cancelled?: boolean;
-  }) => void | Promise<void>;
 }
 
 export function ChatMain({
@@ -143,22 +123,16 @@ export function ChatMain({
   onEditPrompt,
   prefillPrompt,
   daemonOnline = true,
-  currentTrace,
   traceSpans = [],
   fileChanges = [],
-  telemetryNotices = [],
-  isCollectingTrace = false,
   lastRunMetrics,
   streamingMetrics,
   sessionTotalTokens,
   currentContextTokens,
   contextWindowLimit,
-  agentStatus,
   pendingQuestion,
   onAnswerQuestion,
   onDismissQuestion,
-  pendingUiRequest,
-  onAnswerUiRequest
 }: ChatMainProps) {
   const feedRef = useRef<HTMLDivElement | null>(null);
   /** A strategy while true: follow the newest content (正文 + thinking). */
@@ -438,7 +412,7 @@ export function ChatMain({
   const hasQuestion = Boolean(pendingQuestion && pendingQuestion.questions.length > 0);
   /** A `ui_request` dialog is docked in the same slot; only one ever shows at a
       time, because the daemon raises one blocking dialog per run. */
-  const hasDialog = Boolean(pendingUiRequest || hasQuestion);
+  const hasDialog = Boolean(hasQuestion);
 
   // A strategy: follow streaming content unless the user scrolled away (B).
   // The question card also docks/un-docks, so re-pin then too.
@@ -479,7 +453,6 @@ export function ChatMain({
         </div>
 
         <div className="tb-chat-header-actions">
-          <AgentStatusChip status={agentStatus} />
 
           {/* Find in conversation (opened via Cmd/Ctrl+F) */}
           {searchOpen ? (
@@ -545,22 +518,12 @@ export function ChatMain({
             type="button"
             className={`tb-header-action-btn${isTraceOpen ? " is-active" : ""}`}
             onClick={() => setIsTraceOpen(!isTraceOpen)}
-            title="View execution trace and telemetry"
+            title="View the run's spans"
           >
             <ThemeIcon name="activity" size={ICON_SIZE.dense} />
             <span>Trace</span>
-            {isCollectingTrace ? (
+            {traceSpans.some((span) => span.status === "running") ? (
               <span className="tb-header-pulse" />
-            ) : currentTrace?.duration_ms ? (
-              <span
-                style={{
-                  fontSize: "10px",
-                  color: "var(--color-label-tertiary)",
-                  fontFamily: "var(--font-family-mono, monospace)"
-                }}
-              >
-                {(currentTrace.duration_ms / 1000).toFixed(1)}s
-              </span>
             ) : null}
           </button>
 
@@ -581,14 +544,7 @@ export function ChatMain({
       </header>
 
       {/* Popovers */}
-      <TracePopover
-        isOpen={isTraceOpen}
-        onClose={() => setIsTraceOpen(false)}
-        trace={currentTrace || null}
-        spans={traceSpans}
-        telemetryNotices={telemetryNotices}
-        isCollecting={isCollectingTrace}
-      />
+      <TracePopover isOpen={isTraceOpen} onClose={() => setIsTraceOpen(false)} spans={traceSpans} />
 
       <ChatChangesPopover
         isOpen={isChangesOpen}
@@ -652,22 +608,6 @@ export function ChatMain({
                 />
               )}
 
-              {/*
-               * The plan under review, pending edition: expanded and in the
-               * transcript flow so it stays readable and reviewable after the
-               * run scrolled past it. Answering unmounts the dialog, which
-               * unmounts this block with it — A's local receipt
-               * (`buildUiAnswerReceipt`) leaves the collapsed record behind,
-               * so this block never has to survive its own answer.
-               */}
-              {pendingUiRequest?.ui === "review" ? (
-                <ChatPlanReviewBlock
-                  path={pendingUiRequest.path}
-                  content={pendingUiRequest.content}
-                  title={pendingUiRequest.title}
-                />
-              ) : null}
-
               <div className="tb-scroll-anchor" />
             </div>
           )}
@@ -683,16 +623,7 @@ export function ChatMain({
           so neither can cover the messages. */}
       <ChatComposer
         docked={
-          pendingUiRequest && onAnswerUiRequest ? (
-            /* Keyed by request: answer text belongs to the dialog that was up,
-               and the daemon only ever has one in flight, so a new dialog must
-               arrive as a new card rather than inherit the last one's draft. */
-            <ChatUiRequestCard
-              key={pendingUiRequest.requestId}
-              request={pendingUiRequest}
-              onAnswer={onAnswerUiRequest}
-            />
-          ) : hasQuestion && pendingQuestion ? (
+          hasQuestion && pendingQuestion ? (
             <ChatQuestionBubble
               questionId={pendingQuestion.questionId}
               questions={pendingQuestion.questions}

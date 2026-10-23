@@ -31,8 +31,22 @@ function atomicWrite(file: string, contents: string): void {
   fs.renameSync(tmp, file);
 }
 
+/**
+ * Thunder's data root, resolved the way thunder resolves it
+ * (`thunder_protocol::paths::thunder_config_dir`).
+ *
+ * `THUNDER_CONFIG_DIR` first, then `$HOME/.thunder`. Hardcoding `~/.thunder` — as
+ * this file used to — silently points at the wrong store the moment a host isolates
+ * thunder's data, which is what `prototype-edit-llm` does (`~/.prototype-studio/thunder`).
+ */
+export function thunderDataDir(): string {
+  const explicit = process.env.THUNDER_CONFIG_DIR?.trim();
+  if (explicit) return explicit;
+  return path.join(os.homedir(), ".thunder");
+}
+
 export function createThunderConfigStore(dir?: string): ThunderConfigStore {
-  const base = dir ?? path.join(os.homedir(), ".thunder");
+  const base = dir ?? thunderDataDir();
   const modelsPath = path.join(base, "models.json");
 
   return {
@@ -94,6 +108,6 @@ export function createThunderConfigStore(dir?: string): ThunderConfigStore {
 export const thunderConfigStore = createThunderConfigStore();
 
 export const thunderConfigPaths = {
-  dir: () => path.join(os.homedir(), ".thunder"),
-  models: () => path.join(os.homedir(), ".thunder", "models.json")
+  dir: thunderDataDir,
+  models: () => path.join(thunderDataDir(), "models.json")
 };
