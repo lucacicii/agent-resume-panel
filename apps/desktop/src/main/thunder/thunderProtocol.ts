@@ -8,21 +8,15 @@ export type {
   ThunderChatStreamPayload,
   ThunderChatTaskOptions,
   ThunderChatTaskResult,
-  ThunderTelemetryNotice,
   ThunderFileChangeRecord,
   ThunderTraceSpan,
-  ThunderTaskTrace,
   ThunderTurnStats,
   ThunderAgentStats,
   ThunderAgentPhase,
-  ThunderAgentStatus,
   ThunderModelInfo,
   ThunderPermissionMode,
   ThunderModeChangeSource,
   ThunderModeChanged,
-  ThunderUiRequest,
-  ThunderUiRequestSource,
-  ThunderUiAnswer
 } from "@agent-resume/core";
 
 /** Result of AI-title generation or manual title setting (errors are structured, never thrown). */
@@ -79,31 +73,20 @@ export type ThunderAgentEvent =
         error?: string;
         is_error: boolean;
         duration_ms?: number;
-        telemetry?: import("@agent-resume/core").ThunderTelemetryNotice;
       };
     }
   | {
       /**
-       * A host-defined event forwarded verbatim by the kernel — thunder emits
-       * `kind: "file_change"` from its tool layer, `kind: "metrics_update"` from
-       * its telemetry plugin, and `kind: "agent_status"` from its execution-status
-       * plugin (`ThunderAgentStatus`). Deliberately NOT a top-level
-       * `type: "file_change"`: the kernel does not interpret custom events, so
-       * they arrive wrapped with a `kind` discriminator and a `payload`.
+       * A host-defined event forwarded verbatim by the kernel.
+       *
+       * Thunder's current kernel emits exactly two kinds: `budget_notice` (a run is
+       * approaching a ceiling) and `loop_recovered` (the context was rebuilt after a
+       * stall). The `file_change` / `metrics_update` / `agent_status` kinds this
+       * client used to expect died with the plugin framework in thunder #18.
        */
       type: "custom";
       kind: string;
       payload: Record<string, unknown>;
-    }
-  | {
-      type: "telemetry_notice";
-      turn: number;
-      tool_call_id: string;
-      layer: string;
-      action: string;
-      ground_truth: string;
-      self_healed?: string;
-      guidance?: string;
     }
   | { type: "turn_end"; turn: number; stats?: import("@agent-resume/core").ThunderTurnStats }
   | {
@@ -209,45 +192,7 @@ export type ThunderDaemonIncoming =
       previous?: string;
       source: string;
     }
-  | {
-      /**
-       * A dialog the agent (or a plugin) wants answered, blocking that caller
-       * until `answer_ui` arrives or the timeout expires — on expiry the daemon
-       * resolves it as cancelled, so a silent panel degrades to "denied", never
-       * to "allowed".
-       *
-       * `UiRequest` is flattened in, so the discriminating field is `ui` and
-       * its siblings (`options`, `content`, ...) sit next to `title`.
-       */
-      type: "ui_request";
-      request_id: string;
-      task_id?: string;
-      session_id?: string;
-      /** `host` marks an authorisation moment; see `ThunderUiRequest`. */
-      source: string;
-      ui: string;
-      title: string;
-      options?: string[];
-      message?: string;
-      placeholder?: string;
-      prefill?: string;
-      path?: string;
-      content?: string;
-      timeout_ms?: number;
-    }
-  | {
-      /** Fire-and-forget notification from the agent or a plugin. */
-      type: "ui_notice";
-      source: string;
-      message: string;
-      level: string;
-    }
-  | {
-      /** A status-bar entry the panel may set or clear. */
-      type: "ui_status";
-      key: string;
-      text?: string;
-    };
+;
 
 /**
  * Where a queued message enters the run.

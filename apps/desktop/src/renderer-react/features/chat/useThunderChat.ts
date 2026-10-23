@@ -13,13 +13,10 @@ import type {
   ThunderImageAttachment,
   ThunderActiveStreamSnapshot,
   ThunderMetricsSnapshot,
-  ThunderAgentStatus,
   ThunderPermissionMode,
   ThunderModeChanged,
-  ThunderUiRequest
 } from "@agent-resume/core";
 import { useTraceCollector } from "./useTraceCollector";
-import { isNewerAgentStatus } from "../workbench/sessionStatus";
 
 export interface ChatRunMetrics {
   tps?: number;
@@ -628,57 +625,6 @@ function turnFromMessage(message: ThunderChatMessage, positionInRun: number): Li
  * exact option strings (see ChatUiRequestCard: the clicked label travels back
  * verbatim). Anything else on a `review` is "keep planning" or unknown.
  */
-const REVIEW_APPROVE_OPTIONS: ReadonlySet<string> = new Set([
-  "Yes, and auto-accept edits",
-  "Yes, but ask before each edit",
-  "Yes, fully autonomous"
-]);
-
-/**
- * Build the local receipt left behind when the user answers a blocking
- * `ui_request` dialog. Returns the receipt text, or null when there is nothing
- * worth saying (an unknown value that should not be dressed up as a decision).
- */
-function buildUiAnswerReceipt(
-  pending: Pick<ThunderUiRequest, "ui" | "title" | "path" | "content">,
-  answer: { value?: string; confirmed?: boolean; cancelled?: boolean }
-): string | null {
-  if (answer.cancelled) {
-    return `🚫 已关闭“${pending.title}”（视为拒绝，agent 将失败关闭继续）`;
-  }
-  switch (pending.ui) {
-    case "review": {
-      if (answer.value === "No, keep planning") {
-        // First half of the two-step flow: the follow-up `input` leaves its
-        // own receipt when it arrives.
-        return "📝 已选择继续规划，等待补充意见…";
-      }
-      if (answer.value && REVIEW_APPROVE_OPTIONS.has(answer.value)) {
-        const head = `✅ 已批准计划：${answer.value}`;
-        if (!(pending.content ?? "").trim()) return head;
-        return (
-          `${head}\n` +
-          `<details><summary>查看已批准的计划书（${pending.path ?? ""}）</summary>\n\n${pending.content}\n\n</details>`
-        );
-      }
-      return null;
-    }
-    case "input":
-    case "editor":
-      // The follow-up half: title is usually "What should change in the plan?".
-      // Paste the feedback verbatim so the record holds what was actually sent.
-      return answer.value ? `💬 补充意见已提交：\n\n${answer.value}` : null;
-    case "confirm":
-      if (answer.confirmed === true) return "✅ 已允许";
-      if (answer.confirmed === false) return "⛔ 已拒绝";
-      return null;
-    case "select":
-      return answer.value ? `✅ 已选择：${answer.value}` : null;
-    default:
-      return null;
-  }
-}
-
 export function useThunderChat() {
   const [conversations, setConversations] = useState<ThunderConversationSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -771,14 +717,7 @@ export function useThunderChat() {
    * stream, which cannot see the one state that matters most (a run parked on
    * an approval gate emits nothing at all).
    */
-  const [agentStatus, setAgentStatus] = useState<ThunderAgentStatus | null>(null);
   /** The frame the state above was built from, for the out-of-order guard. */
-  const agentStatusRef = useRef<ThunderAgentStatus | null>(null);
-  const applyAgentStatus = useCallback((frame: ThunderAgentStatus | null) => {
-    if (frame && !isNewerAgentStatus(frame, agentStatusRef.current)) return;
-    agentStatusRef.current = frame;
-    setAgentStatus(frame);
-  }, []);
 
   // A question the agent is blocked on; rendered as a bubble until answered.
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
@@ -808,25 +747,20 @@ export function useThunderChat() {
   const permissionModeDirtyRef = useRef(false);
 
   /** A dialog the agent is blocked on; rendered as a card until answered. */
-  const [pendingUiRequest, setPendingUiRequest] = useState<ThunderUiRequest | null>(null);
   /**
    * Every parked dialog this renderer has seen, keyed by session — same reason
    * as `pendingQuestionsRef`: the daemon broadcasts for all sessions, so what
    * docks must be derived from the session on screen.
    */
-  const pendingUiRequestsRef = useRef<Map<string, ThunderUiRequest>>(new Map());
 
   // End-to-end task trace and file modification tracking
   const {
-    currentTrace,
     spans: traceSpans,
     fileChanges,
-    telemetryNotices,
     isCollecting: isCollectingTrace,
     startTaskTrace,
     recordEvent: recordTraceEvent,
     finishTaskTrace,
-    loadTrace,
     restoreFromSnapshot,
     resetTrace,
     setFileChanges
@@ -847,11 +781,6 @@ export function useThunderChat() {
   /** Dock the parked question of `sessionId`; no session (or none parked) clears it. */
   const syncPendingQuestion = useCallback((sessionId: string | null) => {
     setPendingQuestion(sessionId ? pendingQuestionsRef.current.get(sessionId) ?? null : null);
-  }, []);
-
-  /** Same, for a dialog the agent is blocked on. */
-  const syncPendingUiRequest = useCallback((sessionId: string | null) => {
-    setPendingUiRequest(sessionId ? pendingUiRequestsRef.current.get(sessionId) ?? null : null);
   }, []);
 
   const refreshDaemonStatus = useCallback(async () => {
@@ -899,7 +828,6 @@ export function useThunderChat() {
       // The bubble follows its conversation: opening a session docks its own
       // parked question (if any) and drops the one left behind.
       syncPendingQuestion(sessionId);
-      syncPendingUiRequest(sessionId);
       // The approval mode is the daemon's per-session state, not part of the
       // stored conversation (unlike `model` / `thinking_level`, which the
       // conversation record carries), so it has to be asked for. Not awaited:
@@ -1107,13 +1035,6 @@ export function useThunderChat() {
         setStreamTokensCount(snapMetrics ? snapMetrics.live_tokens : live.tokensCount);
         setStreamReasoningCount(snapMetrics ? snapMetrics.live_reasoning_tokens : live.reasoningCount);
         setLiveStreamingTps(snapMetrics ? snapMetrics.live_tps : live.tps);
-        // The phase comes back with the buffered task: a renderer that arrives
-        // mid-run should show what the run is doing, not wait for the next
-        // transition (a thinking stretch is minutes long).
-        const held = agentStatusRef.current;
-        applyAgentStatus(
-          snapshot?.agentStatus ?? (held?.session_id === sessionId ? held : null)
-        );
       } else {
         setIsStreaming(false);
         setActiveTaskId(null);
@@ -1122,49 +1043,13 @@ export function useThunderChat() {
         setStreamTokensCount(0);
         setStreamReasoningCount(0);
         setLiveStreamingTps(0);
-        // No run, no phase: a leftover status would describe a run that is over.
-        applyAgentStatus(null);
       }
 
-      // Load persistent trace for this conversation and populate run metrics
-      const trace = await loadTrace(sessionId);
-      // The trace and its metrics describe the fetched session; a switch that
-      // landed while it loaded ends this load, like the guards above.
-      if (activeSessionIdRef.current !== sessionId) return;
-      if (trace?.metrics) {
-        const m = trace.metrics;
-        setLastRunMetrics({
-          tps: m.avg_tps ?? (m.live_tps > 0 ? m.live_tps : undefined),
-          promptTokens: m.prompt_tokens,
-          completionTokens: m.completion_tokens,
-          cachedTokens: m.cached_tokens,
-          reasoningTokens: m.reasoning_tokens,
-          totalTokens: m.total_tokens,
-          durationMs: m.wall_duration_ms ?? m.duration_ms ?? trace.wall_duration_ms ?? trace.duration_ms
-        });
-        if (m.session_total_tokens > 0) {
-          setSessionTotalTokens(m.session_total_tokens);
-        }
-        if (m.context_tokens > 0) {
-          setCurrentContextTokens(m.context_tokens);
-        }
-      } else if (trace?.stats) {
-        setLastRunMetrics({
-          tps: trace.stats.avg_tokens_per_second,
-          promptTokens: trace.stats.total_prompt_tokens,
-          completionTokens: trace.stats.total_completion_tokens,
-          cachedTokens: trace.stats.total_cached_tokens ?? 0,
-          reasoningTokens: trace.stats.total_reasoning_tokens,
-          totalTokens: (trace.stats.total_prompt_tokens || 0) + (trace.stats.total_completion_tokens || 0),
-          // Prefer the daemon's wall-clock task time (user message -> task end)
-          durationMs: trace.wall_duration_ms ?? trace.stats.total_duration_ms ?? trace.duration_ms
-        });
-      } else if (trace && typeof trace.wall_duration_ms === "number") {
-        setLastRunMetrics({
-          durationMs: trace.wall_duration_ms ?? trace.duration_ms,
-          cachedTokens: 0
-        });
-      } else if (conv && conv.stats) {
+      // No server-side trace to hydrate from: it answered `traces: []` for every
+      // session, and its disk fallback pointed at a directory nothing writes. The
+      // badge is filled by the run's own events (`turn_end`, `loop_complete`) and
+      // from the stored conversation's stats below.
+      if (conv && conv.stats) {
         setLastRunMetrics({
           totalTokens: conv.stats.total_used_tokens ?? conv.stats.total_tokens,
           durationMs: conv.stats.duration_ms,
@@ -1182,7 +1067,7 @@ export function useThunderChat() {
     } finally {
       setLoading(false);
     }
-  }, [applyAgentStatus, loadTrace, models, restoreFromSnapshot, setFileChanges, syncPendingQuestion, syncPendingUiRequest]);
+  }, [models, restoreFromSnapshot, setFileChanges, syncPendingQuestion]);
 
   const createNewSession = useCallback(() => {
     setActiveSessionId(null);
@@ -1192,9 +1077,6 @@ export function useThunderChat() {
     setActiveTaskId(null);
     // A bubble belongs to the session that raised it.
     setPendingQuestion(null);
-    setPendingUiRequest(null);
-    // So does a phase: the draft has not run anything yet.
-    applyAgentStatus(null);
     // A brand-new session has no mode yet: leave it to the daemon, so
     // `.thunder`'s `agent.defaultMode` still decides its first run.
     setPermissionMode("");
@@ -1210,7 +1092,7 @@ export function useThunderChat() {
       const nextDef = target.default_thinking_level || (target.reasoning ? "medium" : "off");
       setThinkingLevel(nextDef);
     }
-  }, [applyAgentStatus, models, resetTrace, selectedModel]);
+  }, [models, resetTrace, selectedModel]);
 
   const setWorkspaceGtdTask = useCallback((noteId: string, dir: string) => {
     setTaskNoteId(noteId);
@@ -1277,57 +1159,6 @@ export function useThunderChat() {
         });
     },
     [permissionMode]
-  );
-
-  /**
-   * Answer the dialog the agent is blocked on.
-   *
-   * Cancelling is a first-class answer: it tells the daemon to fail closed now
-   * rather than holding the agent for the rest of the timeout.
-   */
-  const answerUiRequest = useCallback(
-    async (answer: { value?: string; confirmed?: boolean; cancelled?: boolean }) => {
-      const pending = pendingUiRequest;
-      if (!pending) return;
-      // Snapshot before clearing: the card is gone the moment this returns, and
-      // the receipt below is built from the snapshot, not from live state.
-      const snapshot = {
-        sessionId: pending.sessionId,
-        ui: pending.ui,
-        title: pending.title,
-        path: pending.path,
-        content: pending.content
-      };
-      pendingUiRequestsRef.current.delete(pending.sessionId ?? "");
-      setPendingUiRequest(null);
-      // A parked dialog answered from another session leaves no receipt there:
-      // the receipt belongs to the conversation that raised it.
-      if (!snapshot.sessionId || snapshot.sessionId === activeSessionIdRef.current) {
-        const receipt = buildUiAnswerReceipt(snapshot, answer);
-        if (receipt) {
-          // Local receipt only: it is appended to the feed so the answered
-          // dialog leaves a trace, but it is NOT written back to the daemon —
-          // the daemon has no mid-run append entry, and a reopened session
-          // reads back only what the daemon persisted. The durable record of
-          // the decision is the daemon's tool result (a separate change).
-          // `buildConversationRows` passes `user` rows through untouched, so a
-          // plain {role, content} receipt is all the feed needs — no new role.
-          const receiptMsg: ThunderChatMessage = { role: "user", content: receipt };
-          setMessages((prev) => [...prev, receiptMsg]);
-        }
-      }
-      try {
-        await desktopApi().thunderChatAnswerUi({
-          requestId: pending.requestId,
-          value: answer.value,
-          confirmed: answer.confirmed,
-          cancelled: answer.cancelled
-        });
-      } catch (err) {
-        console.error("[thunder-chat] could not deliver the dialog answer:", err);
-      }
-    },
-    [pendingUiRequest]
   );
 
   const deleteSession = useCallback(
@@ -1452,10 +1283,7 @@ export function useThunderChat() {
       }));
 
       // Finish trace collector span/timing
-      finishTaskTrace({
-        finishReason: finishReason || "Done",
-        finalContent: content
-      });
+      finishTaskTrace();
 
       const assistantMsg: RenderedChatMessage = keepsTurns
         ? // Its thinking and tool calls have a home in the pile now, so the reply
@@ -1504,55 +1332,12 @@ export function useThunderChat() {
         setIsStreaming(false);
         setActiveTaskId(null);
         setQueued({ steering: [], followUp: [] });
-
-        // Guarantee sync with finalized trace metrics on disk
-        void (async () => {
-          try {
-            const latestTrace = await loadTrace(sessionId, effectiveTaskId);
-            if (latestTrace?.metrics) {
-              const m = latestTrace.metrics;
-              setLastRunMetrics({
-                tps: m.avg_tps ?? (m.live_tps > 0 ? m.live_tps : undefined),
-                promptTokens: m.prompt_tokens,
-                completionTokens: m.completion_tokens,
-                cachedTokens: m.cached_tokens,
-                reasoningTokens: m.reasoning_tokens,
-                totalTokens: m.total_tokens,
-                durationMs: m.wall_duration_ms ?? m.duration_ms ?? latestTrace.wall_duration_ms ?? latestTrace.duration_ms
-              });
-              if (m.session_total_tokens > 0) {
-                setSessionTotalTokens(m.session_total_tokens);
-              }
-              if (m.context_tokens > 0) {
-                setCurrentContextTokens(m.context_tokens);
-              }
-            } else if (latestTrace?.stats) {
-              setLastRunMetrics({
-                tps: latestTrace.stats.avg_tokens_per_second,
-                promptTokens: latestTrace.stats.total_prompt_tokens,
-                completionTokens: latestTrace.stats.total_completion_tokens,
-                cachedTokens: latestTrace.stats.total_cached_tokens ?? 0,
-                reasoningTokens: latestTrace.stats.total_reasoning_tokens,
-                totalTokens: (latestTrace.stats.total_prompt_tokens || 0) + (latestTrace.stats.total_completion_tokens || 0),
-                // Prefer the daemon's wall-clock task time (user message -> task end)
-                durationMs: latestTrace.wall_duration_ms ?? latestTrace.stats.total_duration_ms ?? latestTrace.duration_ms
-              });
-            } else if (latestTrace && typeof latestTrace.wall_duration_ms === "number") {
-              setLastRunMetrics({
-                durationMs: latestTrace.wall_duration_ms ?? latestTrace.duration_ms,
-                cachedTokens: 0
-              });
-            }
-          } catch {
-            // keep live metrics
-          }
-        })();
       }
 
       // Always clear the stream from active streams map
       activeStreamsRef.current.delete(sessionId);
     },
-    [finishTaskTrace, loadTrace]
+    [finishTaskTrace]
   );
 
   const sendMessage = useCallback(
@@ -1680,10 +1465,7 @@ export function useThunderChat() {
       } catch (err) {
         console.error("Thunder task execution failed:", err);
         if (!finalizedTasksRef.current.has(taskId)) {
-          finishTaskTrace({
-            finishReason: "error",
-            finalContent: err instanceof Error ? err.message : String(err)
-          });
+          finishTaskTrace();
           const errMsg: ThunderChatMessage = {
             role: "assistant",
             content: `⚠️ **Task failed**: ${err instanceof Error ? err.message : String(err)}`
@@ -2202,48 +1984,13 @@ export function useThunderChat() {
           });
           break;
         }
-        case "custom": {
-          const customEv = ev as { kind?: unknown; payload?: unknown };
-          if (
-            customEv.kind === "metrics_update" &&
-            customEv.payload &&
-            typeof customEv.payload === "object" &&
-            isCurrentSession
-          ) {
-            const snap = customEv.payload as ThunderMetricsSnapshot;
-            setStreamTokensCount(snap.live_tokens);
-            setStreamReasoningCount(snap.live_reasoning_tokens);
-            setLiveStreamingTps(snap.live_tps);
-            if (typeof snap.context_tokens === "number" && snap.context_tokens > 0) {
-              setCurrentContextTokens(snap.context_tokens);
-            }
-            if (typeof snap.session_total_tokens === "number" && snap.session_total_tokens > 0) {
-              setSessionTotalTokens(snap.session_total_tokens);
-            }
-            // The snapshot is the only source that knows the run's wall clock
-            // *while it runs*: `turn_end` reports a turn's duration and only the
-            // trace (read after the run) had the total. Without this the badge
-            // showed the last turn — a 27-minute task reading "2.9s".
-            setLastRunMetrics({
-              tps: snap.avg_tps ?? (snap.live_tps > 0 ? snap.live_tps : undefined),
-              promptTokens: snap.prompt_tokens,
-              completionTokens: snap.completion_tokens,
-              cachedTokens: snap.cached_tokens,
-              reasoningTokens: snap.reasoning_tokens,
-              totalTokens: snap.total_tokens,
-              durationMs: snap.wall_duration_ms ?? snap.duration_ms
-            });
-          }
-          if (
-            customEv.kind === "agent_status" &&
-            customEv.payload &&
-            typeof customEv.payload === "object" &&
-            isCurrentSession
-          ) {
-            applyAgentStatus(customEv.payload as ThunderAgentStatus);
-          }
+        // Thunder's kernel emits exactly two custom kinds — `budget_notice` and
+        // `loop_recovered` — and this surface renders neither. Everything the
+        // metrics badge shows is accumulated locally from `turn_start` /
+        // `turn_end` / `loop_complete`; the phase chip that used to be driven by
+        // `agent_status` was removed with the plugin that emitted it.
+        case "custom":
           break;
-        }
         case "user_question": {
           const q = ev as any;
           const parked: PendingQuestion = {
@@ -2304,7 +2051,7 @@ export function useThunderChat() {
     });
 
     return () => unsub?.();
-  }, [applyAgentStatus, finalizeSessionTurn, recordTraceEvent]);
+  }, [finalizeSessionTurn, recordTraceEvent]);
 
   // Approval-mode changes arrive *outside* the task stream: the daemon pushes
   // them whether or not a run is live, because the user may toggle plan mode
@@ -2320,19 +2067,6 @@ export function useThunderChat() {
           kind: "success",
           text: `Plan approved — approval mode is now ${payload.mode}`
         });
-      }
-    });
-    return () => unsub?.();
-  }, []);
-
-  // Dialogs the agent is blocked on (a permission approval, a plan review).
-  // Parked per session for the same reason questions are.
-  useEffect(() => {
-    const unsub = desktopApi().onThunderUiRequest((request: ThunderUiRequest) => {
-      const key = request.sessionId ?? "";
-      pendingUiRequestsRef.current.set(key, request);
-      if (key === (activeSessionIdRef.current ?? "")) {
-        setPendingUiRequest(request);
       }
     });
     return () => unsub?.();
@@ -2414,13 +2148,9 @@ export function useThunderChat() {
     pendingQuestion,
     answerQuestion,
     dismissQuestion,
-    pendingUiRequest,
-    answerUiRequest,
     refreshDaemonStatus,
-    currentTrace,
     traceSpans,
     fileChanges,
-    telemetryNotices,
     isCollectingTrace,
     lastRunMetrics,
     streamingMetrics: {
@@ -2432,6 +2162,5 @@ export function useThunderChat() {
     currentContextTokens,
     contextWindowLimit,
     /** What thunder reports the run is doing; `null` when nothing is running. */
-    agentStatus
   };
 }

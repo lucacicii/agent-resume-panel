@@ -30,12 +30,9 @@ import type {
   ThunderChatTaskOptions,
   ThunderChatTaskResult,
   ThunderImageAttachment,
-  ThunderTaskTrace,
   ThunderTitleResult,
   ThunderPermissionMode,
   ThunderModeChanged,
-  ThunderUiRequest,
-  ThunderUiAnswer
 } from "../main/thunder/thunderProtocol";
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type {
@@ -1671,19 +1668,11 @@ export interface DesktopApi {
     sessionId: string;
     mode: ThunderPermissionMode;
   }): Promise<{ mode: ThunderPermissionMode } | null>;
-  /**
-   * Answer a dialog raised as `ui_request` (a permission approval, a plan
-   * review, ...). `cancelled` resolves it as refused immediately rather than
-   * letting the daemon wait out its timeout.
-   */
-  thunderChatAnswerUi(answer: ThunderUiAnswer): Promise<{ requestId: string; delivered: boolean }>;
   /** Drop everything queued and return its text, for an editor restore. */
   thunderChatClearTaskQueue(args: {
     taskId: string;
   }): Promise<{ steering: string[]; followUp: string[] } | null>;
-  thunderChatGetTrace(args: { sessionId: string; taskId?: string }): Promise<ThunderTaskTrace | null>;
   thunderChatGetActiveStream(args: { sessionId: string }): Promise<ThunderActiveStreamSnapshot | null>;
-  thunderChatListTraces(args: { sessionId: string }): Promise<Array<{ task_id: string; started_at_ms: number; duration_ms?: number; prompt?: string }>>;
   onThunderChatEvent(callback: (payload: ThunderChatStreamPayload) => void): () => void;
   /**
    * Approval-mode changes, for every session — filter by `sessionId`.
@@ -1692,8 +1681,6 @@ export interface DesktopApi {
    * is live, which is the whole point of it.
    */
   onThunderModeChanged(callback: (payload: ThunderModeChanged) => void): () => void;
-  /** Dialogs waiting for an answer (permission approvals, plan reviews, ...). */
-  onThunderUiRequest(callback: (request: ThunderUiRequest) => void): () => void;
   onThunderModelsChanged(callback: () => void): () => void;
   onScheduleRunEvent(callback: (payload: { scheduleId: string; runId: string; event: ThunderAgentEvent; accumulatedOutput: string }) => void): () => void;
   onScheduleStatusChanged(callback: (payload: { scheduleId: string; runId: string; status: string; output?: string; error?: string }) => void): () => void;
@@ -2235,10 +2222,7 @@ const api: DesktopApi = {
   thunderChatClearTaskQueue: (args) => ipcRenderer.invoke("thunder:chat:clearTaskQueue", args),
   thunderChatGetPermissionState: (args) => ipcRenderer.invoke("thunder:chat:getPermissionState", args),
   thunderChatSetMode: (args) => ipcRenderer.invoke("thunder:chat:setMode", args),
-  thunderChatAnswerUi: (answer) => ipcRenderer.invoke("thunder:chat:answerUi", answer),
-  thunderChatGetTrace: (args) => ipcRenderer.invoke("thunder:chat:getTrace", args),
   thunderChatGetActiveStream: (args) => ipcRenderer.invoke("thunder:chat:getActiveStream", args),
-  thunderChatListTraces: (args) => ipcRenderer.invoke("thunder:chat:listTraces", args),
   onThunderChatEvent: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: ThunderChatStreamPayload) => callback(payload);
     ipcRenderer.on("thunder:chat:event", handler);
@@ -2248,11 +2232,6 @@ const api: DesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, payload: ThunderModeChanged) => callback(payload);
     ipcRenderer.on("thunder:mode:changed", handler);
     return () => ipcRenderer.removeListener("thunder:mode:changed", handler);
-  },
-  onThunderUiRequest: (callback) => {
-    const handler = (_event: Electron.IpcRendererEvent, payload: ThunderUiRequest) => callback(payload);
-    ipcRenderer.on("thunder:ui:request", handler);
-    return () => ipcRenderer.removeListener("thunder:ui:request", handler);
   },
   onThunderModelsChanged: (callback) => {
     const handler = () => callback();

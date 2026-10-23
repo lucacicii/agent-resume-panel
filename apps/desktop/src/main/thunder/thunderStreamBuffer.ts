@@ -1,6 +1,5 @@
 import type {
   ThunderActiveStreamSnapshot,
-  ThunderAgentStatus,
   ThunderMetricsSnapshot
 } from "@agent-resume/core";
 import type { ThunderObservedEvent } from "./thunderProtocol";
@@ -96,20 +95,12 @@ export function accumulateStreamEvent(
       );
       break;
     }
-    case "custom": {
-      const e = ev as { kind?: unknown; payload?: unknown };
-      if (e.kind === "metrics_update" && e.payload && typeof e.payload === "object") {
-        snapshot.metrics = e.payload as ThunderMetricsSnapshot;
-        return;
-      }
-      if (e.kind === "agent_status" && e.payload && typeof e.payload === "object") {
-        snapshot.agentStatus = e.payload as ThunderAgentStatus;
-        // Deliberately NOT dropped from `events` the way `metrics_update` is:
-        // the frames are low-frequency and they are the evidence of what the
-        // host believed the run was doing, so the trace keeps them.
-      }
+    // Thunder emits no custom kinds this buffer cares about: `metrics_update` and
+    // `agent_status` came from plugins the kernel no longer has, and the remaining
+    // two (`budget_notice`, `loop_recovered`) are informational. They stay in
+    // `events` so a replayed timeline shows them.
+    case "custom":
       break;
-    }
   }
 
   snapshot.events.push(observed as unknown as ThunderActiveStreamSnapshot["events"][number]);

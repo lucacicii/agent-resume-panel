@@ -134,22 +134,16 @@ export function ThunderChatView({
       onEditPrompt={chat.prefillComposer}
       prefillPrompt={chat.composerPrefill}
       daemonOnline={Boolean(chat.daemonStatus?.available)}
-      currentTrace={chat.currentTrace}
       traceSpans={chat.traceSpans}
       fileChanges={chat.fileChanges}
-      telemetryNotices={chat.telemetryNotices}
-      isCollectingTrace={chat.isCollectingTrace}
       lastRunMetrics={chat.lastRunMetrics}
       streamingMetrics={chat.streamingMetrics}
       sessionTotalTokens={chat.sessionTotalTokens}
       currentContextTokens={chat.currentContextTokens}
       contextWindowLimit={chat.contextWindowLimit}
-      agentStatus={chat.agentStatus}
       pendingQuestion={chat.pendingQuestion}
       onAnswerQuestion={chat.answerQuestion}
       onDismissQuestion={chat.dismissQuestion}
-      pendingUiRequest={chat.pendingUiRequest}
-      onAnswerUiRequest={chat.answerUiRequest}
     />
     </div>
   );
