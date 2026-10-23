@@ -19,7 +19,7 @@ Use the **⚙** button in the top bar. Settings panes:
 | **Sessions** | Agent home paths, session list / sync related options |
 | **Workbench** | Default agent, ⌘T behavior, **workspace mentions**, **terminal theme** and related defaults |
 | **Selection** | Text selection actions (built-in Translate / Explain and custom actions) |
-| **Data** | Panel home path, open data folder, **backup export / merge import** |
+| **Data** | Panel home path, open data folder, **backup export / merge import** (local ZIP, iCloud Drive, WebDAV) |
 | **Logs** | Application error / warning log (redacted), clear, reveal in Finder |
 | **Usage** | Local LLM usage summary |
 | **MCP** | Register trusted local agents for Notes / Reports / Sessions tools |
@@ -79,11 +79,15 @@ CLI transcripts remain in native agent homes. Change panel home only if you unde
 
 **In-app:**
 
-1. Open **Settings → Data** (Backup). Choose **Local ZIP** or **iCloud Drive**.
-2. **Native Agent conversations** are included by default. The app includes only recognized conversation records for configured Codex, Claude, Grok, Pi, Cursor CLI, Antigravity, and OpenCode homes. Credentials, Agent configuration, caches, logs, downloads, and Cursor IDE conversation bodies are excluded.
-3. A local ZIP is compatible with the existing merge flow and can contain readable native conversation content. Store it securely. API keys remain optional and are encrypted with the backup password.
-4. iCloud Drive backups are written as encrypted `.arbak` files in `~/Library/Mobile Documents/com~apple~CloudDocs/Agent Resume/Backups`. A password is always required; it is never saved. Agent Resume reports that the file is saved, while macOS performs the actual iCloud sync. The latest 10 managed backups created by each Mac are retained.
-5. Choose a ZIP or select an iCloud backup to preview it. **Restore native Agent conversations** is off by default. The merge keeps newer local native files and reports conflicts; it never copies Agent configuration or authentication files. If a provider exceeds the per-file or archive size limits, that provider is skipped and the backup shows an actionable warning; the rest of the backup still completes.
+1. Open **Settings → Data** (Backup). Choose **Local ZIP**, **iCloud Drive**, or **WebDAV**.
+2. **Native Agent conversations** are included by default. The app includes only recognized conversation records for configured Codex, Claude, Grok, Pi, Cursor CLI, Antigravity, OpenCode, and Thunder homes. Credentials, Agent configuration, caches, logs, downloads, Thunder `traces/`, and Cursor IDE conversation bodies are excluded.
+3. Backups are **unencrypted ZIP files** and contain full conversation text and note bodies. API keys are never written into a backup. Store them where only you can read them.
+4. **iCloud Drive** backups go to `~/Library/Mobile Documents/com~apple~CloudDocs/Agent Resume/Backups`. Agent Resume reports that the file is saved, while macOS performs the actual iCloud sync.
+5. **WebDAV** is configured once in the same pane: server URL (for example `https://dav.jianguoyun.com/dav/`), username, app password, and a remote folder (default `Agent Resume/Backups`). The app password is encrypted with the system keychain (Electron `safeStorage`) and never written in plaintext or returned to the window. Use **Test connection** to verify the folder before uploading.
+6. Each machine keeps the latest 10 backups it created on the selected remote target; older ones are deleted. Files are uploaded as `.partial` and renamed only when complete, so an interrupted upload never appears in the list.
+7. Choose a ZIP or select a stored backup to preview it. **Restore native Agent conversations** is off by default. The merge keeps newer local native files and reports conflicts; it never copies Agent configuration or authentication files. If a provider exceeds the per-file or archive size limits, that provider is skipped and the backup shows an actionable warning; the rest of the backup still completes.
+8. What a backup contains: `catalog.db` and `desktop.db` (rebuildable search/vector indexes excluded), notes with their assets, archive marks and hierarchy, ACP threads, task templates and images, task workspaces (worktrees and runtime directories excluded), Thunder conversations, and `settings.json` / `settings.desktop.json` with credentials stripped.
+9. Backups written by older releases are encrypted `.arbak` files. They still appear in the list and can be restored, but the password used when they were created is required. New backups are always plain ZIPs.
 
 **Manual folder copy (full control):**
 
@@ -120,7 +124,7 @@ CLI transcripts remain in native agent homes. Change panel home only if you unde
 | **模型** | AI 供应商池与分功能模型选择 |
 | **Sessions** | 各 Agent 目录、会话列表 / 同步相关 |
 | **Workbench** | 默认 Agent、⌘T 行为、**工作区 Mention**、**终端主题** 与相关默认 |
-| **数据** | Panel home 路径、打开数据目录、**备份导出 / 合并导入** |
+| **数据** | Panel home 路径、打开数据目录、**备份导出 / 合并导入**（本地 ZIP、iCloud Drive、WebDAV） |
 | **日志** | 应用错误 / 警告日志（脱敏）、清空、在访达中显示 |
 | **用量** | 本机 LLM 用量汇总 |
 | **MCP** | 为受信任的本机 Agent 注册 Notes / Reports / Sessions 工具 |
@@ -180,11 +184,15 @@ CLI 原文仍在各 Agent 原生目录。修改 panel home 时请确保两产品
 
 **应用内：**
 
-1. 打开 **设置 → 数据**（备份），选择 **本地 ZIP** 或 **iCloud Drive**。
-2. 默认包含 **原始 Agent 对话**。应用只会从已配置的 Codex、Claude、Grok、Pi、Cursor CLI、Antigravity 与 OpenCode 目录收集可识别的对话记录；不会收集凭据、Agent 配置、缓存、日志、下载资源或 Cursor IDE 的对话正文。
-3. 本地 ZIP 与原有合并流程兼容，也可能包含可直接阅读的原始对话，请安全保存。API Key 仍为可选项，并使用备份密码加密。
-4. iCloud Drive 备份会保存为 `~/Library/Mobile Documents/com~apple~CloudDocs/Agent Resume/Backups` 中的加密 `.arbak` 文件，始终需要密码且不会保存密码。应用只提示“已保存”，实际 iCloud 同步由 macOS 完成。每台 Mac 仅保留自己创建的最近 10 份受管备份。
-5. 选择 ZIP 或 iCloud 备份后可先预览。**恢复原始 Agent 对话** 默认关闭；合并会保留本机较新的原始文件并报告冲突，绝不会复制 Agent 配置或认证文件。如果某个 Provider 超过单文件或归档容量限制，该 Provider 会被跳过并显示可操作的警告，其余备份仍会完成。
+1. 打开 **设置 → 数据**（备份），选择 **本地 ZIP**、**iCloud Drive** 或 **WebDAV**。
+2. 默认包含 **原始 Agent 对话**。应用只会从已配置的 Codex、Claude、Grok、Pi、Cursor CLI、Antigravity、OpenCode 与 Thunder 目录收集可识别的对话记录；不会收集凭据、Agent 配置、缓存、日志、下载资源、Thunder 的 `traces/` 或 Cursor IDE 的对话正文。
+3. 备份是 **未加密的 ZIP 文件**，包含完整对话正文与笔记内容；API Key 永远不会写入备份。请把备份放在只有你能读取的位置。
+4. **iCloud Drive** 备份保存到 `~/Library/Mobile Documents/com~apple~CloudDocs/Agent Resume/Backups`。应用只提示“已保存”，实际 iCloud 同步由 macOS 完成。
+5. **WebDAV** 在同一页配置一次：服务器地址（例如 `https://dav.jianguoyun.com/dav/`）、用户名、应用密码与远端目录（默认 `Agent Resume/Backups`）。应用密码经系统钥匙串（Electron `safeStorage`）加密，不会以明文写入磁盘，也不会返回给界面。上传前可先用 **测试连接** 验证目录。
+6. 每台机器在所选远端目标上仅保留自己创建的最近 10 份备份，更旧的会被删除。上传时先写成 `.partial`，完成后再改名，因此中断的上传不会出现在列表里。
+7. 选择 ZIP 或某份已存备份后可先预览。**恢复原始 Agent 对话** 默认关闭；合并会保留本机较新的原始文件并报告冲突，绝不会复制 Agent 配置或认证文件。如果某个 Provider 超过单文件或归档容量限制，该 Provider 会被跳过并显示可操作的警告，其余备份仍会完成。
+8. 备份内容：`catalog.db` 与 `desktop.db`（不含可重建的搜索/向量索引）、笔记及其附件、归档状态与层级、ACP 线程、任务模板与图片、任务工作区（不含 worktree 与运行期目录）、Thunder 对话，以及剔除凭据后的 `settings.json` / `settings.desktop.json`。
+9. 旧版本写出的是加密 `.arbak` 文件：仍会出现在列表中并可恢复，但需要当时设置的密码。新备份一律为明文 ZIP。
 
 **手动复制目录（完全控制）：**
 

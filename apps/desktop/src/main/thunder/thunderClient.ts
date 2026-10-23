@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as readline from "node:readline";
 import { randomUUID } from "node:crypto";
-import { loadSettings } from "@agent-resume/core";
+import { loadSettings, normalizeThunderPermissionMode } from "@agent-resume/core";
 import { buildAugmentedPath } from "../processPath";
 import {
   describeThunderResolution,
@@ -13,6 +13,7 @@ import {
   type ThunderDaemonLocation,
   type ThunderDaemonSettings
 } from "./daemonResolver";
+import { thunderDataDir } from "./thunderConfig";
 import type {
   ThunderDaemonIncoming,
   ThunderModelInfo,
@@ -21,13 +22,15 @@ import type {
   ThunderConversation,
   ThunderImageAttachment,
   ThunderQueueBehavior,
-  ThunderTaskTrace,
   ThunderTitleResult,
   ThunderModeChanged,
   ThunderPermissionMode,
-  ThunderUiRequest,
-  ThunderUiAnswer
 } from "./thunderProtocol";
+import {
+  normalizePingResponse,
+  type ThunderPingResponse,
+  type ThunderPingResult
+} from "./thunderPing";
 
 /** How long a loaded `settings.thunder` snapshot is trusted before re-reading it. */
 const THUNDER_SETTINGS_TTL_MS = 5_000;
@@ -69,19 +72,8 @@ export class ThunderClient {
    * nothing is running, so they need their own way out.
    */
   private modeListeners = new Set<(payload: ThunderModeChanged) => void>();
-  private uiRequestListeners = new Set<(request: ThunderUiRequest) => void>();
 
-  /** Observe approval-mode changes for every session (filter by `sessionId` yourself). */
-  public onModeChanged(listener: (payload: ThunderModeChanged) => void): () => void {
-    this.modeListeners.add(listener);
-    return () => this.modeListeners.delete(listener);
-  }
 
-  /** Observe dialogs waiting for an answer (`ui_request`). */
-  public onUiRequest(listener: (request: ThunderUiRequest) => void): () => void {
-    this.uiRequestListeners.add(listener);
-    return () => this.uiRequestListeners.delete(listener);
-  }
 
   /**
    * Re-read `settings.thunder` so a hand-edited settings.json takes effect without a
@@ -178,7 +170,7 @@ export class ThunderClient {
         // Models might be empty if no provider credentials yet
       }
       return {
-        available: Boolean(ping?.pong),
+        available: ping.pong,
         repoPath: resolved.repoPath,
         daemonPath: resolved.binaryPath || resolved.scriptPath,
         tuiPath,
@@ -431,11 +423,16 @@ export class ThunderClient {
         // the session-scoped listeners. This is the only way a surface learns
         // the mode moved when nothing is running — including when the *model*
         // got a plan approved mid-run.
+        const mode = normalizeThunderPermissionMode(msg.mode);
+        if (!mode) {
+          console.warn(`[thunder-client:mode] unknown mode '${msg.mode}' — ignored`);
+          break;
+        }
         const payload: ThunderModeChanged = {
           sessionId: msg.session_id,
           taskId: msg.task_id,
-          mode: msg.mode as ThunderPermissionMode,
-          previous: msg.previous as ThunderPermissionMode | undefined,
+          mode,
+          previous: normalizeThunderPermissionMode(msg.previous) || undefined,
           source: msg.source === "plan_approved"
             ? "planApproved"
             : msg.source === "run_option"
@@ -454,44 +451,7 @@ export class ThunderClient {
         }
         break;
       }
-      case "ui_request": {
-        // A blocking dialog. `ui` discriminates the shape and its siblings were
-        // flattened in beside it (see ThunderDaemonIncoming).
-        const request: ThunderUiRequest = {
-          requestId: msg.request_id,
-          taskId: msg.task_id,
-          sessionId: msg.session_id,
-          source: msg.source === "host" ? "host" : "plugin",
-          ui: msg.ui as ThunderUiRequest["ui"],
-          title: msg.title,
-          options: msg.options,
-          message: msg.message,
-          placeholder: msg.placeholder,
-          prefill: msg.prefill,
-          path: msg.path,
-          content: msg.content,
-          timeoutMs: msg.timeout_ms
-        };
-        console.log(
-          `[thunder-client:ui] request=${request.requestId} ui=${request.ui} source=${request.source}`
-        );
-        for (const listener of this.uiRequestListeners) {
-          try {
-            listener(request);
-          } catch (err) {
-            console.error("[thunder-daemon:ui-listener-error]", err);
-          }
-        }
-        break;
-      }
-      case "ui_notice": {
-        console.log(`[thunder-daemon:notice] ${msg.level}: ${msg.message}`);
-        break;
-      }
-      case "ui_status": {
-        console.log(`[thunder-daemon:status] ${msg.key}=${msg.text ?? ""}`);
-        break;
-      }
+
     }
   }
 
@@ -521,8 +481,20 @@ export class ThunderClient {
     });
   }
 
-  public async ping(): Promise<{ pong: boolean; version?: string }> {
-    return this.sendCommand("ping", {}, 5000);
+  /**
+   * Observe approval-mode changes.
+   *
+   * This frame is not a reply to anything and never arrives on a task's event
+   * stream: it is routed by `session_id`, so a surface that is not running anything
+   * still sees a mode change.
+   */
+  public onModeChanged(listener: (payload: ThunderModeChanged) => void): () => void {
+    this.modeListeners.add(listener);
+    return () => this.modeListeners.delete(listener);
+  }
+
+  public async ping(): Promise<ThunderPingResult> {
+    return normalizePingResponse(await this.sendCommand<ThunderPingResponse>("ping", {}, 5000));
   }
 
   public async listModels(): Promise<ThunderModelInfo[]> {
@@ -610,11 +582,10 @@ export class ThunderClient {
 
   public async deleteConversation(sessionId: string): Promise<boolean> {
     try {
-      const home = os.homedir();
-      const convDir = path.join(home, ".thunder", "conversations", sessionId);
+      const convDir = path.join(thunderDataDir(), "conversations", sessionId);
       if (fs.existsSync(convDir)) {
         await fs.promises.rm(convDir, { recursive: true, force: true });
-        const indexFile = path.join(home, ".thunder", "conversations", "index.json");
+        const indexFile = path.join(thunderDataDir(), "conversations", "index.json");
         if (fs.existsSync(indexFile)) {
           try {
             const raw = await fs.promises.readFile(indexFile, "utf-8");
@@ -641,8 +612,7 @@ export class ThunderClient {
 
   public async truncateConversation(sessionId: string, keepCount: number): Promise<boolean> {
     try {
-      const home = os.homedir();
-      const convFile = path.join(home, ".thunder", "conversations", sessionId, "conversation.json");
+      const convFile = path.join(thunderDataDir(), "conversations", sessionId, "conversation.json");
       if (!fs.existsSync(convFile)) return false;
       const raw = await fs.promises.readFile(convFile, "utf-8");
       const conv = JSON.parse(raw);
@@ -651,7 +621,7 @@ export class ThunderClient {
         conv.updated_at_ms = Date.now();
         await fs.promises.writeFile(convFile, JSON.stringify(conv, null, 2));
 
-        const indexFile = path.join(home, ".thunder", "conversations", "index.json");
+        const indexFile = path.join(thunderDataDir(), "conversations", "index.json");
         if (fs.existsSync(indexFile)) {
           try {
             const indexRaw = await fs.promises.readFile(indexFile, "utf-8");
@@ -681,88 +651,9 @@ export class ThunderClient {
     }
   }
 
-  public async getTrace(args: { sessionId: string; taskId?: string }): Promise<ThunderTaskTrace | null> {
-    try {
-      const resp = await this.sendCommand<ThunderTaskTrace>("get_trace", {
-        session_id: args.sessionId,
-        task_id: args.taskId
-      });
-      if (resp) {
-        return resp;
-      }
-    } catch {
-      // Fallback to disk read
-    }
-
-    try {
-      const home = os.homedir();
-      const traceDir = path.join(home, ".thunder", "conversations", args.sessionId, "traces");
-      if (!fs.existsSync(traceDir)) return null;
-
-      let traceFile: string;
-      if (args.taskId) {
-        traceFile = path.join(traceDir, `${args.taskId}.json`);
-      } else {
-        const files = await fs.promises.readdir(traceDir);
-        const jsonFiles = files.filter((f) => f.endsWith(".json"));
-        if (jsonFiles.length === 0) return null;
-        jsonFiles.sort().reverse();
-        traceFile = path.join(traceDir, jsonFiles[0]);
-      }
-
-      if (fs.existsSync(traceFile)) {
-        const raw = await fs.promises.readFile(traceFile, "utf-8");
-        return JSON.parse(raw) as ThunderTaskTrace;
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
-  public async listTraces(args: { sessionId: string }): Promise<Array<{ task_id: string; started_at_ms: number; duration_ms?: number; prompt?: string }>> {
-    try {
-      const resp = await this.sendCommand<{ traces?: Array<{ task_id: string; started_at_ms: number; duration_ms?: number; prompt?: string }> }>("list_traces", {
-        session_id: args.sessionId
-      });
-      if (resp?.traces && Array.isArray(resp.traces)) {
-        return resp.traces;
-      }
-    } catch {
-      // Fallback
-    }
-
-    try {
-      const home = os.homedir();
-      const traceDir = path.join(home, ".thunder", "conversations", args.sessionId, "traces");
-      if (!fs.existsSync(traceDir)) return [];
-      const files = await fs.promises.readdir(traceDir);
-      const results: Array<{ task_id: string; started_at_ms: number; duration_ms?: number; prompt?: string }> = [];
-      for (const file of files) {
-        if (!file.endsWith(".json")) continue;
-        try {
-          const raw = await fs.promises.readFile(path.join(traceDir, file), "utf-8");
-          const parsed = JSON.parse(raw);
-          results.push({
-            task_id: parsed.task_id || file.replace(".json", ""),
-            started_at_ms: parsed.started_at_ms || 0,
-            duration_ms: parsed.duration_ms,
-            prompt: parsed.prompt
-          });
-        } catch {
-          // ignore
-        }
-      }
-      return results.sort((a, b) => b.started_at_ms - a.started_at_ms);
-    } catch {
-      return [];
-    }
-  }
-
   private async listConversationsFromDisk(): Promise<ThunderConversationSummary[]> {
     try {
-      const home = os.homedir();
-      const indexFile = path.join(home, ".thunder", "conversations", "index.json");
+      const indexFile = path.join(thunderDataDir(), "conversations", "index.json");
       if (fs.existsSync(indexFile)) {
         try {
           const raw = await fs.promises.readFile(indexFile, "utf-8");
@@ -775,7 +666,7 @@ export class ThunderClient {
           // fallback to directory scan
         }
       }
-      const dir = path.join(home, ".thunder", "conversations");
+      const dir = path.join(thunderDataDir(), "conversations");
       if (!fs.existsSync(dir)) return [];
       const entries = await fs.promises.readdir(dir, { withFileTypes: true });
       const summaries: ThunderConversationSummary[] = [];
@@ -813,8 +704,7 @@ export class ThunderClient {
 
   private async getConversationFromDisk(sessionId: string): Promise<ThunderConversation | null> {
     try {
-      const home = os.homedir();
-      const convFile = path.join(home, ".thunder", "conversations", sessionId, "conversation.json");
+      const convFile = path.join(thunderDataDir(), "conversations", sessionId, "conversation.json");
       if (!fs.existsSync(convFile)) return null;
       const raw = await fs.promises.readFile(convFile, "utf-8");
       return JSON.parse(raw) as ThunderConversation;
@@ -856,14 +746,19 @@ export class ThunderClient {
      */
     headless?: boolean;
     /**
-     * Permission mode for this run (`plan` / `ask` / `acceptEdits` / `yolo`).
+     * Permission mode for this run: `plan` or `yolo`.
      *
-     * Stated explicitly rather than inherited, because the inherited value comes
-     * from `~/.thunder/config.json`'s `agent.defaultMode` — a global setting that
-     * would otherwise silently change how every schedule behaves. An unattended
-     * run wants `yolo`; a read-only sweep wants `plan`.
+     * Stated explicitly rather than inherited, because an unattended caller
+     * must not depend on whatever mode the session happens to remember. A
+     * scheduled run wants `yolo`; a read-only sweep wants `plan`.
      */
     mode?: string;
+    /**
+     * The caller has a transcript that renders ` ```mermaid ` fences as
+     * diagrams. Only the visual chat sets it; scheduled and headless runs leave
+     * it unset, so their prompt keeps the Markdown baseline.
+     */
+    renderDiagrams?: boolean;
     onEvent?: (event: ThunderObservedEvent) => void;
   }): Promise<{ finalContent?: string; finishReason: string; activePlugins?: string[] }> {
     await this.ensureRunning();
@@ -1027,17 +922,18 @@ export class ThunderClient {
       10_000
     );
     if (res === null || !res?.mode) return null;
-    return { mode: res.mode as ThunderPermissionMode, rules: res.rules ?? [] };
+    const mode = normalizeThunderPermissionMode(res.mode);
+    if (!mode) return null;
+    return { mode, rules: res.rules ?? [] };
   }
 
   /**
    * Set the mode a session is judged by.
    *
    * Takes effect on the session's next run *and* on a run already in flight, at
-   * its next tool call. Only the four canonical values are sent: Thunder's
-   * parser also accepts pre-0.4 aliases (`bypass_permissions`, `never`, ...),
-   * but those are a compatibility layer for old config files, not a value space
-   * a UI should be able to reach.
+   * its next tool call. Only the two implemented modes are ever sent; the
+   * daemon's tolerance for the retired `ask` / `acceptEdits` names is a
+   * leftover of its parser, not a value space a UI should be able to reach.
    *
    * Rejects when the daemon refuses (an unknown mode, or a daemon predating
    * `set_mode`) — that rejection is what lets a caller roll its optimistic
@@ -1053,31 +949,7 @@ export class ThunderClient {
       10_000
     );
     if (res === null) return null;
-    return { mode: (res?.mode as ThunderPermissionMode) ?? mode };
-  }
-
-  /**
-   * Answer a `ui_request`. The daemon resolves the blocked caller and reports
-   * whether the answer reached it (`delivered: false` for a stale request id —
-   * a late answer can never land on a later dialog).
-   */
-  public async answerUi(
-    answer: ThunderUiAnswer
-  ): Promise<{ requestId: string; delivered: boolean }> {
-    const res = await this.sendCommand<{ request_id?: string; delivered?: boolean }>(
-      "answer_ui",
-      {
-        request_id: answer.requestId,
-        value: answer.value,
-        confirmed: answer.confirmed,
-        cancelled: answer.cancelled === true
-      },
-      10_000
-    );
-    return {
-      requestId: res?.request_id ?? answer.requestId,
-      delivered: Boolean(res?.delivered)
-    };
+    return { mode: normalizeThunderPermissionMode(res?.mode) || mode };
   }
 
   public async cancelTask(taskId: string): Promise<boolean> {

@@ -10,7 +10,7 @@ import type { NotesDraft, StorageDraft, WorkbenchDraft } from "./model";
 import { formatShortcutForDisplay, WORKBENCH_NEW_SESSION_TARGET_OPTIONS } from "./model";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
-type BackupProgress = { operation: "export" | "import"; phase: "preparing" | "snapshotting" | "collecting" | "archiving" | "validating" | "merging" | "finalizing" | "complete"; percent: number };
+type BackupProgress = { operation: "export" | "import"; phase: "preparing" | "snapshotting" | "collecting" | "archiving" | "validating" | "merging" | "uploading" | "downloading" | "finalizing" | "complete"; percent: number };
 
 const TERMINAL_THEME_LABEL_KEYS: Record<string, string> = {
   "follow-app": "desktop.settings.terminalThemeFollowApp",
@@ -24,6 +24,17 @@ const TERMINAL_THEME_LABEL_KEYS: Record<string, string> = {
 
 function terminalThemeLabelKey(id: string): string {
   return TERMINAL_THEME_LABEL_KEYS[id] || "desktop.settings.terminalThemeDefaultDark";
+}
+
+/**
+ * IPC rejections arrive as `Error invoking remote method 'x': WebdavError: …`.
+ * Strip the transport wrapper so the pane shows the message the main process wrote.
+ */
+function errorMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  return raw
+    .replace(/^Error invoking remote method '[^']*':\s*/, "")
+    .replace(/^[A-Za-z]+Error:\s*/, "");
 }
 
 export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: WorkbenchDraft; setDraft: (value: WorkbenchDraft) => void; commit: (value: WorkbenchDraft) => void; t: Translate }) {
@@ -254,100 +265,128 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
 }
 
 export function BackupPane({ t }: { t: Translate }) {
-  type Target = "local-file" | "icloud-drive";
+  type Target = "local-file" | "icloud-drive" | "webdav";
   const [target, setTarget] = useState<Target>("local-file");
   const [targetStatus, setTargetStatus] = useState<Awaited<ReturnType<ReturnType<typeof desktopApi>["backupTargetStatus"]>>>([]);
-  const [icloudItems, setIcloudItems] = useState<Awaited<ReturnType<ReturnType<typeof desktopApi>["backupListIcloud"]>>>([]);
-  const [selectedIcloudId, setSelectedIcloudId] = useState("");
-  const [includeCredentials, setIncludeCredentials] = useState(false);
-  const [includeNativeConversations, setIncludeNativeConversations] = useState(true);
-  const [backupPassword, setBackupPassword] = useState("");
-  const [backupPasswordConfirm, setBackupPasswordConfirm] = useState("");
+  const [storedItems, setStoredItems] = useState<Awaited<ReturnType<ReturnType<typeof desktopApi>["backupListStored"]>>>([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+  // Native conversations dominate the archive and make uploads slow and fragile;
+  // keep them opt-in so the default backup stays small enough to finish.
+  const [includeNativeConversations, setIncludeNativeConversations] = useState(false);
   const [pendingImport, setPendingImport] = useState<Awaited<ReturnType<ReturnType<typeof desktopApi>["backupSelectImport"]>>>(null);
-  const [importCredentials, setImportCredentials] = useState(false);
+  const [pendingPassword, setPendingPassword] = useState("");
   const [restoreNativeConversations, setRestoreNativeConversations] = useState(false);
-  const [importPassword, setImportPassword] = useState("");
+  const [legacyPassword, setLegacyPassword] = useState("");
   const [backupStatus, setBackupStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupProgress, setBackupProgress] = useState<BackupProgress | null>(null);
-  const icloud = targetStatus.find((item) => item.target === "icloud-drive");
-  const passwordRequired = includeCredentials || target === "icloud-drive";
+  const [webdav, setWebdav] = useState({ url: "", username: "", folder: "", password: "", hasPassword: false });
+  const [revealWebdavPassword, setRevealWebdavPassword] = useState(false);
+  const [webdavBusy, setWebdavBusy] = useState(false);
+  const status = targetStatus.find((item) => item.target === target);
+  const selected = storedItems.find((item) => item.backupId === selectedId);
 
-  const refreshIcloud = useCallback(async () => {
-    const [status, items] = await Promise.all([desktopApi().backupTargetStatus(), desktopApi().backupListIcloud()]);
-    setTargetStatus(status);
-    setIcloudItems(items);
-    setSelectedIcloudId((current) => items.some((item) => item.backupId === current) ? current : items[0]?.backupId || "");
+  const refreshStored = useCallback(() => setRefreshKey((value) => value + 1), []);
+
+  useEffect(() => {
+    let canceled = false;
+    void (async () => {
+      const api = desktopApi();
+      try {
+        const statuses = await api.backupTargetStatus();
+        if (canceled) return;
+        setTargetStatus(statuses);
+        // Local ZIP has no list; the other targets keep their backups remotely.
+        const items = target === "local-file" ? [] : await api.backupListStored({ target });
+        if (canceled) return;
+        setStoredItems(items);
+        setSelectedId((current) => items.some((item) => item.backupId === current) ? current : items[0]?.backupId || "");
+      } catch (error) {
+        if (!canceled) setBackupStatus({ text: errorMessage(error), kind: "error" });
+      }
+    })();
+    return () => { canceled = true; };
+  }, [target, refreshKey]);
+
+  useEffect(() => {
+    let canceled = false;
+    void desktopApi().backupWebdavGetConfig().then((config) => {
+      if (canceled) return;
+      setWebdav((current) => ({ ...current, url: config.url, username: config.username, folder: config.folder, hasPassword: config.hasPassword }));
+    }).catch(() => undefined);
+    return () => { canceled = true; };
   }, []);
 
-  useEffect(() => { void refreshIcloud().catch(() => undefined); }, [refreshIcloud]);
   useEffect(() => {
     const api = desktopApi();
-    return typeof api.onBackupProgress === "function" ? api.onBackupProgress(setBackupProgress) : undefined;
+    return typeof api.onBackupProgress === "function" ? api.onBackupProgress((event) => setBackupProgress(event)) : undefined;
   }, []);
 
   const showPreview = (preview: NonNullable<typeof pendingImport>) => {
     setPendingImport(preview);
-    setImportCredentials(false);
     setRestoreNativeConversations(false);
     setBackupStatus({ text: t("desktop.backup.ready", preview.fileCount), kind: "ok" });
   };
 
   const exportData = async () => {
-    if (passwordRequired && (!backupPassword || backupPassword !== backupPasswordConfirm)) {
-      setBackupStatus({ text: t("desktop.backup.passwordMismatch"), kind: "error" });
-      return;
-    }
     setBackupProgress({ operation: "export", phase: "preparing", percent: 0 });
     setBackupBusy(true);
     try {
-      const result = await desktopApi().backupExport({
-        target,
-        includeCredentials,
-        includeNativeConversations,
-        password: passwordRequired ? backupPassword : undefined
-      });
-      const exportedText = target === "icloud-drive" ? t("desktop.backup.icloudSaved", result.fileCount || 0) : t("desktop.backup.exported", result.fileCount || 0);
+      const result = await desktopApi().backupExport({ target, includeNativeConversations });
+      const exportedText = target === "icloud-drive"
+        ? t("desktop.backup.icloudSaved", result.fileCount || 0)
+        : target === "webdav"
+          ? t("desktop.backup.webdavSavedResult", result.fileCount || 0)
+          : t("desktop.backup.exported", result.fileCount || 0);
       const warningText = result.warnings?.length ? ` ${result.warnings.join(" ")}` : "";
       setBackupStatus(result.canceled
         ? { text: t("desktop.backup.exportCanceled") }
         : { text: `${exportedText}${warningText}`, kind: result.warnings?.length ? "warning" : "ok" });
-      if (target === "icloud-drive") await refreshIcloud();
-      setBackupPassword("");
-      setBackupPasswordConfirm("");
+      if (target !== "local-file" && !result.canceled) refreshStored();
     } catch (error) {
-      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setBackupStatus({ text: errorMessage(error), kind: "error" });
     } finally {
       setBackupBusy(false);
     }
   };
 
   const selectLocalImport = async () => {
+    // A file picker reports no progress; clear the last run's bar so a stale
+    // percentage is not shown while the dialog is open.
+    setBackupProgress(null);
     setBackupBusy(true);
     try {
       const preview = await desktopApi().backupSelectImport();
       if (!preview) setBackupStatus({ text: t("desktop.backup.importCanceled") });
-      else showPreview(preview);
+      else {
+        setPendingPassword("");
+        showPreview(preview);
+      }
     } catch (error) {
-      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setBackupStatus({ text: errorMessage(error), kind: "error" });
     } finally {
       setBackupBusy(false);
     }
   };
 
-  const selectIcloudImport = async () => {
-    if (!selectedIcloudId) return;
-    if (!backupPassword) {
-      setBackupStatus({ text: t("desktop.backup.passwordRequiredIcloud"), kind: "error" });
+  const selectStoredImport = async () => {
+    if (!selected) return;
+    // Only backups written by older releases are encrypted and need a password.
+    if (selected.encrypted && !legacyPassword) {
+      setBackupStatus({ text: t("desktop.backup.legacyPasswordRequired"), kind: "error" });
       return;
     }
+    const password = selected.encrypted ? legacyPassword : "";
     setBackupBusy(true);
+    setBackupProgress({ operation: "import", phase: "downloading", percent: 0 });
     try {
-      const preview = await desktopApi().backupSelectIcloudImport({ backupId: selectedIcloudId, password: backupPassword });
-      setImportPassword(backupPassword);
+      const preview = await desktopApi().backupSelectStoredImport({ target, backupId: selected.backupId, ...(password ? { password } : {}) });
+      setPendingPassword(password);
       showPreview(preview);
+      setLegacyPassword("");
     } catch (error) {
-      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setBackupStatus({ text: errorMessage(error), kind: "error" });
     } finally {
       setBackupBusy(false);
     }
@@ -355,36 +394,71 @@ export function BackupPane({ t }: { t: Translate }) {
 
   const mergeImport = async () => {
     if (!pendingImport) return;
-    if (importCredentials && !importPassword) {
-      setBackupStatus({ text: t("desktop.backup.passwordRequired"), kind: "error" });
-      return;
-    }
     if (!(await confirmDestructive(t("desktop.backup.importConfirm", pendingImport.fileCount), t("desktop.common.confirm")))) return;
     setBackupProgress({ operation: "import", phase: "preparing", percent: 0 });
     setBackupBusy(true);
     try {
       const result = await desktopApi().backupImport({
         importToken: pendingImport.importToken,
-        includeCredentials: importCredentials,
         restoreNativeConversations,
-        password: importCredentials ? importPassword : undefined
+        ...(pendingPassword ? { password: pendingPassword } : {})
       });
       setPendingImport(null);
-      setImportPassword("");
+      setPendingPassword("");
       setBackupStatus({ text: t("desktop.backup.imported", result.fileCount || 0), kind: "ok" });
     } catch (error) {
-      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setBackupStatus({ text: errorMessage(error), kind: "error" });
     } finally {
       setBackupBusy(false);
     }
   };
 
-  const visibleIcloudItems = icloudItems.slice(0, 10);
-  const selectedIcloud = visibleIcloudItems.find((item) => item.backupId === selectedIcloudId);
+  const saveWebdav = async () => {
+    setWebdavBusy(true);
+    try {
+      const view = await desktopApi().backupWebdavSaveConfig({
+        url: webdav.url,
+        username: webdav.username,
+        folder: webdav.folder,
+        ...(webdav.password ? { password: webdav.password } : {})
+      });
+      setWebdav((current) => ({ ...current, url: view.url, username: view.username, folder: view.folder, hasPassword: view.hasPassword, password: "" }));
+      setBackupStatus({ text: t("desktop.backup.webdavSaved"), kind: "ok" });
+      refreshStored();
+    } catch (error) {
+      setBackupStatus({ text: errorMessage(error), kind: "error" });
+    } finally {
+      setWebdavBusy(false);
+    }
+  };
+
+  const testWebdav = async () => {
+    setWebdavBusy(true);
+    setBackupStatus({ text: t("desktop.backup.webdavTesting") });
+    try {
+      // Draft values only; nothing is saved by a test.
+      const result = await desktopApi().backupWebdavTest({
+        url: webdav.url,
+        username: webdav.username,
+        folder: webdav.folder,
+        ...(webdav.password ? { password: webdav.password } : {})
+      });
+      setBackupStatus(result.ok
+        ? { text: `${t("desktop.backup.webdavTestOk")} ${result.message}`, kind: "ok" }
+        : { text: `${t("desktop.backup.webdavTestFailed")} ${result.message}`, kind: "error" });
+    } catch (error) {
+      setBackupStatus({ text: errorMessage(error), kind: "error" });
+    } finally {
+      setWebdavBusy(false);
+    }
+  };
+
+  const visibleItems = storedItems.slice(0, 10);
   const providerSummary = pendingImport?.providers
     .filter((provider) => provider.fileCount > 0)
     .map((provider) => `${provider.provider} ${Math.ceil(provider.totalBytes / 1024 / 1024)} MB${provider.excludedBytes ? ` · ${t("desktop.backup.excludedHistory", Math.ceil(provider.excludedBytes / 1024 / 1024))}` : ""}`)
     .join(", ");
+  const targetLabel = target === "local-file" ? t("desktop.backup.local") : target === "icloud-drive" ? t("desktop.backup.icloud") : t("desktop.backup.webdav");
   return (
     <section className="settings-group settings-group-action">
       <h3 className="settings-group-title">{t("desktop.backup.title")}</h3>
@@ -392,44 +466,69 @@ export function BackupPane({ t }: { t: Translate }) {
         <p className="settings-footnote">{t("desktop.backup.description")}</p>
         <SegmentedControl
           value={target}
-          options={["local-file", "icloud-drive"] as const}
+          options={["local-file", "icloud-drive", "webdav"] as const}
           onChange={setTarget}
-          getLabel={(value) => value === "local-file" ? t("desktop.backup.local") : t("desktop.backup.icloud")}
+          getLabel={(value) => value === "local-file" ? t("desktop.backup.local") : value === "icloud-drive" ? t("desktop.backup.icloud") : t("desktop.backup.webdav")}
           aria-label={t("desktop.backup.destination")}
           className="settings-backup-target"
         />
+        {target === "webdav" ? <div className="settings-backup-webdav">
+          <div className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.backup.webdavTitle")}</span></span></div>
+          <label className="settings-field"><span className="settings-field-label">{t("desktop.backup.webdavUrl")}</span><input type="url" spellCheck={false} placeholder={t("desktop.backup.webdavUrlPlaceholder")} value={webdav.url} disabled={webdavBusy} onChange={(event) => setWebdav((current) => ({ ...current, url: event.target.value }))} /></label>
+          <label className="settings-field"><span className="settings-field-label">{t("desktop.backup.webdavUsername")}</span><input type="text" autoComplete="username" spellCheck={false} value={webdav.username} disabled={webdavBusy} onChange={(event) => setWebdav((current) => ({ ...current, username: event.target.value }))} /></label>
+          <label className="settings-field"><span className="settings-field-label">{t("desktop.backup.webdavPassword")}</span><span className="settings-field-input-wrap">
+            <input
+              type={revealWebdavPassword ? "text" : "password"}
+              autoComplete="current-password"
+              value={webdav.password}
+              disabled={webdavBusy}
+              placeholder={webdav.hasPassword ? t("desktop.backup.webdavPasswordSaved") : ""}
+              onChange={(event) => setWebdav((current) => ({ ...current, password: event.target.value }))}
+            />
+            <button
+              type="button"
+              className="settings-field-reveal notes-icon-btn"
+              aria-label={revealWebdavPassword ? t("desktop.settings.hideApiKey") : t("desktop.settings.showApiKey")}
+              aria-pressed={revealWebdavPassword}
+              onClick={(event) => { event.preventDefault(); setRevealWebdavPassword((current) => !current); }}
+            >
+              {revealWebdavPassword ? <ThemeIcon name="eye-off" size={ICON_SIZE.default} aria-hidden="true" /> : <ThemeIcon name="eye" size={ICON_SIZE.default} aria-hidden="true" />}
+            </button>
+          </span></label>
+          <label className="settings-field"><span className="settings-field-label">{t("desktop.backup.webdavFolder")}</span><input type="text" spellCheck={false} placeholder={t("desktop.backup.webdavFolderPlaceholder")} value={webdav.folder} disabled={webdavBusy} onChange={(event) => setWebdav((current) => ({ ...current, folder: event.target.value }))} /></label>
+          <div className="settings-action-row">
+            <button type="button" className="tool-btn" disabled={webdavBusy || backupBusy} onClick={() => void saveWebdav()}>{t("desktop.backup.webdavSave")}</button>
+            <button type="button" className="tool-btn" disabled={webdavBusy || backupBusy} onClick={() => void testWebdav()}>{t("desktop.backup.webdavTest")}</button>
+          </div>
+        </div> : null}
         <label className="settings-row">
           <span className="settings-row-label"><span className="settings-row-title">{t("desktop.backup.includeNative")}</span><span className="settings-row-desc">{t("desktop.backup.includeNativeDesc")}</span></span>
           <span className="settings-toggle"><input type="checkbox" role="switch" checked={includeNativeConversations} disabled={backupBusy} onChange={(event) => setIncludeNativeConversations(event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span>
         </label>
-        <label className="settings-row">
-          <span className="settings-row-label"><span className="settings-row-title">{t("desktop.backup.includeCredentials")}</span><span className="settings-row-desc">{t("desktop.backup.includeCredentialsDesc")}</span></span>
-          <span className="settings-toggle"><input type="checkbox" role="switch" checked={includeCredentials} disabled={backupBusy} onChange={(event) => setIncludeCredentials(event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span>
-        </label>
-        {target === "local-file" ? <p className="settings-callout">{t("desktop.backup.localWarning")}</p> : <p className={`settings-callout${icloud?.available ? "" : " is-error"}`}>{icloud?.available ? t("desktop.backup.icloudReady") : icloud?.reason || t("desktop.backup.icloudUnavailable")}</p>}
-        {passwordRequired ? <>
-          <label className="settings-field"><span className="settings-field-label">{t("desktop.backup.password")}</span><input type="password" autoComplete="new-password" value={backupPassword} disabled={backupBusy} onChange={(event) => setBackupPassword(event.target.value)} /></label>
-          <label className="settings-field"><span className="settings-field-label">{t("desktop.backup.passwordConfirm")}</span><input type="password" autoComplete="new-password" value={backupPasswordConfirm} disabled={backupBusy} onChange={(event) => setBackupPasswordConfirm(event.target.value)} /></label>
-        </> : null}
+        {target === "local-file" ? <p className="settings-callout">{t("desktop.backup.localWarning")}</p> : <p className={`settings-callout${status?.available ? "" : " is-error"}`}>{status?.available ? target === "webdav" ? t("desktop.backup.webdavReady", status.location || "") : t("desktop.backup.icloudReady") : status?.reason || (target === "webdav" ? t("desktop.backup.webdavNotConfigured") : t("desktop.backup.icloudUnavailable"))}</p>}
+        {target !== "local-file" ? <p className="settings-callout is-error">{t("desktop.backup.plaintextWarning")}</p> : null}
         {target === "local-file" ? <div className="settings-action-row">
           <button type="button" className="tool-btn" disabled={backupBusy} onClick={() => void exportData()}><ThemeIcon name="download" size={ICON_SIZE.default} aria-hidden="true" />{t("desktop.backup.export")}</button>
           <button type="button" className="tool-btn" disabled={backupBusy} onClick={() => void selectLocalImport()}><ThemeIcon name="upload" size={ICON_SIZE.default} aria-hidden="true" />{t("desktop.backup.import")}</button>
         </div> : <>
-          <div className="settings-action-row"><button type="button" className="tool-btn" disabled={backupBusy || !icloud?.available} onClick={() => void exportData()}><ThemeIcon name="cloud" size={ICON_SIZE.default} aria-hidden="true" />{t("desktop.backup.icloudBackup")}</button></div>
-          <div className="settings-backup-list" aria-label={t("desktop.backup.icloudRecent")}>
-            <div className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.backup.icloudRecent")}</span><span className="settings-row-desc">{icloudItems.length ? t("desktop.backup.icloudRetention") : t("desktop.backup.icloudEmpty")}</span></span></div>
-            {visibleIcloudItems.map((item) => <button type="button" className={`settings-backup-item${item.backupId === selectedIcloudId ? " active" : ""}`} aria-pressed={item.backupId === selectedIcloudId} disabled={backupBusy} key={item.backupId} onClick={() => setSelectedIcloudId(item.backupId)}><span>{new Date(item.createdAtMs).toLocaleString()}</span><small>{item.sourceMachineId.slice(0, 8)} · {item.nativeConversationFileCount} {t("desktop.backup.nativeFiles")}</small></button>)}
+          <div className="settings-action-row"><button type="button" className="tool-btn" disabled={backupBusy || !status?.available} onClick={() => void exportData()}><ThemeIcon name="cloud" size={ICON_SIZE.default} aria-hidden="true" />{target === "webdav" ? t("desktop.backup.webdavBackup") : t("desktop.backup.icloudBackup")}</button></div>
+          <div className="settings-backup-list" aria-label={target === "webdav" ? t("desktop.backup.webdavRecent") : t("desktop.backup.icloudRecent")}>
+            <div className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{target === "webdav" ? t("desktop.backup.webdavRecent") : t("desktop.backup.icloudRecent")}</span><span className="settings-row-desc">{storedItems.length ? target === "webdav" ? t("desktop.backup.webdavRetention") : t("desktop.backup.icloudRetention") : target === "webdav" ? t("desktop.backup.webdavEmpty") : t("desktop.backup.icloudEmpty")}</span></span></div>
+            {visibleItems.map((item) => <button type="button" className={`settings-backup-item${item.backupId === selectedId ? " active" : ""}`} aria-pressed={item.backupId === selectedId} disabled={backupBusy} key={item.backupId} onClick={() => { setSelectedId(item.backupId); setLegacyPassword(""); }}><span>{new Date(item.createdAtMs).toLocaleString()}</span><small>{item.sourceMachineId.slice(0, 8)} · {item.metadataComplete ? `${item.nativeConversationFileCount} ${t("desktop.backup.nativeFiles")}` : t("desktop.backup.metadataUnavailable")}</small></button>)}
           </div>
-          <div className="settings-action-row"><button type="button" className="tool-btn" disabled={backupBusy || !icloud?.available || !selectedIcloud} onClick={() => void selectIcloudImport()}><ThemeIcon name="upload" size={ICON_SIZE.default} aria-hidden="true" />{t("desktop.backup.icloudRestore")}</button></div>
+          {selected?.encrypted ? <>
+            <p className="settings-callout">{t("desktop.backup.legacyEncrypted")}</p>
+            <label className="settings-field"><span className="settings-field-label">{t("desktop.backup.legacyPassword")}</span><input type="password" autoComplete="current-password" value={legacyPassword} disabled={backupBusy} onChange={(event) => setLegacyPassword(event.target.value)} /></label>
+          </> : null}
+          <div className="settings-action-row"><button type="button" className="tool-btn" disabled={backupBusy || !status?.available || !selected} onClick={() => void selectStoredImport()}><ThemeIcon name="upload" size={ICON_SIZE.default} aria-hidden="true" />{target === "webdav" ? t("desktop.backup.webdavRestore") : t("desktop.backup.icloudRestore")}</button></div>
         </>}
         {backupBusy && backupProgress ? <div className="settings-backup-progress" role="status" aria-live="polite"><div className="settings-backup-progress-head"><span>{t(`desktop.backup.progress.${backupProgress.phase}`)}</span><span>{backupProgress.percent}%</span></div><div className="settings-backup-progress-track" role="progressbar" aria-label={t("desktop.backup.progress.label")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={backupProgress.percent}><div className="settings-backup-progress-bar" style={{ width: `${backupProgress.percent}%` }} /></div></div> : null}
         {pendingImport ? <div className="settings-backup-preview">
           <p className="settings-footnote">{t("desktop.backup.summary", pendingImport.fileCount, Math.ceil(pendingImport.totalBytes / 1024 / 1024))}</p>
           <p className="settings-footnote">{t("desktop.backup.nativeSummary", pendingImport.nativeConversationFileCount, Math.ceil(pendingImport.nativeConversationBytes / 1024 / 1024))}{providerSummary ? ` · ${providerSummary}` : ""}</p>
           {pendingImport.warnings.map((warning) => <p className="settings-footnote" key={warning}>{warning}</p>)}
-          {pendingImport.credentialsEncrypted ? <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.backup.importCredentials")}</span></span><span className="settings-toggle"><input type="checkbox" role="switch" checked={importCredentials} disabled={backupBusy} onChange={(event) => setImportCredentials(event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label> : null}
-          {pendingImport.credentialsEncrypted && importCredentials ? <label className="settings-field"><span className="settings-field-label">{t("desktop.backup.password")}</span><input type="password" autoComplete="current-password" value={importPassword} disabled={backupBusy} onChange={(event) => setImportPassword(event.target.value)} /></label> : null}
           {pendingImport.nativeConversationFileCount > 0 ? <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.backup.restoreNative")}</span><span className="settings-row-desc">{t("desktop.backup.restoreNativeDesc")}</span></span><span className="settings-toggle"><input type="checkbox" role="switch" checked={restoreNativeConversations} disabled={backupBusy} onChange={(event) => setRestoreNativeConversations(event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label> : null}
+          <p className="settings-footnote">{t("desktop.backup.importTarget", targetLabel)}</p>
           <button type="button" className="tool-btn" disabled={backupBusy} onClick={() => void mergeImport()}>{t("desktop.backup.merge")}</button>
         </div> : null}
         <Status kind={backupStatus.kind}>{backupStatus.text}</Status>
@@ -533,7 +632,7 @@ export function LogsPane({ t }: { t: Translate }) {
       setEntries(rows);
       setStatus({ text: t("desktop.logs.summaryStatus", rows.length), kind: "ok" });
     } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setStatus({ text: errorMessage(error), kind: "error" });
     }
   }, [t]);
 
@@ -552,7 +651,7 @@ export function LogsPane({ t }: { t: Translate }) {
       await load();
       setStatus({ text: t("desktop.logs.cleared"), kind: "ok" });
     } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setStatus({ text: errorMessage(error), kind: "error" });
     } finally {
       setBusy(false);
     }
@@ -657,7 +756,7 @@ export function UsagePane({ t, initialDetailTab }: { t: Translate; initialDetail
       setData({ summary, events, runs });
       setStatus({ text: t("desktop.usage.summaryStatus", days, summary.eventCount), kind: "ok" });
     } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setStatus({ text: errorMessage(error), kind: "error" });
     }
   }, [days, t]);
 

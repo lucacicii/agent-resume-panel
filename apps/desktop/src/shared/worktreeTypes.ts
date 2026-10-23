@@ -37,6 +37,8 @@ export type TaskWorktreeInfo = WorktreeEntry & {
   /** HEAD is contained in the repository's base branch, so the work is already in. */
   merged: boolean;
   createdAtMs: number | null;
+  /** True when the checkout lives inside this task's own .worktrees/ folder. */
+  managed?: boolean;
 };
 
 export type TaskWorktreeRepo = {

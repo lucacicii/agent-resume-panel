@@ -181,4 +181,32 @@ describe("useTaskWorktrees", () => {
     await waitFor(() => expect(result.current.state.enabled).toBe(true));
     expect(result.current.root).toBe(LISTING.root);
   });
+
+  it("automatically follows activeCwd into a worktree for the matching repository", async () => {
+    installBridge({ list: LISTING });
+    const rendered = renderHook(
+      ({ activeCwd }: { activeCwd?: string | null }) => useTaskWorktrees({ noteId: "n1", repos: REPOS, activeCwd }),
+      { wrapper: I18nProvider, initialProps: { activeCwd: null as string | null } }
+    );
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    // Initially at main
+    expect(rendered.result.current.rootFor("default", MAIN_APP)).toBe(MAIN_APP);
+    expect(rendered.result.current.rootFor("default", MAIN_LIB)).toBe(MAIN_LIB);
+
+    // Terminal switches cwd to /wt/app-feat-x/src (inside app's worktree)
+    rendered.rerender({ activeCwd: `${FEAT_APP}/src` });
+    await waitFor(() => expect(rendered.result.current.rootFor("default", MAIN_APP)).toBe(FEAT_APP));
+    // LIB remains untouched at main
+    expect(rendered.result.current.rootFor("default", MAIN_LIB)).toBe(MAIN_LIB);
+
+    // Active checkout helper
+    const activeApp = rendered.result.current.activeCheckoutFor(MAIN_APP);
+    expect(activeApp?.path).toBe(FEAT_APP);
+    expect(activeApp?.branchLabel).toBe("feat/x");
+
+    // Switching back to main repo directory
+    rendered.rerender({ activeCwd: MAIN_APP });
+    await waitFor(() => expect(rendered.result.current.rootFor("default", MAIN_APP)).toBe(MAIN_APP));
+  });
 });

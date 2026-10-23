@@ -213,12 +213,25 @@ describe("ChatView", () => {
         {
           agent_id: "task_live",
           event: {
-            type: "custom",
-            kind: "file_change",
-            payload: {
-              path: "/work/repo/a.ts",
-              action: "modified",
-              tool: "write_file"
+            type: "tool_exec_start",
+            turn: 1,
+            tool_call_id: "call_write",
+            name: "write_file",
+            arguments: { path: "/work/repo/a.ts", content: "export {}" }
+          }
+        },
+        {
+          agent_id: "task_live",
+          event: {
+            type: "tool_exec_result",
+            turn: 1,
+            tool_call_id: "call_write",
+            name: "write_file",
+            result: {
+              tool_call_id: "call_write",
+              output: "written",
+              is_error: false,
+              duration_ms: 12
             }
           }
         }
@@ -242,7 +255,7 @@ describe("ChatView", () => {
       expect(screen.getByText("Partial answer")).toBeTruthy();
     });
     expect(document.querySelector(".tb-thinking-container")).not.toBeNull();
-    // File changes rebuilt from the buffered `file_change` event.
+    // Footprint rebuilt from the buffered tool call's own arguments.
     expect(document.querySelector(".tb-header-badge")?.textContent).toBe("1");
 
     // Later deltas continue the restored buffer. The buffered stream ended on a

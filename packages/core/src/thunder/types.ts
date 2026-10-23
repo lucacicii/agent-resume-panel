@@ -80,14 +80,6 @@ export interface ThunderModelInfo {
   max_tokens?: number;
 }
 
-export interface ThunderTelemetryNotice {
-  layer: string;
-  action: string;
-  ground_truth: string;
-  self_healed?: string;
-  guidance?: string;
-}
-
 export interface ThunderFileChangeRecord {
   path: string;
   tool: string;
@@ -166,29 +158,6 @@ export interface ThunderMetricsSnapshot {
   wall_duration_ms?: number;
 }
 
-/**
- * What a Thunder run is doing right now — the payload of the `agent_status`
- * custom event.
- *
- * Thunder's `StatusPlugin` is the single authority for this, so a consumer
- * reads it rather than re-deriving a phase from the raw stream (which is what
- * the chat used to do, badly: no event is emitted at all while an approval gate
- * has the run parked).
- *
- * Frames are emitted **only when the status changes**, and `seq` is monotonic
- * within a run, so a consumer drops any frame that does not move forward.
- */
-export type ThunderAgentPhase =
-  | "idle"
-  | "thinking"
-  | "streaming"
-  | "tool"
-  | "awaiting_user"
-  | "paused"
-  | "compacting"
-  | "done"
-  | "error";
-
 export interface ThunderAgentStatus {
   session_id: string;
   phase: ThunderAgentPhase;
@@ -200,37 +169,6 @@ export interface ThunderAgentStatus {
   /** When this run started, not when this frame was made. */
   started_at_ms: number;
   seq: number;
-}
-
-export interface ThunderTraceSpan {
-  id: string;
-  turn: number;
-  type: "thinking" | "token" | "tool" | "telemetry" | "file";
-  name: string;
-  startedAtMs: number;
-  durationMs?: number;
-  status?: "running" | "completed" | "failed";
-  data?: Record<string, unknown>;
-}
-
-export interface ThunderTaskTrace {
-  task_id: string;
-  session_id: string;
-  model?: string;
-  workspace_dir?: string;
-  prompt?: string;
-  started_at_ms: number;
-  finished_at_ms?: number;
-  duration_ms?: number;
-  /** Wall-clock time from task receipt (user message) to completion. */
-  wall_duration_ms?: number;
-  finish_reason?: string;
-  stats?: ThunderAgentStats;
-  metrics?: ThunderMetricsSnapshot;
-  final_content?: string;
-  events?: ThunderObservedEvent[];
-  file_changes?: ThunderFileChangeRecord[];
-  telemetry_notices?: ThunderTelemetryNotice[];
 }
 
 export type ThunderAgentEvent =
@@ -456,18 +394,49 @@ export interface ThunderChatStreamPayload {
 /**
  * The approval mode a session is judged by, spelled the way Thunder spells it.
  *
- * These four are the canonical wire values; Thunder's parser also tolerates a
- * long tail of pre-0.4 aliases, but a host should only ever *send* these.
+ * Thunder implements exactly two: `plan` (read-only, `write_plan` /
+ * `exit_plan_mode` are the only writes) and `yolo` (nothing asks). Its parser
+ * still tolerates the retired `ask` / `acceptEdits` names, and a mode set from
+ * another host arrives as one of them, but both branch to `yolo` inside the
+ * daemon — see `normalizeThunderPermissionMode`.
  */
-export type ThunderPermissionMode = "plan" | "ask" | "acceptEdits" | "yolo";
+export type ThunderPermissionMode = "plan" | "yolo";
 
-/** The order `Shift+Tab` cycles in — Thunder's `Mode::ALL`. */
-export const THUNDER_PERMISSION_MODES: ThunderPermissionMode[] = [
-  "plan",
-  "ask",
-  "acceptEdits",
-  "yolo"
-];
+/** The order `Shift+Tab` cycles in — Thunder's own two-mode toggle. */
+export const THUNDER_PERMISSION_MODES: ThunderPermissionMode[] = ["plan", "yolo"];
+
+/**
+ * Fold whatever a daemon reports into the two modes a surface can show.
+ *
+ * `ask` and `acceptEdits` are legacy names: the daemon has no approval gate to
+ * attach them to, so a session carrying one runs exactly like `yolo`. Mapping
+ * them here keeps that fact in one place instead of letting a retired name
+ * reach a chip (or a type union) that no longer has room for it.
+ *
+ * `""` is "unknown" — the daemon has not answered yet, or named something this
+ * build has never heard of. Callers render it as "not known yet", never as a
+ * mode.
+ */
+export function normalizeThunderPermissionMode(
+  raw: string | null | undefined
+): ThunderPermissionMode | "" {
+  switch (raw?.trim().toLowerCase()) {
+    case "plan":
+      return "plan";
+    case "yolo":
+    case "ask":
+    case "default":
+    case "bypass":
+    case "bypasspermissions":
+    case "acceptedits":
+    case "accept_edits":
+    case "autoedit":
+    case "auto_edit":
+      return "yolo";
+    default:
+      return "";
+  }
+}
 
 /** What made a session's mode move. */
 export type ThunderModeChangeSource = "user" | "planApproved" | "runOption";
@@ -554,7 +523,6 @@ export interface ThunderActiveStreamSnapshot {
   streamingTools: ThunderToolExecutionRecord[];
   metrics?: ThunderMetricsSnapshot;
   /** Latest `agent_status` frame, kept so a remount shows the live phase. */
-  agentStatus?: ThunderAgentStatus;
   events: ThunderObservedEvent[];
 }
 

@@ -4,16 +4,14 @@ import { useTraceCollector } from "./useTraceCollector";
 import type { ThunderAgentEvent } from "@agent-resume/core";
 
 describe("useTraceCollector", () => {
-  it("initializes empty trace and spans", () => {
+  it("initializes empty spans and footprint", () => {
     const { result } = renderHook(() => useTraceCollector());
-    expect(result.current.currentTrace).toBeNull();
     expect(result.current.spans).toEqual([]);
     expect(result.current.fileChanges).toEqual([]);
-    expect(result.current.telemetryNotices).toEqual([]);
     expect(result.current.isCollecting).toBe(false);
   });
 
-  it("accumulates full chain: turn, reasoning, token, bash tool, write_file, telemetry, file_change", () => {
+  it("accumulates turn, reasoning, token and tool spans, with the write in the footprint", () => {
     const { result } = renderHook(() => useTraceCollector());
 
     // 1. Start task
@@ -28,7 +26,6 @@ describe("useTraceCollector", () => {
     });
 
     expect(result.current.isCollecting).toBe(true);
-    expect(result.current.currentTrace?.task_id).toBe("task_123");
 
     // 2. Turn 1 start
     act(() => {
@@ -100,20 +97,30 @@ describe("useTraceCollector", () => {
     expect(bashSpan?.status).toBe("completed");
     expect(bashSpan?.durationMs).toBe(1200);
 
-    // 6. File change event — a `custom` event wrapping the tool's own kind, as
-    // the kernel forwards it verbatim.
+    // 6. The footprint comes from the tool arguments, not from a `file_change`
+    // event: thunder's kernel no longer emits one.
     act(() => {
-      const fileEv: ThunderAgentEvent = {
-        type: "custom",
-        kind: "file_change",
-        payload: {
-          path: "/ws/src/config.json",
-          action: "written",
-          bytes: 256,
-          tool: "write_file"
+      const writeStart: ThunderAgentEvent = {
+        type: "tool_exec_start",
+        turn: 1,
+        tool_call_id: "call_write_1",
+        name: "write_file",
+        arguments: { path: "/ws/src/config.json", content: "{}" }
+      };
+      result.current.recordEvent(writeStart, "task_123");
+      const writeDone: ThunderAgentEvent = {
+        type: "tool_exec_result",
+        turn: 1,
+        tool_call_id: "call_write_1",
+        name: "write_file",
+        result: {
+          tool_call_id: "call_write_1",
+          output: "written 256 bytes",
+          is_error: false,
+          duration_ms: 40
         }
       };
-      result.current.recordEvent(fileEv, "task_123");
+      result.current.recordEvent(writeDone, "task_123");
     });
 
     expect(result.current.fileChanges).toHaveLength(1);
@@ -121,23 +128,31 @@ describe("useTraceCollector", () => {
     expect(result.current.fileChanges[0].tool).toBe("write_file");
     expect(result.current.fileChanges[0].turn).toBe(1);
 
-    // 7. Telemetry notice event
+    // 7. A shell command names no file, so it leaves no footprint.
     act(() => {
-      const telemEv: ThunderAgentEvent = {
-        type: "telemetry_notice",
+      const bashStart: ThunderAgentEvent = {
+        type: "tool_exec_start",
         turn: 1,
-        tool_call_id: "call_write_1",
-        layer: "Transaction",
-        action: "Atomic shadow write & rename completed",
-        ground_truth: "Target file written 256 bytes safely",
-        self_healed: "Temp shadow cleaned up",
-        guidance: "File ready on disk"
+        tool_call_id: "call_bash_2",
+        name: "bash",
+        arguments: { command: "echo hi > /ws/out.txt" }
       };
-      result.current.recordEvent(telemEv, "task_123");
+      result.current.recordEvent(bashStart, "task_123");
+      const bashDone: ThunderAgentEvent = {
+        type: "tool_exec_result",
+        turn: 1,
+        tool_call_id: "call_bash_2",
+        name: "bash",
+        result: {
+          tool_call_id: "call_bash_2",
+          output: "",
+          is_error: false,
+          duration_ms: 10
+        }
+      };
+      result.current.recordEvent(bashDone, "task_123");
     });
-
-    expect(result.current.telemetryNotices).toHaveLength(1);
-    expect(result.current.telemetryNotices[0].layer).toBe("Transaction");
+    expect(result.current.fileChanges).toHaveLength(1);
 
     // 8. Turn end
     act(() => {
@@ -149,17 +164,13 @@ describe("useTraceCollector", () => {
       result.current.recordEvent(endEv, "task_123");
     });
 
-    // 9. Finish task trace
+    // 9. Finish
     act(() => {
-      result.current.finishTaskTrace({
-        finishReason: "done",
-        finalContent: "All completed!"
-      });
+      result.current.finishTaskTrace();
     });
 
     expect(result.current.isCollecting).toBe(false);
-    expect(result.current.currentTrace?.finish_reason).toBe("done");
-    expect(result.current.currentTrace?.final_content).toBe("All completed!");
+    expect(result.current.spans.every((span) => span.status !== "running")).toBe(true);
   });
 
   it("normalizes a seconds-resolution turn_start timestamp to milliseconds", () => {

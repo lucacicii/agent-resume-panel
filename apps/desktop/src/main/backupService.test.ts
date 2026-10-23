@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   preparePanelDatabases,
   NotesStore,
@@ -13,10 +13,12 @@ import {
   listWorkbenchSessionFolders,
   type PanelSettings
 } from "@agent-resume/core";
-import { cleanupTemporaryBackups, exportBackup, importBackup, selectBackupForImport } from "./backupService";
+import { cleanupTemporaryBackups, exportBackup, importBackup, selectBackupForImport, setThunderConversationsDirForTests } from "./backupService";
 
 const roots: string[] = [];
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** Thunder reads from the real home by default; tests point it at their own tree. */
+let thunderRoot = "";
 
 async function makeSettings(): Promise<PanelSettings> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-backup-test-"));
@@ -35,7 +37,14 @@ async function ageFile(file: string, ageMs: number): Promise<void> {
 }
 
 describe("backupService", () => {
+  beforeEach(async () => {
+    thunderRoot = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-thunder-test-"));
+    roots.push(thunderRoot);
+    setThunderConversationsDirForTests(thunderRoot);
+  });
+
   afterEach(async () => {
+    setThunderConversationsDirForTests(undefined);
     await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
   });
 
@@ -73,10 +82,9 @@ describe("backupService", () => {
     await runSqlite(targetPaths.catalogDb, `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms) VALUES ('codex', 'session-1', 'Local', '/target', 100); INSERT INTO sync_state (provider, last_sync_at_ms) VALUES ('codex', 999);`);
 
     const archive = path.join(sourceHome, "backup.zip");
-    await exportBackup(sourceSettings, archive, "test", { includeCredentials: false, includeNativeConversations: false });
+    await exportBackup(sourceSettings, archive, "test", { includeNativeConversations: false });
     const preview = await selectBackupForImport(archive);
     await importBackup(targetSettings, preview.importToken, "test", {
-      includeCredentials: false,
       restoreNativeConversations: false,
       recoveryDir: path.join(targetHome, "recovery")
     });
@@ -90,7 +98,9 @@ describe("backupService", () => {
     const executionVectors = await runSqliteJson<{ note_id: string }>(targetPaths.desktopDb, `SELECT note_id FROM note_vector_index WHERE note_id = '${executionNote.noteId}';`);
 
     expect(sessions).toEqual([{ title: "Imported", updated_at_ms: 200 }]);
-    expect(vectors).toEqual([{ embedding_key: "model-a", content_hash: "hash-new" }]);
+    // Derived indexes are excluded from the archive and from the merge rules;
+    // the local machine rebuilds them from its own content.
+    expect(vectors).toEqual([]);
     expect(sync).toEqual([{ last_sync_at_ms: 999 }]);
     expect(legacyTables).toEqual([]);
     expect(executionNotes).toEqual([]);
@@ -109,10 +119,9 @@ describe("backupService", () => {
     await assignWorkbenchSessionToFolder(sourcePaths.desktopDb, "project-1", "codex", "session-1", phase.folderId);
 
     const archive = path.join(sourceSettings.panelHome!, "folder-backup.zip");
-    await exportBackup(sourceSettings, archive, "test", { includeCredentials: false, includeNativeConversations: false });
+    await exportBackup(sourceSettings, archive, "test", { includeNativeConversations: false });
     const preview = await selectBackupForImport(archive);
     await importBackup(targetSettings, preview.importToken, "test", {
-      includeCredentials: false,
       restoreNativeConversations: false,
       recoveryDir: path.join(targetSettings.panelHome!, "recovery")
     });
@@ -203,13 +212,12 @@ describe("backupService", () => {
     await write(sourceAgents, "prime/sessions/prime-session.jsonl", "{\"id\":\"prime\"}\n", 1_000);
 
     const archive = path.join(sourceHome, "native.zip");
-    await exportBackup(sourceSettings, archive, "test", { includeCredentials: false, includeNativeConversations: true });
+    await exportBackup(sourceSettings, archive, "test", { includeNativeConversations: true });
     const preview = await selectBackupForImport(archive);
     expect(preview.nativeConversationFileCount).toBe(4);
     expect(preview.providers.find((provider) => provider.provider === "codex")?.fileCount).toBe(3);
     expect(preview.providers.find((provider) => provider.provider === "prime")?.fileCount).toBe(1);
     await importBackup(targetSettings, preview.importToken, "test", {
-      includeCredentials: false,
       restoreNativeConversations: true,
       recoveryDir: path.join(targetHome, "recovery")
     });
@@ -264,14 +272,13 @@ describe("backupService", () => {
 
     const archive = path.join(sourceHome, "compact-opencode.zip");
     const exportProgress: Array<{ operation: string; phase: string; percent: number }> = [];
-    await exportBackup(sourceSettings, archive, "test", { includeCredentials: false, includeNativeConversations: true, onProgress: (event) => exportProgress.push(event) });
+    await exportBackup(sourceSettings, archive, "test", { includeNativeConversations: true, onProgress: (event) => exportProgress.push(event) });
     expect(exportProgress[0]).toMatchObject({ operation: "export", phase: "preparing" });
     expect(exportProgress.at(-1)).toMatchObject({ operation: "export", phase: "complete", percent: 100 });
     const preview = await selectBackupForImport(archive);
     expect(preview.providers.find((provider) => provider.provider === "opencode")?.strategy).toBe("compact-current-v2");
     const importProgress: Array<{ operation: string; phase: string; percent: number }> = [];
     await importBackup(targetSettings, preview.importToken, "test", {
-      includeCredentials: false,
       restoreNativeConversations: true,
       recoveryDir: path.join(targetHome, "recovery"),
       onProgress: (event) => importProgress.push(event)
@@ -317,11 +324,10 @@ describe("backupService", () => {
     await runSqlite(targetDb, `${schema} INSERT INTO session VALUES ('s1', 'Local', 100);`);
 
     const archive = path.join(sourceHome, "opencode.zip");
-    await exportBackup(sourceSettings, archive, "test", { includeCredentials: false, includeNativeConversations: true });
+    await exportBackup(sourceSettings, archive, "test", { includeNativeConversations: true });
     const preview = await selectBackupForImport(archive);
     expect(preview.providers.find((provider) => provider.provider === "opencode")?.fileCount).toBe(1);
     await importBackup(targetSettings, preview.importToken, "test", {
-      includeCredentials: false,
       restoreNativeConversations: true,
       recoveryDir: path.join(targetHome, "recovery")
     });

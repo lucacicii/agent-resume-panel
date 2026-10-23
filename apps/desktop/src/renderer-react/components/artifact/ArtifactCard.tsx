@@ -4,6 +4,7 @@ import { ICON_SIZE, ThemeIcon } from "../ThemeIcon";
 import { useOverlayPresence } from "../useOverlayMotion";
 import { useI18n } from "../../i18n";
 import { ArtifactHtmlSandbox } from "./ArtifactHtmlSandbox";
+import { ArtifactMermaidViewer } from "./ArtifactMermaidViewer";
 import { ArtifactSvgViewer } from "./ArtifactSvgViewer";
 
 interface ArtifactCardProps {
@@ -42,9 +43,10 @@ export const ArtifactCard = memo(function ArtifactCard({
   const [copied, setCopied] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const normalizedLang = useMemo(() => {
+  const normalizedLang = useMemo<"html" | "svg" | "mermaid">(() => {
     const l = language.trim().toLowerCase();
     if (l === "svg" || l === "xml") return "svg";
+    if (l === "mermaid" || l === "mmd") return "mermaid";
     return "html";
   }, [language]);
 
@@ -53,10 +55,17 @@ export const ArtifactCard = memo(function ArtifactCard({
     if (normalizedLang === "svg") {
       return t("desktop.artifact.svgTitle");
     }
+    if (normalizedLang === "mermaid") {
+      return t("desktop.artifact.diagramTitle");
+    }
     return t("desktop.artifact.htmlTitle");
   }, [normalizedLang, title, t]);
 
   const highlightedCode = useMemo(() => {
+    // highlight.js has no mermaid grammar; its source is plain text.
+    if (normalizedLang === "mermaid") {
+      return escapeHtml(code);
+    }
     try {
       return hljs.highlight(code, {
         language: normalizedLang === "svg" ? "xml" : "html",
@@ -89,8 +98,13 @@ export const ArtifactCard = memo(function ArtifactCard({
   }, [code]);
 
   const handleDownload = useCallback(() => {
-    const ext = normalizedLang === "svg" ? ".svg" : ".html";
-    const mime = normalizedLang === "svg" ? "image/svg+xml" : "text/html";
+    const ext = normalizedLang === "svg" ? ".svg" : normalizedLang === "mermaid" ? ".mmd" : ".html";
+    const mime =
+      normalizedLang === "svg"
+        ? "image/svg+xml"
+        : normalizedLang === "mermaid"
+          ? "text/plain"
+          : "text/html";
     const filename = (title ? title.trim().replace(/\s+/g, "-") : "artifact") + ext;
 
     const blob = new Blob([code], { type: mime });
@@ -110,6 +124,9 @@ export const ArtifactCard = memo(function ArtifactCard({
     if (activeTab === "preview") {
       if (normalizedLang === "svg") {
         return <ArtifactSvgViewer code={code} minHeight={fullscreenMode ? 500 : 260} />;
+      }
+      if (normalizedLang === "mermaid") {
+        return <ArtifactMermaidViewer code={code} minHeight={fullscreenMode ? 500 : 260} />;
       }
       return (
         <ArtifactHtmlSandbox

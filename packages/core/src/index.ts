@@ -42,6 +42,8 @@ export type {
   SessionTranscriptIndexSettings,
   SessionEmbeddingIndexSettings,
   DesktopSettings,
+  DesktopBackupSettings,
+  WebdavBackupSettings,
   DesktopBrowserSettings,
   DesktopBrowserPolicy,
   DesktopBrowserPartitionMode,
@@ -940,6 +942,15 @@ export type {
   NativeConversationCollection,
   CollectNativeConversationsOptions
 } from "./backup/nativeConversations";
+export {
+  collectThunderConversationFiles,
+  defaultThunderConversationsDir
+} from "./backup/thunderConversations";
+export type {
+  ThunderConversationFile,
+  ThunderConversationCollection,
+  CollectThunderConversationsOptions
+} from "./backup/thunderConversations";
 
 export type {
   ScheduleTriggerType,
@@ -958,16 +969,13 @@ export type {
   ThunderQuestionItem,
   ThunderQuestionOption,
   ThunderAgentEvent,
-  ThunderTelemetryNotice,
   ThunderFileChangeRecord,
   ThunderFileChangePayload,
   ThunderTraceSpan,
-  ThunderTaskTrace,
   ThunderTurnStats,
   ThunderAgentStats,
   ThunderMetricsSnapshot,
   ThunderAgentPhase,
-  ThunderAgentStatus,
   ThunderToolCallFunction,
   ThunderToolCall,
   ThunderToolExecutionRecord,
@@ -985,10 +993,8 @@ export type {
   ThunderModeChangeSource,
   ThunderModeChanged,
   ThunderUiRequestSource,
-  ThunderUiRequest,
-  ThunderUiAnswer
 } from "./thunder/types";
 
 /** The approval modes in the order `Shift+Tab` cycles them (a value, not a type). */
-export { THUNDER_PERMISSION_MODES } from "./thunder/types";
+export { THUNDER_PERMISSION_MODES, normalizeThunderPermissionMode } from "./thunder/types";
 

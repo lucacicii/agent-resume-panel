@@ -214,7 +214,7 @@ export function NotesView({ active }: { active: boolean }): React.JSX.Element | 
         {error ? <p className="notes-view-error" role="alert">{error}</p> : null}
         <div ref={containerRef} className="notes-view-rows" onPointerLeave={hideGlide}>
           <span
-            className="notes-view-glide"
+            className={`notes-view-glide${glide.gliding ? " is-gliding" : ""}`}
             style={{ top: glide.top, height: glide.height, opacity: glide.visible ? 1 : 0 }}
             aria-hidden="true"
           />

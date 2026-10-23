@@ -50,11 +50,31 @@ export function truncateText(text: string, max: number): string {
   return `${text.slice(0, Math.max(0, max - 1))}…`;
 }
 
+/** Render a wrapped error's `cause` chain, bounded so a cyclic cause cannot loop. */
+function describeCauseChain(error: Error): string | undefined {
+  const parts: string[] = [];
+  let current: unknown = (error as { cause?: unknown }).cause;
+  for (let depth = 0; current && depth < 4; depth += 1) {
+    if (current instanceof Error) {
+      const code = (current as { code?: unknown }).code;
+      const codeText = typeof code === "string" ? ` ${code}` : "";
+      parts.push(`${current.name}${codeText}: ${current.message}`);
+    } else {
+      parts.push(String(current));
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return parts.length ? `Caused by: ${parts.join("\nCaused by: ")}` : undefined;
+}
+
 export function formatUnknownError(error: unknown): { message: string; detail?: string } {
   if (error instanceof Error) {
     const message = error.message || error.name || "Error";
-    const detail = error.stack && error.stack !== message ? error.stack : undefined;
-    return { message, detail };
+    const cause = describeCauseChain(error);
+    const detail = [error.stack && error.stack !== message ? error.stack : undefined, cause]
+      .filter(Boolean)
+      .join("\n");
+    return { message, ...(detail ? { detail } : {}) };
   }
   if (typeof error === "string") {
     return { message: error };

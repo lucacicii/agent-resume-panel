@@ -1,18 +1,14 @@
 import { useCallback, useRef, useState } from "react";
-import { desktopApi } from "../../bridge";
 import type {
   ThunderActiveStreamSnapshot,
   ThunderAgentEvent,
-  ThunderFileChangePayload,
-  ThunderFileChangeRecord,
-  ThunderTaskTrace,
-  ThunderTelemetryNotice
+  ThunderFileChangeRecord
 } from "@agent-resume/core";
 
 export interface TraceSpan {
   id: string;
   turn: number;
-  type: "turn" | "thinking" | "token" | "tool" | "telemetry" | "file";
+  type: "turn" | "thinking" | "token" | "tool";
   name: string;
   startedAtMs: number;
   durationMs?: number;
@@ -20,64 +16,58 @@ export interface TraceSpan {
   data?: Record<string, unknown>;
 }
 
+/** Tools whose arguments name a file, and what touching it means. */
+const FILE_TOOLS: Record<string, string> = {
+  write_file: "modified",
+  edit_block: "modified"
+};
+
+/**
+ * Client-side trace: the run's spans, and the files it says it touched.
+ *
+ * This is the whole trace now. The daemon's `get_trace` / `list_traces` answer
+ * `traces: []` — the trace store died with the plugin framework — so the panel used
+ * to render an empty authoritative trace next to spans it had collected itself, and
+ * fell back to reading `~/.thunder/conversations/<id>/traces/`, a directory nothing
+ * in thunder writes.
+ *
+ * The file footprint is derived from tool arguments for the same reason: the
+ * `custom/file_change` event that used to feed it is no longer emitted. `write_file`
+ * and `edit_block` name their target in `path`, which is ground truth; `bash` does
+ * not, so a shell command that rewrites files leaves no footprint — better than
+ * guessing paths out of a shell string.
+ */
 export function useTraceCollector() {
-  const [currentTrace, setCurrentTrace] = useState<ThunderTaskTrace | null>(null);
   const [spans, setSpans] = useState<TraceSpan[]>([]);
   const [fileChanges, setFileChanges] = useState<ThunderFileChangeRecord[]>([]);
-  const [telemetryNotices, setTelemetryNotices] = useState<ThunderTelemetryNotice[]>([]);
   const [isCollecting, setIsCollecting] = useState(false);
 
   const activeTaskIdRef = useRef<string | null>(null);
-  const activeSessionIdRef = useRef<string | null>(null);
   const startTimesRef = useRef<Map<string, number>>(new Map());
-  /**
-   * The turn `turn_start` last opened.
-   *
-   * `file_change` carries no turn — the kernel forwards it verbatim and the
-   * tool does not know one — so its span has to borrow the turn in flight or it
-   * lands in a group of its own in the popover.
-   */
+  /** `tool_call_id` → the call's name and arguments, so the result can name its file. */
+  const toolCallsRef = useRef<Map<string, { name: string; path?: string }>>(new Map());
+  /** The turn `turn_start` last opened. */
   const currentTurnRef = useRef<number>(1);
 
   const resetTrace = useCallback(() => {
-    setCurrentTrace(null);
     setSpans([]);
     setFileChanges([]);
-    setTelemetryNotices([]);
     setIsCollecting(false);
     activeTaskIdRef.current = null;
-    activeSessionIdRef.current = null;
     startTimesRef.current.clear();
+    toolCallsRef.current.clear();
     currentTurnRef.current = 1;
   }, []);
 
   const startTaskTrace = useCallback(
-    (options: {
-      taskId: string;
-      sessionId: string;
-      model?: string;
-      workspaceDir?: string;
-      prompt?: string;
-    }) => {
-      const now = Date.now();
+    (options: { taskId: string; sessionId: string; model?: string; workspaceDir?: string; prompt?: string }) => {
       activeTaskIdRef.current = options.taskId;
-      activeSessionIdRef.current = options.sessionId;
       currentTurnRef.current = 1;
       setIsCollecting(true);
       setSpans([]);
       setFileChanges([]);
-      setTelemetryNotices([]);
-
-      const initialTrace: ThunderTaskTrace = {
-        task_id: options.taskId,
-        session_id: options.sessionId,
-        model: options.model,
-        workspace_dir: options.workspaceDir,
-        prompt: options.prompt,
-        started_at_ms: now,
-        events: []
-      };
-      setCurrentTrace(initialTrace);
+      startTimesRef.current.clear();
+      toolCallsRef.current.clear();
     },
     []
   );
@@ -106,14 +96,7 @@ export function useTraceCollector() {
         startTimesRef.current.set(spanId, startTs);
         setSpans((prev) => [
           ...prev,
-          {
-            id: spanId,
-            turn,
-            type: "turn",
-            name: `Turn ${turn}`,
-            startedAtMs: startTs,
-            status: "running"
-          }
+          { id: spanId, turn, type: "turn", name: `Turn ${turn}`, startedAtMs: startTs, status: "running" }
         ]);
         break;
       }
@@ -121,70 +104,14 @@ export function useTraceCollector() {
       case "reasoning_delta": {
         const turn = (ev as any).turn || 1;
         const spanId = `reasoning_${turn}`;
-        setSpans((prev) => {
-          const existing = prev.find((s) => s.id === spanId);
-          if (existing) {
-            const count = ((existing.data?.tokenCount as number) || 0) + 1;
-            const start = existing.startedAtMs;
-            return prev.map((s) =>
-              s.id === spanId
-                ? {
-                    ...s,
-                    durationMs: now - start,
-                    data: { ...s.data, tokenCount: count }
-                  }
-                : s
-            );
-          }
-          return [
-            ...prev,
-            {
-              id: spanId,
-              turn,
-              type: "thinking",
-              name: `Reasoning`,
-              startedAtMs: now,
-              durationMs: 0,
-              status: "running",
-              data: { tokenCount: 1 }
-            }
-          ];
-        });
+        setSpans((prev) => growSpan(prev, spanId, now, turn, "thinking", "Reasoning"));
         break;
       }
 
       case "token_delta": {
         const turn = (ev as any).turn || 1;
         const spanId = `token_${turn}`;
-        setSpans((prev) => {
-          const existing = prev.find((s) => s.id === spanId);
-          if (existing) {
-            const count = ((existing.data?.tokenCount as number) || 0) + 1;
-            const start = existing.startedAtMs;
-            return prev.map((s) =>
-              s.id === spanId
-                ? {
-                    ...s,
-                    durationMs: now - start,
-                    data: { ...s.data, tokenCount: count }
-                  }
-                : s
-            );
-          }
-          return [
-            ...prev,
-            {
-              id: spanId,
-              turn,
-              type: "token",
-              name: `Assistant Response`,
-              startedAtMs: now,
-              durationMs: 0,
-              status: "running",
-              data: { tokenCount: 1 }
-            }
-          ];
-        });
+        setSpans((prev) => growSpan(prev, spanId, now, turn, "token", "Assistant Response"));
         break;
       }
 
@@ -192,7 +119,10 @@ export function useTraceCollector() {
         const toolCallId = (ev as any).tool_call_id || `tool_${now}`;
         const name = (ev as any).name || "tool";
         const turn = (ev as any).turn || 1;
+        const args = (ev as any).arguments;
+        const path = typeof args?.path === "string" ? args.path : undefined;
         startTimesRef.current.set(toolCallId, now);
+        toolCallsRef.current.set(toolCallId, { name, path });
 
         setSpans((prev) => [
           ...prev,
@@ -200,14 +130,10 @@ export function useTraceCollector() {
             id: toolCallId,
             turn,
             type: "tool",
-            name: `${name}`,
+            name,
             startedAtMs: now,
             status: "running",
-            data: {
-              toolCallId,
-              name,
-              arguments: (ev as any).arguments
-            }
+            data: { toolCallId, name, arguments: args }
           }
         ]);
         break;
@@ -219,7 +145,8 @@ export function useTraceCollector() {
         const res = (ev as any).result;
         const isError = Boolean(res?.is_error);
         const startTime = startTimesRef.current.get(toolCallId) || now;
-        const duration = res?.duration_ms ?? (now - startTime);
+        const duration = res?.duration_ms ?? now - startTime;
+        const call = toolCallsRef.current.get(toolCallId);
 
         setSpans((prev) =>
           prev.map((s) =>
@@ -228,107 +155,27 @@ export function useTraceCollector() {
                   ...s,
                   durationMs: duration,
                   status: isError ? "failed" : "completed",
-                  data: {
-                    ...s.data,
-                    isError,
-                    output: res?.output,
-                    telemetry: res?.telemetry
-                  }
+                  data: { ...s.data, isError, output: res?.output }
                 }
               : s
           )
         );
 
-        // If result carried telemetry, register it
-        if (res?.telemetry) {
-          const tNotice = res.telemetry as ThunderTelemetryNotice;
-          setTelemetryNotices((prev) => {
-            const exists = prev.some(
-              (n) => n.layer === tNotice.layer && n.action === tNotice.action
-            );
-            return exists ? prev : [...prev, tNotice];
-          });
+        // The footprint: what the call actually named, not what it printed.
+        if (call?.path && FILE_TOOLS[call.name]) {
+          const record: ThunderFileChangeRecord = {
+            path: call.path,
+            tool: call.name,
+            action: isError ? "failed" : FILE_TOOLS[call.name],
+            turn: (ev as any).turn || currentTurnRef.current,
+            timestamp: now
+          };
+          setFileChanges((prev) =>
+            prev.some((p) => p.path === record.path && p.action === record.action && p.turn === record.turn)
+              ? prev
+              : [...prev, record]
+          );
         }
-        break;
-      }
-
-      case "custom": {
-        // The kernel forwards tool-emitted events verbatim, so they arrive
-        // wrapped: `type: "custom"`, with the tool's own `kind` inside. A
-        // `file_change` payload is `{path, action, bytes?, tool?}` — no turn and
-        // no tool call id, because the kernel does not interpret it and the
-        // tool does not know either. The current turn is the one `turn_start`
-        // last opened, which is what the popover groups spans by.
-        if ((ev as any).kind !== "file_change") break;
-        const payload = ((ev as any).payload ?? {}) as ThunderFileChangePayload;
-        const path = payload.path;
-        if (!path) break;
-        const turn = currentTurnRef.current;
-        const record: ThunderFileChangeRecord = {
-          path,
-          tool: payload.tool || "tool",
-          action: payload.action || "modified",
-          bytes: payload.bytes,
-          turn,
-          timestamp: now
-        };
-
-        setFileChanges((prev) => {
-          // Avoid exact duplicates
-          const exists = prev.some(
-            (p) => p.path === record.path && p.action === record.action && p.turn === record.turn
-          );
-          return exists ? prev : [...prev, record];
-        });
-
-        setSpans((prev) => [
-          ...prev,
-          {
-            // No tool call id on the wire: `now` plus the path keeps this
-            // unique even when one `bash` reports several files at once.
-            id: `file_${now}_${path}`,
-            turn,
-            type: "file",
-            name: `${record.action} ${record.path}`,
-            startedAtMs: now,
-            durationMs: 0,
-            status: record.action === "failed" ? "failed" : "completed",
-            data: { fileChange: record }
-          }
-        ]);
-        break;
-      }
-
-      case "telemetry_notice": {
-        const tn = ev as any;
-        const notice: ThunderTelemetryNotice = {
-          layer: tn.layer,
-          action: tn.action,
-          ground_truth: tn.ground_truth,
-          self_healed: tn.self_healed,
-          guidance: tn.guidance
-        };
-
-        setTelemetryNotices((prev) => {
-          const exists = prev.some(
-            (n) => n.layer === notice.layer && n.action === notice.action
-          );
-          return exists ? prev : [...prev, notice];
-        });
-
-        setSpans((prev) => [
-          ...prev,
-          {
-            id: `telem_${now}`,
-            turn: tn.turn || 1,
-            type: "telemetry",
-            name: `[${notice.layer}] ${notice.action}`,
-            startedAtMs: now,
-            durationMs: 0,
-            status: "completed",
-            data: { telemetry: notice }
-          }
-        ]);
         break;
       }
 
@@ -348,11 +195,7 @@ export function useTraceCollector() {
               };
             }
             if (s.turn === turn && s.status === "running") {
-              return {
-                ...s,
-                status: "completed",
-                durationMs: s.durationMs || (now - s.startedAtMs)
-              };
+              return { ...s, status: "completed", durationMs: s.durationMs || now - s.startedAtMs };
             }
             return s;
           })
@@ -363,29 +206,19 @@ export function useTraceCollector() {
   }, []);
 
   /**
-   * Rebuild the live trace (spans, file changes, telemetry) from a snapshot the
-   * main process buffered for an in-flight task. Replays through `recordEvent`
-   * so the restored timeline matches one that streamed without interruption.
+   * Rebuild the live trace from a snapshot the main process buffered for an
+   * in-flight task, so a surface that opened mid-run shows the same timeline it
+   * would have seen had it been streaming from the start.
    */
   const restoreFromSnapshot = useCallback(
     (snapshot: ThunderActiveStreamSnapshot) => {
       activeTaskIdRef.current = snapshot.taskId;
-      activeSessionIdRef.current = snapshot.sessionId;
       startTimesRef.current.clear();
+      toolCallsRef.current.clear();
       currentTurnRef.current = 1;
       setIsCollecting(true);
       setSpans([]);
       setFileChanges([]);
-      setTelemetryNotices([]);
-      setCurrentTrace({
-        task_id: snapshot.taskId,
-        session_id: snapshot.sessionId,
-        model: snapshot.model,
-        workspace_dir: snapshot.workspaceDir,
-        prompt: snapshot.prompt,
-        started_at_ms: snapshot.startedAtMs,
-        events: []
-      });
       for (const observed of snapshot.events) {
         recordEvent(observed.event, snapshot.taskId);
       }
@@ -393,128 +226,46 @@ export function useTraceCollector() {
     [recordEvent]
   );
 
-  const finishTaskTrace = useCallback(
-    (result: { finishReason: string; finalContent?: string }) => {
-      const now = Date.now();
-      setIsCollecting(false);
-
-      setSpans((prev) =>
-        prev.map((s) => (s.status === "running" ? { ...s, status: "completed" } : s))
-      );
-
-      setCurrentTrace((prev) => {
-        if (!prev) return null;
-        const start = prev.started_at_ms || now;
-        return {
-          ...prev,
-          finished_at_ms: now,
-          duration_ms: now - start,
-          finish_reason: result.finishReason,
-          final_content: result.finalContent
-        };
-      });
-
-      activeTaskIdRef.current = null;
-    },
-    []
-  );
-
-  const loadTrace = useCallback(async (sessionId: string, taskId?: string) => {
-    try {
-      if (typeof desktopApi().thunderChatGetTrace !== "function") return;
-      const trace = await desktopApi().thunderChatGetTrace({ sessionId, taskId });
-      if (!trace) return;
-
-      setCurrentTrace(trace);
-
-      // Reconstruct spans from trace events if available
-      if (Array.isArray(trace.events)) {
-        const reconstructedSpans: TraceSpan[] = [];
-        const reconstructedFiles: ThunderFileChangeRecord[] = [];
-        const reconstructedNotices: ThunderTelemetryNotice[] = [];
-        // The replay builds its own arrays rather than going through
-        // `recordEvent`, so it tracks the turn itself: `file_change` carries
-        // none, and borrowing a stale ref would group it under the wrong turn.
-        let replayTurn = 1;
-
-        for (const wrapped of trace.events) {
-          const ev = wrapped?.event;
-          if (!ev) continue;
-
-          if (ev.type === "turn_start") {
-            replayTurn = (ev as any).turn || replayTurn;
-            continue;
-          }
-
-          if (ev.type === "tool_exec_result") {
-            const t = ev as any;
-            reconstructedSpans.push({
-              id: t.tool_call_id || `tool_${Date.now()}`,
-              turn: t.turn || 1,
-              type: "tool",
-              name: t.name || "tool",
-              startedAtMs: trace.started_at_ms,
-              durationMs: t.result?.duration_ms,
-              status: t.result?.is_error ? "failed" : "completed",
-              data: {
-                name: t.name,
-                output: t.result?.output,
-                isError: t.result?.is_error,
-                telemetry: t.result?.telemetry
-              }
-            });
-
-            if (t.result?.telemetry) {
-              reconstructedNotices.push(t.result.telemetry);
-            }
-          } else if (ev.type === "custom" && (ev as any).kind === "file_change") {
-            const fc = ((ev as any).payload ?? {}) as ThunderFileChangePayload;
-            if (fc.path) {
-              reconstructedFiles.push({
-                path: fc.path,
-                tool: fc.tool || "tool",
-                action: fc.action || "modified",
-                bytes: fc.bytes,
-                turn: replayTurn,
-                timestamp: trace.started_at_ms
-              });
-            }
-          } else if (ev.type === "telemetry_notice") {
-            const tn = ev as any;
-            reconstructedNotices.push({
-              layer: tn.layer,
-              action: tn.action,
-              ground_truth: tn.ground_truth,
-              self_healed: tn.self_healed,
-              guidance: tn.guidance
-            });
-          }
-        }
-
-        if (reconstructedSpans.length > 0) setSpans(reconstructedSpans);
-        if (reconstructedFiles.length > 0) setFileChanges(reconstructedFiles);
-        if (reconstructedNotices.length > 0) setTelemetryNotices(reconstructedNotices);
-      }
-      return trace;
-    } catch (err) {
-      console.warn("[useTraceCollector] Failed to load trace:", err);
-      return null;
-    }
+  const finishTaskTrace = useCallback(() => {
+    setIsCollecting(false);
+    setSpans((prev) => prev.map((s) => (s.status === "running" ? { ...s, status: "completed" } : s)));
+    activeTaskIdRef.current = null;
   }, []);
 
   return {
-    currentTrace,
     spans,
     fileChanges,
-    telemetryNotices,
     isCollecting,
     startTaskTrace,
     recordEvent,
     finishTaskTrace,
-    loadTrace,
     restoreFromSnapshot,
     resetTrace,
-    setFileChanges,
-    setTelemetryNotices
+    setFileChanges
   };
+}
+
+/**
+ * Extend a streaming span (reasoning / tokens) or open it on first sight. Both
+ * keep a token count so the popover can say how much of it there was.
+ */
+function growSpan(
+  prev: TraceSpan[],
+  spanId: string,
+  now: number,
+  turn: number,
+  type: "thinking" | "token",
+  name: string
+): TraceSpan[] {
+  const existing = prev.find((s) => s.id === spanId);
+  if (existing) {
+    const count = ((existing.data?.tokenCount as number) || 0) + 1;
+    return prev.map((s) =>
+      s.id === spanId ? { ...s, durationMs: now - s.startedAtMs, data: { ...s.data, tokenCount: count } } : s
+    );
+  }
+  return [
+    ...prev,
+    { id: spanId, turn, type, name, startedAtMs: now, durationMs: 0, status: "running", data: { tokenCount: 1 } }
+  ];
 }

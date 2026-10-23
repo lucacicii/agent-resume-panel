@@ -20,6 +20,8 @@ export type CheckoutOption = {
   isMain: boolean;
   /** HEAD is contained in the repository's base branch. */
   merged: boolean;
+  /** True when the checkout lives inside this task's own .worktrees/ folder. */
+  managed?: boolean;
 };
 
 export type TaskWorktrees = {
@@ -49,6 +51,8 @@ export type TaskWorktrees = {
   rootFor: (scope: CheckoutScope, repoRoot: string) => string;
   /** The checkout a repository is diverted to for this scope, or null at its main one. */
   checkoutFor: (scope: CheckoutScope, repoRoot: string) => string | null;
+  /** Active checkout option for a repository (either its diverted worktree or its main checkout). */
+  activeCheckoutFor: (repoRoot: string) => CheckoutOption | null;
   /** The pane was pinned away from the shared default. */
   isPinned: (scope: CheckoutScope) => boolean;
   /**
@@ -93,8 +97,19 @@ function withoutKeys(selection: CheckoutSelection, keys: ReadonlySet<string>): C
   return dropped ? next : selection;
 }
 
-export function useTaskWorktrees(options: { noteId: string | null; repos: string[] }): TaskWorktrees {
-  const { noteId, repos } = options;
+function isPathInside(child: string, parent: string): boolean {
+  const c = pathKey(child);
+  const p = pathKey(parent);
+  if (!c || !p) return false;
+  return c === p || c.startsWith(p + "/");
+}
+
+export function useTaskWorktrees(options: {
+  noteId: string | null;
+  repos: string[];
+  activeCwd?: string | null;
+}): TaskWorktrees {
+  const { noteId, repos, activeCwd } = options;
   const reposKey = useMemo(() => repos.map(pathKey).filter(Boolean).join("\0"), [repos]);
   const reposRef = useRef<string[]>(repos);
   reposRef.current = repos;
@@ -221,7 +236,8 @@ export function useTaskWorktrees(options: { noteId: string | null; repos: string
           repoLabel: repo.label,
           branchLabel: worktree.branch || (worktree.head ? worktree.head.slice(0, 7) : ""),
           isMain: worktree.isMain,
-          merged: worktree.merged
+          merged: worktree.merged,
+          managed: worktree.managed
         });
       }
     }
@@ -252,6 +268,44 @@ export function useTaskWorktrees(options: { noteId: string | null; repos: string
     },
     [optionByPath, selectionFor]
   );
+
+  const activeCheckoutFor = useCallback(
+    (repoRoot: string): CheckoutOption | null => {
+      const diverted = checkoutFor("default", repoRoot);
+      if (diverted) return optionByPath.get(pathKey(diverted)) ?? null;
+      return checkouts.find((item) => item.isMain && pathKey(item.repoRoot) === pathKey(repoRoot)) ?? null;
+    },
+    [checkoutFor, optionByPath, checkouts]
+  );
+
+  // Automatically follow the active terminal/session cwd if it sits within a known checkout
+  useEffect(() => {
+    if (!activeCwd) return;
+    const normalized = pathKey(activeCwd);
+    if (!normalized) return;
+    let matched: CheckoutOption | null = null;
+    for (const option of checkouts) {
+      if (isPathInside(normalized, option.path)) {
+        if (!matched || option.path.length > matched.path.length) {
+          matched = option;
+        }
+      }
+    }
+    if (!matched) return;
+    const repoKey = pathKey(matched.repoRoot);
+    setShared((current) => {
+      const currentVal = current[repoKey];
+      const targetVal = matched.isMain ? undefined : matched.path;
+      if (targetVal === undefined) {
+        if (!currentVal) return current;
+        const next = { ...current };
+        delete next[repoKey];
+        return next;
+      }
+      if (currentVal && pathKey(currentVal) === pathKey(targetVal)) return current;
+      return { ...current, [repoKey]: targetVal };
+    });
+  }, [activeCwd, checkouts]);
 
   const rootFor = useCallback(
     (scope: CheckoutScope, repoRoot: string): string => checkoutFor(scope, repoRoot) ?? repoRoot,
@@ -402,6 +456,7 @@ export function useTaskWorktrees(options: { noteId: string | null; repos: string
     checkoutIsGone,
     rootFor,
     checkoutFor,
+    activeCheckoutFor,
     isPinned,
     select,
     pin,

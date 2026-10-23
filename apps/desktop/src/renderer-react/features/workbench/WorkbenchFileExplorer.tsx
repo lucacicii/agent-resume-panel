@@ -237,7 +237,9 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
    * business, and passing it in keeps this component a pure view of `roots`.
    */
   headExtra?: React.ReactNode;
-}>(function WorkbenchFileExplorer({ roots, activePath = "", onOpenFile, onOpenPreview, onShowGitHistory, onFindInFolder, onError, headExtra }, ref) {
+  /** Optional formatter for the root directory label (e.g. repo name + worktree badge). */
+  formatRootLabel?: (root: string) => string;
+}>(function WorkbenchFileExplorer({ roots, activePath = "", onOpenFile, onOpenPreview, onShowGitHistory, onFindInFolder, onError, headExtra, formatRootLabel }, ref) {
   const { t } = useI18n();
   const [directories, setDirectories] = useState<Record<string, DirectoryEntry[]>>({});
   const [openDirectories, setOpenDirectories] = useState<Set<string>>(new Set());
@@ -659,7 +661,7 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
               ? <button type="button" className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`} aria-label={expanded ? "Collapse folder" : "Expand folder"} onClick={(event) => { event.stopPropagation(); void toggleDirectory(root); }}><ThemeIcon name="chevron-right" size={ICON_SIZE.dense} /></button>
               : null}
             <ThemeIcon name="folder-open" size={ICON_SIZE.dense} color={FILE_ICON_COLORS.folder} className="wb-file-tree-icon" />
-            <span className="wb-file-tree-label" title={root}>{basename(root)}</span>
+            <span className="wb-file-tree-label" title={root}>{formatRootLabel ? formatRootLabel(root) : basename(root)}</span>
           </div>
           {roots.length === 1 || expanded ? renderTree(root, 1) : null}
         </Fragment>;

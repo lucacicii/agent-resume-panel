@@ -16,7 +16,7 @@ import {
   updateSchedule
 } from "./thunderScheduler";
 import { getThunderClient } from "./thunderClient";
-import { createThunderConfigStore } from "./thunderConfig";
+import { createThunderConfigStore, thunderDataDir } from "./thunderConfig";
 import {
   accumulateStreamEvent,
   createActiveStreamSnapshot,
@@ -55,13 +55,11 @@ function registerSessionScopedThunderBroadcasts(): void {
 
   const client = getThunderClient();
   client.onModeChanged((payload) => broadcast("thunder:mode:changed", payload));
-  client.onUiRequest((request) => broadcast("thunder:ui:request", request));
 }
 
 function startThunderConfigWatcher(): void {
   if (configWatcher) return;
-  const home = os.homedir();
-  const thunderDir = path.join(home, ".thunder");
+  const thunderDir = thunderDataDir();
   if (!fs.existsSync(thunderDir)) {
     try {
       fs.mkdirSync(thunderDir, { recursive: true });
@@ -292,6 +290,9 @@ export function registerThunderIpc(): void {
           thinking_level: args.thinking_level,
           mode: args.mode,
           attachments: args.attachments,
+          // This pane is the visual chat: `ArtifactMermaidViewer` draws a
+          // ` ```mermaid ` fence, so the daemon may ask for one.
+          renderDiagrams: true,
           onEvent: (event) => {
             accumulateStreamEvent(snapshot, event);
             for (const win of BrowserWindow.getAllWindows()) {
@@ -389,18 +390,4 @@ export function registerThunderIpc(): void {
     }
   );
 
-  safeHandle(
-    "thunder:chat:answerUi",
-    async (_event, args: import("@agent-resume/core").ThunderUiAnswer) => {
-      return getThunderClient().answerUi(args);
-    }
-  );
-
-  safeHandle("thunder:chat:getTrace", async (_event, args: { sessionId: string; taskId?: string }) => {
-    return getThunderClient().getTrace(args);
-  });
-
-  safeHandle("thunder:chat:listTraces", async (_event, args: { sessionId: string }) => {
-    return getThunderClient().listTraces(args);
-  });
 }

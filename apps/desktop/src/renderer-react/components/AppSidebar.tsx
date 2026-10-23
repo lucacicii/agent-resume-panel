@@ -69,7 +69,7 @@ export function AppSidebar({ view, onViewChange, collapsed }: {
           onPointerLeave={hideGlide}
         >
           <span
-            className="app-sidebar-glide"
+            className={`app-sidebar-glide${glide.gliding ? " is-gliding" : ""}`}
             style={{ top: glide.top, height: glide.height, opacity: glide.visible ? 1 : 0 }}
             aria-hidden="true"
           />

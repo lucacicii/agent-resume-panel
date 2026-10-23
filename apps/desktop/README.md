@@ -13,7 +13,8 @@ Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A ove
 
 > **No cloud · Local-first**  
 > Session index, notes, and reports are stored on your machine under **`~/.agent-resume-panel`** (shared with the VS Code extension).  
-> Optional LLM features only contact a third-party API you configure.
+> Optional LLM features only contact a third-party API you configure.  
+> Backups to iCloud Drive or WebDAV happen only when you press the button, and they are unencrypted ZIPs — keep the destination private.
 
 ---
 

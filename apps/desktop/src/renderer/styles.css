@@ -190,6 +190,11 @@
   --wb-terminal-surface: rgba(245, 245, 247, 0.88);
   --wb-terminal-tab-active-label: rgba(0, 0, 0, 0.88);
 
+  /* Flat tab-group surface: only a hue tint and a same-hue hairline, no depth.
+     Percentages so each group's --wb-tab-accent decides the actual colour. */
+  --wb-tab-tint: 12%;
+  --wb-tab-line: 30%;
+
   /* Workbench git graph lanes */
   --wb-git-lane-0: #007aff;
   --wb-git-lane-1: #af52de;
@@ -254,6 +259,8 @@
   --shadow-segment-thumb: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
   --wb-terminal-surface: rgba(245, 245, 247, 0.88);
   --wb-terminal-tab-active-label: rgba(0, 0, 0, 0.88);
+  --wb-tab-tint: 12%;
+  --wb-tab-line: 30%;
 
   /* Markdown Typography & Element Colors (Light Mode) */
   --color-md-h1: #111827;
@@ -322,6 +329,8 @@
   --shadow-segment-thumb: 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
   --wb-terminal-surface: rgba(30, 30, 30, 0.88);
   --wb-terminal-tab-active-label: rgba(255, 255, 255, 0.88);
+  --wb-tab-tint: 18%;
+  --wb-tab-line: 40%;
 
   /* Markdown Typography & Element Colors (Dark Mode) */
   --color-md-h1: #ffffff;
@@ -471,6 +480,8 @@ html[data-theme="dark"][data-task-accent] {
     --shadow-segment-thumb: 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
     --wb-terminal-surface: rgba(30, 30, 30, 0.88);
     --wb-terminal-tab-active-label: rgba(255, 255, 255, 0.88);
+    --wb-tab-tint: 18%;
+    --wb-tab-line: 40%;
 
     /* Markdown Typography & Element Colors (Dark Mode system preference) */
     --color-md-h1: #ffffff;
@@ -880,8 +891,11 @@ html[data-window-mode="main"] .mac-top {
   padding: 0 var(--space-2);
 }
 
-/* Gliding hover pill: one highlight that travels between rows. */
+/* Gliding hover pill: one highlight that travels between rows. The travel
+   duration is a custom property so the pill can be placed instantly (first
+   hover) or glide between rows (`.is-gliding`) with one transition rule. */
 .app-sidebar-glide {
+  --glide-travel-duration: 0ms;
   position: absolute;
   left: 8px;
   right: 8px;
@@ -889,9 +903,15 @@ html[data-window-mode="main"] .mac-top {
   background: var(--color-fill-secondary);
   pointer-events: none;
   transition:
-    top var(--duration-normal) var(--ease-glide),
-    height var(--duration-normal) var(--ease-glide),
+    top var(--glide-travel-duration) var(--ease-glide),
+    height var(--glide-travel-duration) var(--ease-glide),
     opacity var(--duration-fast) ease;
+}
+
+/* The pill only travels when it is already on screen and moves to another
+   row; a hidden pill is placed at the target row and fades in. */
+.app-sidebar-glide.is-gliding {
+  --glide-travel-duration: var(--duration-normal);
 }
 
 .app-sidebar-row {
@@ -5564,6 +5584,7 @@ code {
   flex: 1 1 auto;
   min-height: 0;
   flex-direction: column;
+  position: relative;
 }
 
 /* The active terminal is the only terminal pane allowed to consume the editor
@@ -5688,12 +5709,94 @@ code {
   top: 8px;
   right: 14px;
   z-index: 10;
-  opacity: 0.82;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  opacity: 0.85;
   transition: opacity 0.15s ease;
 }
 
 .wb-terminal-fullscreen-bar:hover {
   opacity: 1;
+}
+
+/* Floating cd switcher: a shared-workspace terminal offers the task's
+   repositories as one-click `cd` targets (top-right, over the xterm). */
+.wb-terminal-project-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--color-separator);
+  background: color-mix(in srgb, var(--color-elevated-bg, #222) 92%, #000);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(8px);
+  color: var(--color-label-primary);
+  font-size: 11px;
+  user-select: none;
+}
+
+.wb-terminal-project-switcher-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--color-label-secondary);
+  font-weight: 600;
+  font-size: 11px;
+  margin-right: 2px;
+}
+
+.wb-terminal-project-switcher-list {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  flex-wrap: wrap;
+}
+
+.wb-terminal-project-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: var(--color-control-bg, rgba(255, 255, 255, 0.06));
+  color: var(--color-label-primary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  white-space: nowrap;
+}
+
+.wb-terminal-project-chip:hover {
+  background: var(--color-secondary-bg, rgba(255, 255, 255, 0.14));
+  border-color: var(--color-separator);
+}
+
+.wb-terminal-project-chip.is-active {
+  background: color-mix(in srgb, var(--color-accent, #3b82f6) 18%, transparent);
+  border-color: var(--color-accent, #3b82f6);
+  color: var(--color-accent, #3b82f6);
+}
+
+.wb-terminal-project-chip.is-workspace {
+  color: var(--color-label-secondary);
+}
+
+.wb-terminal-project-chip.is-workspace:hover {
+  color: var(--color-label-primary);
+}
+
+.wb-terminal-project-chip-worktree {
+  font-size: 10px;
+  opacity: 0.8;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .wb-terminal-mode-toggle-btn {
@@ -5943,7 +6046,6 @@ body.is-pane-resizing-v * {
 /* Panes inherit the detail surface instead of stacking their own tints, so the
    terminal, editor, diff, split transcript, and tab strips stay translucent. */
 .wb-detail .wb-pane-tab-groups,
-.wb-detail .wb-terminal-tabs,
 .wb-detail .wb-terminal-host,
 .wb-detail .wb-terminal-loading,
 .wb-detail .wb-editor-pane,
@@ -9051,16 +9153,18 @@ body.is-pane-resizing-v * {
   position: relative;
 }
 
-/* Workbench unified single-row tab strip with type-specific sections. */
+/* Workbench unified single-row tab strip of color-coded pill groups. */
 .wb-pane-tab-groups {
   display: flex;
   flex-direction: row;
-  align-items: stretch;
+  align-items: center;
+  gap: var(--space-1-5);
   flex: 0 0 32px;
   height: 32px;
   min-height: 32px;
   max-height: 32px;
   min-width: 0;
+  padding: 0 var(--space-2);
   background: var(--color-pane-bg);
   border-bottom: 0.5px solid var(--color-separator);
   overflow-x: auto;
@@ -9072,27 +9176,44 @@ body.is-pane-resizing-v * {
   display: none;
 }
 
-/* Safari/Finder style segmented tab bar */
+/* Each group is one hue-tinted, completely flat surface holding its action
+   label, optional worktree control, and tabs: a tint plus a same-hue hairline,
+   with no inner shadow or highlight. Inactive tabs are narrower than their
+   titles and expand on hover, so the group carries the two width bounds. */
 .wb-terminal-tabs {
+  --wb-tab-accent: var(--color-label-secondary);
+  --wb-tab-collapsed-w: 112px;
+  --wb-tab-expanded-w: 240px;
   display: inline-flex;
-  align-items: stretch;
-  min-height: 32px;
-  height: 32px;
-  padding: 0;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 30px;
+  height: 30px;
+  padding: 3px;
   border-bottom: none;
-  background: transparent;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--wb-tab-accent) var(--wb-tab-tint), transparent);
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) var(--wb-tab-line), transparent);
+  overflow: hidden;
   flex-shrink: 0;
+  transition: background var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
 }
 
-.wb-pane-tab-group-label {
+/* Flat inside the track; hover still paints a segment around the action. */
+.wb-terminal-tabs .wb-pane-tab-group-label {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 32px;
-  min-width: 32px;
-  padding: 0;
-  border-right: 0.5px solid var(--color-separator);
-  color: var(--color-label-secondary);
+  gap: var(--space-1);
+  flex: 0 0 auto;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 var(--space-1-5);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: color-mix(in srgb, var(--wb-tab-accent) 82%, var(--color-label-primary));
   font-size: var(--font-size-micro);
   font-weight: var(--font-weight-medium);
   line-height: 1;
@@ -9103,20 +9224,39 @@ body.is-pane-resizing-v * {
   flex: 0 0 auto;
 }
 
-.is-session-group .wb-pane-tab-group-label svg {
-  color: var(--color-accent);
+/* One hue per group: the capsule, the active-tab slider, and hover derives
+   from it, so the four groups stay distinguishable without raw colours. */
+.is-session-group {
+  --wb-tab-accent: var(--color-accent);
 }
 
-.is-terminal-group .wb-pane-tab-group-label svg {
-  color: var(--color-success);
+.is-terminal-group {
+  --wb-tab-accent: var(--color-success);
 }
 
-.is-code-group .wb-pane-tab-group-label svg {
-  color: var(--color-warning);
+.is-code-group {
+  --wb-tab-accent: var(--color-warning);
 }
 
-.is-note-group .wb-pane-tab-group-label svg {
-  color: var(--color-accent);
+.is-note-group {
+  --wb-tab-accent: var(--color-teal);
+}
+
+/* The group holding the active pane gains tint and a firmer hairline; it still
+   stays flat. The label itself is untouched. */
+.wb-terminal-tabs:has(.wb-terminal-tab.active) {
+  background: color-mix(in srgb, var(--wb-tab-accent) calc(var(--wb-tab-tint) + 6%), transparent);
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) calc(var(--wb-tab-line) + 12%), transparent);
+}
+
+.wb-pane-tab-group-count {
+  font-size: var(--font-size-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-label-secondary);
+}
+
+.wb-terminal-tabs:has(.wb-terminal-tab.active) > .wb-pane-tab-group-label .wb-pane-tab-group-count {
+  color: var(--color-label-primary);
 }
 
 .wb-note-pane {
@@ -9145,17 +9285,59 @@ body.is-pane-resizing-v * {
 }
 
 .wb-terminal-tabs-list {
+  position: relative;
   display: flex;
-  align-items: stretch;
-  gap: 0;
+  align-items: center;
+  gap: var(--space-0-5);
   flex: 1 1 auto;
   min-width: 0;
+  height: 100%;
+  padding-left: var(--space-1);
   overflow-x: auto;
   scrollbar-width: none;
 }
 
+/* Only a list that actually has tabs gets the action/tab divider. The inset
+   shadow stays out of layout, so offsetLeft keeps the same origin. */
+.wb-terminal-tabs-list:has(> .wb-terminal-tab) {
+  box-shadow: inset 0.5px 0 0 color-mix(in srgb, var(--wb-tab-accent) 26%, transparent);
+}
+
+/* An empty list would leave a dangling flex gap at the capsule's right end. */
+.wb-terminal-tabs-list:empty {
+  display: none;
+}
+
 .wb-terminal-tabs-list::-webkit-scrollbar {
   display: none;
+}
+
+/* The measured slider that travels between a group's tabs. It is a child of
+   the scroller, so it moves with the content without a scroll listener. */
+.wb-pane-tab-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--wb-tab-accent) 8%, var(--color-control-bg));
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--wb-tab-accent) 34%, transparent);
+  pointer-events: none;
+  z-index: 0;
+  will-change: transform;
+  transition: transform var(--duration-normal) var(--ease-out), width var(--duration-normal) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-terminal-tabs,
+  .wb-pane-tab-thumb,
+  .wb-terminal-tab,
+  .wb-terminal-tab-close,
+  .wb-tab-preview,
+  button.wb-pane-tab-group-label {
+    transition: none;
+    animation: none;
+  }
 }
 
 /* Normalize tab-strip buttons against their local flat surface */
@@ -9173,19 +9355,21 @@ body.is-pane-resizing-v * {
 
 button.wb-pane-tab-group-label {
   appearance: none;
-  border-right: 0.5px solid var(--color-separator);
+  border: none;
 
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
-button.wb-pane-tab-group-label:focus-visible {
+.wb-terminal-tabs button.wb-pane-tab-group-label:focus-visible,
+.wb-terminal-tabs:has(.wb-terminal-tab.active) > .wb-pane-tab-group-label:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--color-focus-ring);
+  /* An outer ring is clipped by the strip's overflow-y; keep it inside. */
+  box-shadow: inset 0 0 0 2px var(--color-focus-ring);
 }
 
 button.wb-pane-tab-group-label:hover:not(:disabled) {
-  background: var(--color-fill-secondary);
-  color: var(--color-label-primary);
+  background: color-mix(in srgb, var(--wb-tab-accent) 14%, transparent);
+  color: color-mix(in srgb, var(--wb-tab-accent) 82%, var(--color-label-primary));
 }
 
 button.wb-pane-tab-group-label:disabled,
@@ -9195,46 +9379,48 @@ button.wb-pane-tab-group-label.is-busy {
   pointer-events: none;
 }
 
-/* Native Safari/Finder styled tab item */
+/* Tab item; the slider painted by .wb-pane-tab-thumb carries the fill.
+   An inactive tab is capped below its natural width so its title ellipsizes;
+   hover, focus or activation expands it. width:max-content cannot be
+   interpolated, so the cap is what animates. */
 .wb-terminal-tab {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 0;
   min-width: 0;
   width: max-content;
-  max-width: 200px;
+  max-width: var(--wb-tab-collapsed-w);
   height: 100%;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
-  border-right: 0.5px solid var(--color-separator);
+  border-right: none;
   position: relative;
-  z-index: 0;
+  z-index: 1;
   flex-shrink: 0;
-  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+  transition: max-width var(--duration-normal) var(--ease-out),
+              background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
 }
 
+.wb-terminal-tab.active,
+.wb-terminal-tab:hover,
+.wb-terminal-tab:has(.wb-terminal-tab-label:focus-visible) {
+  max-width: var(--wb-tab-expanded-w);
+}
+
+/* Chrome-like hover: a neutral wash tinted with the group hue, so it stays
+   distinguishable from the slider under the active tab. */
 .wb-terminal-tab:hover:not(.active) {
-  background: var(--color-fill-secondary);
+  background: color-mix(in srgb, var(--wb-tab-accent) 10%, var(--color-fill-secondary));
 }
 
 .wb-terminal-tab.active {
-  z-index: 1;
-  background: var(--color-sidebar-bg);
-  border-bottom: 0.5px solid var(--color-sidebar-bg);
-  margin-bottom: -0.5px;
+  z-index: 2;
+  background: transparent;
 }
 
-.wb-terminal-tab.is-session.active {
-  box-shadow: inset 0 2px 0 var(--color-accent);
-}
-
-.wb-terminal-tab.is-terminal.active {
-  box-shadow: inset 0 2px 0 var(--color-success);
-}
-
-.wb-terminal-tab.is-editor.active,
-.wb-terminal-tab.is-diff.active {
-  box-shadow: inset 0 2px 0 var(--color-warning);
+.wb-terminal-tab:has(.wb-terminal-tab-label:focus-visible) {
+  box-shadow: inset 0 0 0 2px var(--color-focus-ring);
 }
 
 .wb-terminal-tab-label {
@@ -9242,19 +9428,27 @@ button.wb-pane-tab-group-label.is-busy {
   border: none;
   box-shadow: none;
   color: var(--color-label-secondary);
-  padding: 0 var(--space-2) 0 var(--space-3);
+  padding: 0 var(--space-1) 0 var(--space-2-5);
   height: 100%;
   align-self: stretch;
 
   font-size: var(--font-size-body);
-  line-height: 32px;
+  line-height: 1;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1 1 auto;
   min-width: 0;
   text-align: left;
-  display: block;
+}
+
+/* The label is inline-flex (see the alignment rule further down), which cannot
+   ellipsize text itself; the title span is the block that does. */
+.wb-terminal-tab-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wb-terminal-tab-label svg,
@@ -9291,11 +9485,11 @@ button.wb-pane-tab-group-label.is-busy {
 .wb-terminal-tab-close {
   appearance: none;
   color: var(--color-label-tertiary);
-  width: 24px;
-  min-width: 24px;
+  width: 0;
+  min-width: 0;
   height: 24px;
   align-self: center;
-  margin-right: var(--space-1);
+  margin-right: 0;
   border: none;
   background: transparent;
   border-radius: var(--radius-sm);
@@ -9305,22 +9499,30 @@ button.wb-pane-tab-group-label.is-busy {
   display: grid;
   place-items: center;
   padding: 0;
-  transition: opacity var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+  overflow: hidden;
+  transition: width var(--duration-fast) var(--ease-out),
+              min-width var(--duration-fast) var(--ease-out),
+              margin-right var(--duration-fast) var(--ease-out),
+              opacity var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
 }
 
+/* The action stays in the DOM at zero width so tests and keyboard users keep
+   it; it only takes room while the tab is showing its full title. */
 .wb-terminal-tab:hover .wb-terminal-tab-close,
-.wb-terminal-tab.active .wb-terminal-tab-close {
+.wb-terminal-tab.active .wb-terminal-tab-close,
+.wb-terminal-tab:has(.wb-terminal-tab-label:focus-visible) .wb-terminal-tab-close,
+.wb-terminal-tab-close:focus-visible {
+  width: 24px;
+  min-width: 24px;
+  margin-right: var(--space-0-5);
   opacity: 1;
 }
 
 .wb-terminal-tab-close:hover {
   background: var(--color-fill-secondary);
   color: var(--color-label-primary);
-}
-
-.wb-terminal-tab:hover .wb-terminal-tab-close,
-.wb-terminal-tab.active .wb-terminal-tab-close {
-  opacity: 1;
 }
 
 .wb-terminal-tab.active .wb-terminal-tab-close {
@@ -9338,12 +9540,144 @@ button.wb-pane-tab-group-label.is-busy {
   color: var(--wb-terminal-tab-active-label);
 }
 
+/* The capsule clips outer rings, and the local button reset already drops the
+   global one; give the close action its own inset ring and reveal it on focus. */
+.wb-terminal-tabs .wb-terminal-tab-close:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow: inset 0 0 0 2px var(--color-focus-ring);
+}
+
 .wb-terminal-tab-close svg {
   display: block;
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* Delayed hover snapshot for an inactive pane tab. Portaled to the body, so
+   neither the strip's overflow nor the detail body's can clip it. The top
+   padding is a transparent bridge to the tab, keeping the pointer inside. */
+.wb-tab-preview {
+  position: fixed;
+  z-index: 400;
+  width: 340px;
+  pointer-events: auto;
+  padding-top: 6px;
+  animation: mac-popover-enter var(--duration-fast) var(--ease-out);
+}
+
+.wb-tab-preview.is-above {
+  padding-top: 0;
+  padding-bottom: 6px;
+}
+
+.wb-tab-preview-inner {
+  display: flex;
+  flex-direction: column;
+  max-height: 280px;
+  padding: var(--space-2) 0 0;
+  border-radius: var(--radius-lg);
+  background: var(--color-elevated-bg);
+  box-shadow: var(--shadow-popover);
+  color: var(--color-label-primary);
+  font-size: var(--font-size-body);
+  overflow: hidden;
+}
+
+.wb-tab-preview-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-width: 0;
+  padding: 0 var(--space-3) var(--space-1-5);
+  border-bottom: 0.5px solid var(--color-separator);
+}
+
+.wb-tab-preview-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wb-tab-accent, var(--color-accent));
+}
+
+.wb-tab-preview-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: var(--font-weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-tab-preview-meta {
+  flex: 0 1 auto;
+  max-width: 46%;
+  font-size: var(--font-size-micro);
+  color: var(--color-label-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-tab-preview-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--space-2) var(--space-3) var(--space-3);
+}
+
+.wb-tab-preview-screen {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre;
+  overflow: hidden;
+  color: var(--color-label-primary);
+}
+
+.wb-tab-preview-msg {
+  display: flex;
+  gap: var(--space-1-5);
+  margin-bottom: var(--space-1-5);
+}
+
+.wb-tab-preview-role {
+  flex: 0 0 auto;
+  font-size: var(--font-size-micro);
+  color: var(--color-label-tertiary);
+}
+
+.wb-tab-preview-text {
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
+
+.wb-tab-preview-counts {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+}
+
+.wb-tab-preview-counts .is-add {
+  color: var(--color-success);
+}
+
+.wb-tab-preview-counts .is-del {
+  color: var(--color-destructive);
+}
+
+.wb-tab-preview-empty {
+  color: var(--color-label-tertiary);
 }
 
 .wb-terminal-stack {
@@ -14122,9 +14456,21 @@ html[data-window-mode="standalone-note"] #react-workbench {
   }
 }
 
-/* Backup destinations and managed iCloud items. */
+/* Backup destinations and managed remote items. */
 .settings-backup-target {
   width: min(320px, 100%);
+}
+
+/* Server form: the group body only spaces its direct children, so the fields
+   inside this block need their own column gap. */
+.settings-backup-webdav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-lg);
+  background: var(--color-secondary-bg);
 }
 
 .settings-backup-list {
@@ -15178,6 +15524,81 @@ html[data-window-mode="browser"] #react-chrome {
   border: 1px solid rgba(14, 165, 233, 0.3);
 }
 
+.artifact-lang-badge.is-mermaid {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+/* Mermaid Viewer */
+.artifact-mermaid-viewer-container {
+  width: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.artifact-mermaid-canvas {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  min-height: inherit;
+  overflow: auto;
+  background: var(--bg-surface, #141414);
+}
+
+.artifact-mermaid-canvas svg {
+  max-width: 100%;
+  max-height: 400px;
+  height: auto;
+  display: block;
+}
+
+.artifact-mermaid-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: inherit;
+  color: var(--text-muted, rgba(255, 255, 255, 0.5));
+  font-size: var(--font-size-sm, 12px);
+}
+
+.artifact-mermaid-error {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  min-height: inherit;
+  overflow: auto;
+}
+
+.artifact-mermaid-error-label {
+  color: var(--color-label-secondary, rgba(255, 255, 255, 0.7));
+  font-size: var(--font-size-sm, 12px);
+  font-weight: 600;
+}
+
+.artifact-mermaid-error pre {
+  margin: 0;
+  padding: var(--space-3);
+  background: var(--color-fill-tertiary, rgba(255, 255, 255, 0.04));
+  border-radius: var(--radius-sm, 4px);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+.artifact-mermaid-error-detail {
+  color: var(--color-label-tertiary, rgba(255, 255, 255, 0.45));
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  word-break: break-word;
+}
+
 .artifact-card-title {
   font-size: 12px;
   font-weight: 500;
@@ -15440,6 +15861,7 @@ html[data-window-mode="browser"] #react-chrome {
 
 .artifact-card-body.is-modal-body .artifact-html-sandbox-wrap,
 .artifact-card-body.is-modal-body .artifact-svg-viewer-container,
+.artifact-card-body.is-modal-body .artifact-mermaid-viewer-container,
 .artifact-card-body.is-modal-body .artifact-code-view {
   flex: 1;
   height: 100%;
@@ -16324,6 +16746,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 .notes-view-glide {
+  --glide-travel-duration: 0ms;
   position: absolute;
   left: 8px;
   right: 8px;
@@ -16331,9 +16754,15 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   background: var(--color-fill-secondary);
   pointer-events: none;
   transition:
-    top var(--duration-normal) var(--ease-glide),
-    height var(--duration-normal) var(--ease-glide),
+    top var(--glide-travel-duration) var(--ease-glide),
+    height var(--glide-travel-duration) var(--ease-glide),
     opacity var(--duration-fast) ease;
+}
+
+/* The pill only travels when it is already on screen and moves to another
+   row; a hidden pill is placed at the target row and fades in. */
+.notes-view-glide.is-gliding {
+  --glide-travel-duration: var(--duration-normal);
 }
 
 .notes-view-section {
@@ -21221,8 +21650,8 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 /* Approval-mode chip (`tb-chip-mode-<mode>`). The tint carries the signal:
    "Plan" and "YOLO" are both just words, and they are the two extremes a user
-   has to tell apart before typing. The gradient runs from most cautious to
-   least — plan is the one that should catch the eye. */
+   has to tell apart before typing. Plan — the one that should catch the eye —
+   is cautious; YOLO is the opposite end and reads as such. */
 .tb-chip-mode-plan {
   background: color-mix(in srgb, var(--color-warning) 16%, var(--color-secondary-bg));
   border-color: color-mix(in srgb, var(--color-warning) 45%, transparent);
@@ -21230,24 +21659,6 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 .tb-chip-mode-plan .tb-composer-native-select {
   color: color-mix(in srgb, var(--color-warning) 78%, var(--color-label-primary));
-}
-
-.tb-chip-mode-ask {
-  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-secondary-bg));
-  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
-}
-
-.tb-chip-mode-ask .tb-composer-native-select {
-  color: color-mix(in srgb, var(--color-accent) 78%, var(--color-label-primary));
-}
-
-.tb-chip-mode-acceptEdits {
-  background: color-mix(in srgb, var(--color-teal) 16%, var(--color-secondary-bg));
-  border-color: color-mix(in srgb, var(--color-teal) 45%, transparent);
-}
-
-.tb-chip-mode-acceptEdits .tb-composer-native-select {
-  color: color-mix(in srgb, var(--color-teal) 72%, var(--color-label-primary));
 }
 
 .tb-chip-mode-yolo {

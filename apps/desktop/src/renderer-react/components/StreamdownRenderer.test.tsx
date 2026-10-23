@@ -102,6 +102,26 @@ describe("StreamdownRenderer integration test suite", () => {
     expect(svg).toBeDefined();
   });
 
+  it("intercepts mermaid code blocks and renders them as a diagram card", () => {
+    const md = [
+      "How the call flows:",
+      "```mermaid",
+      "flowchart TD",
+      "  A[User] --> B[Daemon]",
+      "```"
+    ].join("\n");
+
+    const { container } = render(<StreamdownRenderer content={md} />);
+
+    // The fence becomes the diagram card, never a plain code block: a model
+    // that follows the prompt's diagram rule must not see raw source back.
+    const card = container.querySelector(".artifact-card");
+    expect(card).toBeDefined();
+    expect(within(card as HTMLElement).getByText("MERMAID")).toBeDefined();
+    expect(card?.querySelector(".artifact-mermaid-viewer-container")).toBeDefined();
+    expect(container.querySelector(".code-block")).toBeNull();
+  });
+
   it("renders non-artifact code blocks with copy button and language tag", () => {
     const md = [
       "```python",

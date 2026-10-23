@@ -158,6 +158,13 @@ import { currentAccentColor, subscribeAccentColorChange } from "./systemAccent";
 import { attachDefaultContextMenu, sanitizeContextMenuItems, showContextMenu } from "./contextMenu";
 import { confirmDialogOptions } from "./confirmDialog";
 import { loadStoredTaskWindows, saveStoredTaskWindows, taskWindowStatePath } from "./taskWindowStore";
+import { activationTarget } from "./activationTarget";
+import {
+  lastActiveWindowStatePath,
+  loadStoredActiveWindow,
+  saveStoredActiveWindow,
+  type StoredActiveWindow
+} from "./lastActiveWindowStore";
 import {
   disposeBrowserController,
   disposeBrowserMcpServer,
@@ -277,13 +284,21 @@ import {
 } from "./sessionEmbeddingIndexAuto";
 import {
   exportBackup,
-  exportIcloudBackup,
+  exportStoredBackup,
   getBackupStorageTargetStatus,
   importBackup,
-  listIcloudBackups,
+  listStoredBackups,
   selectBackupForImport,
-  selectIcloudBackupForImport
+  selectStoredBackupForImport,
+  type BackupStorageTarget,
+  type ManagedBackupContext
 } from "./backupService";
+import {
+  readWebdavSettings,
+  resolveWebdavCredentials,
+  saveWebdavConfig
+} from "./webdavConfig";
+import { createWebdavSession, normalizeWebdavConfig } from "./webdavClient";
 import {
   clearAppErrors,
   installProcessErrorHandlers,
@@ -639,6 +654,12 @@ function applyAppIcon(): void {
 let mainWindow: BrowserWindow | null = null;
 let mainWindowReadyToShow = false;
 let mainWindowRendererReady = false;
+/** The window that last had focus, so a reopen can return to it instead of the board. */
+let lastActiveWindow: BrowserWindow | null = null;
+/** The window that was in front when the user left the app. */
+let windowBeforeDeactivation: BrowserWindow | null = null;
+/** The window the app focused on launch by itself, until restore finishes. */
+let launchFocusedWindow: BrowserWindow | null = null;
 let sessionDotsTray: Tray | null = null;
 let disposeAccentSubscription: (() => void) | null = null;
 /** Last settings read, so context menus and the menu bar share one locale. */
@@ -781,6 +802,7 @@ const SETTINGS_PANES = [
   "workbench",
   "notes",
   "storage",
+  "backup",
   "usage",
   "about"
 ] as const;
@@ -1027,6 +1049,43 @@ function revealMainWindow(): BrowserWindow | null {
   mainWindow.show();
   mainWindow.focus();
   return mainWindow;
+}
+
+/**
+ * The persisted identity of a window, or null for kinds that a launch does not
+ * restore (floating notes, standalone browser windows).
+ */
+function activationKeyForWindow(win: BrowserWindow): StoredActiveWindow | null {
+  if (win === mainWindow) return { kind: "board" };
+  const state = taskWindowStateForSender(win.webContents);
+  return state ? { kind: "task", workbenchId: state.workbenchId } : null;
+}
+
+/** Remember `win` for the next launch; kinds without an identity are ignored. */
+function persistLastActiveWindow(win: BrowserWindow): void {
+  // A workbench window opened by a session event shows itself without the user
+  // choosing it; restoring focus there next launch would override their choice.
+  if (win === launchFocusedWindow) return;
+  const key = activationKeyForWindow(win);
+  if (!key) return;
+  void loadPanelDbPaths()
+    .then((paths) => saveStoredActiveWindow(lastActiveWindowStatePath(paths.desktopDb), key))
+    .catch(() => undefined);
+}
+
+/**
+ * Bring `target` forward the way macOS expects a reopen to behave. A destroyed
+ * window falls back to the board, and the board itself goes through
+ * `revealMainWindow()` so a hidden board is recreated rather than shown dead.
+ */
+function revealWindow(target: BrowserWindow | null): void {
+  if (!target || target.isDestroyed() || target === mainWindow) {
+    revealMainWindow();
+    return;
+  }
+  if (target.isMinimized()) target.restore();
+  target.show();
+  target.focus();
 }
 
 /**
@@ -2212,6 +2271,9 @@ function persistOpenTaskWindows(): void {
 async function restoreTaskWindows(): Promise<void> {
   try {
     const paths = await loadPanelDbPaths();
+    // Read the remembered window before any restore: opening a window focuses it,
+    // which would overwrite the file with the wrong answer.
+    const lastActive = await loadStoredActiveWindow(lastActiveWindowStatePath(paths.desktopDb));
     const stored = await loadStoredTaskWindows(taskWindowStatePath(paths.desktopDb));
     for (const entry of stored) {
       if (openTaskWindowCount() >= MAX_TASK_WINDOWS) break;
@@ -2223,6 +2285,13 @@ async function restoreTaskWindows(): Promise<void> {
       // Stagger window restoration so Chromium processes do not compete for resources on startup
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
+    // Every restored window focuses itself once it is ready, so the last one opened
+    // would end up in front. Put back the window the user actually left.
+    const focused = BrowserWindow.getFocusedWindow();
+    const focusIsFromRestore = focused != null && listTaskWindows().some((state) => state.window === focused);
+    if (!focusIsFromRestore) return;
+    if (lastActive?.kind === "task" && focusTaskWindow(lastActive.workbenchId)) return;
+    revealMainWindow();
   } catch (error) {
     void recordAppError({ source: "task-window", message: "Could not restore workbench windows.", error });
   }
@@ -2499,30 +2568,74 @@ function registerIpc(): void {
 
   safeHandle("app:getVersion", async () => ({ version: getAppVersion() }));
 
-  safeHandle("backup:targetStatus", async () => getBackupStorageTargetStatus());
-  safeHandle("backup:listIcloud", async () => listIcloudBackups());
+  /**
+   * Settings plus the decrypted WebDAV credentials, built once per IPC call.
+   *
+   * A stored password that cannot be decrypted must not take the whole backup
+   * pane down: the WebDAV target then reports itself unavailable and the other
+   * targets keep working.
+   */
+  const backupContext = async (): Promise<ManagedBackupContext> => {
+    const settings = await loadSettings();
+    let webdavError: string | undefined;
+    const webdav = await Promise.resolve()
+      .then(() => resolveWebdavCredentials(settings))
+      .catch((error: unknown) => {
+        webdavError = error instanceof Error ? error.message : String(error);
+        return null;
+      });
+    return { settings, ...(webdav ? { webdav } : {}), ...(webdavError ? { webdavError } : {}) };
+  };
+
+  const backupTarget = (value: unknown): BackupStorageTarget => {
+    if (value === "local-file" || value === "icloud-drive" || value === "webdav") return value;
+    throw new Error("Unknown backup target.");
+  };
+
+  const backupProgress = (event: { sender: { send: (channel: string, payload: unknown) => void } }) =>
+    (progress: import("./backupService").BackupProgressEvent) => event.sender.send("backup:progress", progress);
+
+  safeHandle("backup:targetStatus", async () => getBackupStorageTargetStatus(await backupContext()));
+  safeHandle("backup:listStored", async (_event, args?: { target?: unknown }) => {
+    const target = backupTarget(args?.target);
+    if (target === "local-file") return [];
+    const ctx = await backupContext();
+    // An unconfigured target has nothing to list; the status callout explains why.
+    if (target === "webdav" && !ctx.webdav) return [];
+    return listStoredBackups(ctx, target);
+  });
 
   safeHandle(
     "backup:export",
-    async (event, args?: { target?: unknown; includeCredentials?: unknown; includeNativeConversations?: unknown; password?: unknown }) => {
-      const settings = await loadSettings();
-      const target = args?.target === "icloud-drive" ? "icloud-drive" : "local-file";
-      const includeCredentials = args?.includeCredentials === true;
-      const includeNativeConversations = args?.includeNativeConversations !== false;
-      const password = typeof args?.password === "string" ? args.password : undefined;
+    async (event, args?: { target?: unknown; includeNativeConversations?: unknown }) => {
+      const target = backupTarget(args?.target);
+      let lastProgress: import("./backupService").BackupProgressEvent | undefined;
       const options = {
-        includeCredentials,
-        includeNativeConversations,
-        password,
-        onProgress: (progress: import("./backupService").BackupProgressEvent) => event.sender.send("backup:progress", progress)
+        includeNativeConversations: args?.includeNativeConversations !== false,
+        onProgress: (progress: import("./backupService").BackupProgressEvent) => {
+          lastProgress = progress;
+          backupProgress(event)(progress);
+        }
       };
-      if (target === "icloud-drive") return exportIcloudBackup(settings, getAppVersion(), options);
-      const selected = await dialog.showSaveDialog({
-        defaultPath: `agent-resume-backup-${new Date().toISOString().slice(0, 10)}.zip`,
-        filters: [{ name: "Agent Resume backup", extensions: ["zip"] }]
-      });
-      if (selected.canceled || !selected.filePath) return { canceled: true };
-      return exportBackup(settings, selected.filePath, getAppVersion(), options);
+      const ctx = await backupContext();
+      try {
+        if (target !== "local-file") return await exportStoredBackup(ctx, target, getAppVersion(), options);
+        const selected = await dialog.showSaveDialog({
+          defaultPath: `agent-resume-backup-${new Date().toISOString().slice(0, 10)}.zip`,
+          filters: [{ name: "Agent Resume backup", extensions: ["zip"] }]
+        });
+        if (selected.canceled || !selected.filePath) return { canceled: true };
+        return await exportBackup(ctx.settings, selected.filePath, getAppVersion(), options);
+      } catch (error) {
+        // Keep the failure diagnosable: the renderer only receives the message.
+        void recordAppError({
+          source: "backup",
+          message: error instanceof Error ? error.message : String(error),
+          detail: `target=${target} phase=${lastProgress?.phase ?? "none"} percent=${lastProgress?.percent ?? 0} context=${(error as { context?: string }).context ?? "unknown"}`,
+          error
+        });
+        throw error;
+      }
     }
   );
 
@@ -2535,16 +2648,63 @@ function registerIpc(): void {
     return selectBackupForImport(selected.filePaths[0]);
   });
 
-  safeHandle("backup:selectIcloudImport", async (_event, args?: { backupId?: unknown; password?: unknown }) => {
+  safeHandle("backup:selectStoredImport", async (event, args?: { target?: unknown; backupId?: unknown; password?: unknown }) => {
+    const target = backupTarget(args?.target);
     const backupId = typeof args?.backupId === "string" ? args.backupId : "";
-    const password = typeof args?.password === "string" ? args.password : "";
-    if (!backupId) throw new Error("An iCloud backup must be selected.");
-    return selectIcloudBackupForImport(backupId, password);
+    if (target === "local-file") throw new Error("Local files are restored from the file picker.");
+    if (!/^[a-f0-9]{32}$/i.test(backupId)) throw new Error("A valid backup id is required.");
+    // Only older encrypted backups need this; plain ZIPs ignore it.
+    const password = typeof args?.password === "string" && args.password.length ? args.password : undefined;
+    return selectStoredBackupForImport(await backupContext(), target, backupId, password, backupProgress(event));
   });
+
+  safeHandle("backup:webdav:getConfig", async () => readWebdavSettings(await loadSettings()));
+
+  safeHandle(
+    "backup:webdav:saveConfig",
+    async (_event, args?: { url?: unknown; username?: unknown; folder?: unknown; password?: unknown; clearPassword?: unknown }) => {
+      const view = await saveWebdavConfig({
+        url: args?.url,
+        username: args?.username,
+        folder: args?.folder,
+        password: args?.password,
+        clearPassword: args?.clearPassword
+      });
+      broadcastToRenderers("settings:changed", { settings: await loadSettings(), section: "backup" });
+      return view;
+    }
+  );
+
+  safeHandle(
+    "backup:webdav:test",
+    async (_event, args?: { url?: unknown; username?: unknown; folder?: unknown; password?: unknown }) => {
+      try {
+        const settings = await loadSettings();
+        const explicitPassword = typeof args?.password === "string" && args.password.length ? args.password : undefined;
+        // Draft values win over saved ones, like the provider connection test.
+        const draft = args?.url === undefined && args?.username === undefined && args?.folder === undefined
+          ? resolveWebdavCredentials(settings, explicitPassword)
+          : normalizeWebdavConfig({
+              url: args?.url,
+              username: args?.username,
+              folder: args?.folder,
+              password: explicitPassword ?? resolveWebdavCredentials(settings)?.password ?? ""
+            });
+        if (!draft) throw new Error("Enter the WebDAV server URL and username first.");
+        if (!draft.password) throw new Error("Enter the WebDAV account password.");
+        const session = createWebdavSession(draft);
+        await session.ensureFolder();
+        await session.propfind(0);
+        return { ok: true, message: session.folderUrl };
+      } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : String(error) };
+      }
+    }
+  );
 
   safeHandle(
     "backup:import",
-    async (event, args?: { importToken?: unknown; includeCredentials?: unknown; restoreNativeConversations?: unknown; password?: unknown }) => {
+    async (event, args?: { importToken?: unknown; restoreNativeConversations?: unknown; password?: unknown }) => {
       const importToken = typeof args?.importToken === "string" ? args.importToken : "";
       if (!importToken) throw new Error("A selected backup is required.");
       stopMemoryScheduler();
@@ -2554,11 +2714,11 @@ function registerIpc(): void {
       stopSessionEmbeddingIndexAuto();
       try {
         const result = await importBackup(await loadSettings(), importToken, getAppVersion(), {
-          includeCredentials: args?.includeCredentials === true,
-          password: typeof args?.password === "string" ? args.password : undefined,
+          // Only older encrypted backups use this.
+          password: typeof args?.password === "string" && args.password.length ? args.password : undefined,
           restoreNativeConversations: args?.restoreNativeConversations === true,
           recoveryDir: path.join(app.getPath("userData"), "import-recovery"),
-          onProgress: (progress: import("./backupService").BackupProgressEvent) => event.sender.send("backup:progress", progress)
+          onProgress: backupProgress(event)
         });
         invalidateNotesStore();
         const saved = await loadSettings();
@@ -4025,6 +4185,23 @@ function registerIpc(): void {
 
 }
 
+/**
+ * Track which window the user is actually in, so a reopen can return there.
+ *
+ * The deactivation snapshot is taken rather than read live from `getFocusedWindow`
+ * because macOS may hand focus to a window on its own while the app becomes
+ * active again, which would answer "which window was in front before I left?"
+ * with the wrong one.
+ */
+app.on("browser-window-focus", (_event, win) => {
+  if (win.isDestroyed()) return;
+  lastActiveWindow = win;
+  persistLastActiveWindow(win);
+});
+app.on("did-resign-active", () => {
+  windowBeforeDeactivation = lastActiveWindow;
+});
+
 // Fail closed: never open a GUI instance when an outdated MCP client still passes
 // the removed --agent-resume-mcp flag (that path used to spawn Dock icons).
 if (process.argv.includes("--agent-resume-mcp")) {
@@ -4095,7 +4272,13 @@ app.whenReady().then(async () => {
   createWindow();
   void loadWorkbenchMeta();
   syncSessionDotsTray();
-  setTimeout(() => void restoreTaskWindows(), 1_000);
+  // A workbench window that launches unfocused (a session event opened it) must not
+  // be remembered as the last window — that would overwrite what the user left.
+  launchFocusedWindow = BrowserWindow.getFocusedWindow();
+  setTimeout(() => {
+    launchFocusedWindow = null;
+    void restoreTaskWindows();
+  }, 1_000);
   nativeTheme.on("updated", () => {
     syncSessionDotsTray();
     applyWindowBackgrounds();
@@ -4208,7 +4391,7 @@ app.whenReady().then(async () => {
       });
     }
   })();
-  app.on("activate", () => {
+  app.on("activate", (_event, hasVisibleWindows) => {
     if (!mainWindow || mainWindow.isDestroyed()) {
       createWindow();
       syncSessionDotsTray();
@@ -4220,7 +4403,12 @@ app.whenReady().then(async () => {
       void refreshMemorySchedulerFromSettings();
       return;
     }
-    revealMainWindow();
+    // A Dock click while the app runs is a reopen: return to the window the user
+    // left in front. The deactivation snapshot wins because macOS may focus a
+    // window on its own while the app becomes active again.
+    revealWindow(
+      activationTarget(windowBeforeDeactivation ?? lastActiveWindow, mainWindow, hasVisibleWindows)
+    );
     void refreshMemorySchedulerFromSettings();
   });
 });
@@ -4235,6 +4423,10 @@ app.on("browser-window-created", (_event, win) => {
   // space and swallows clicks along the top edge.
   win.on("enter-full-screen", () => report(true));
   win.on("leave-full-screen", () => report(false));
+  win.on("closed", () => {
+    if (lastActiveWindow === win) lastActiveWindow = null;
+    if (windowBeforeDeactivation === win) windowBeforeDeactivation = null;
+  });
   // The Window menu lists the open windows, so it is rebuilt when that set changes.
   const refreshMenu = () => void installApplicationMenu().catch(() => undefined);
   win.on("closed", refreshMenu);

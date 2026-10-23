@@ -89,11 +89,34 @@ export const DEFAULT_DESKTOP_BROWSER_SETTINGS: DesktopBrowserSettings = {
   }
 };
 
+/**
+ * User-configured WebDAV backup destination (manual upload / restore only).
+ *
+ * `passwordEncrypted` is safeStorage ciphertext produced by the desktop main
+ * process; the plaintext password is never written to settings or returned to a
+ * renderer. `stripCredentials` removes the key from exported backups.
+ */
+export interface WebdavBackupSettings {
+  /** Server base URL, e.g. `https://dav.jianguoyun.com/dav/`. */
+  url?: string;
+  username?: string;
+  /** Folder relative to the base URL. Empty uses `Agent Resume/Backups`. */
+  folder?: string;
+  /** safeStorage ciphertext (base64). Written only by the desktop main process. */
+  passwordEncrypted?: string;
+}
+
+export interface DesktopBackupSettings {
+  webdav?: WebdavBackupSettings;
+}
+
 export interface DesktopSettings {
   /** UI appearance; default follows OS. */
   theme?: DesktopTheme;
   /** In-app agent browser (Workbench + standalone window). */
   browser?: DesktopBrowserSettings;
+  /** Backup destinations configured by the user. */
+  backup?: DesktopBackupSettings;
 }
 
 /** Notes-specific desktop behavior. */

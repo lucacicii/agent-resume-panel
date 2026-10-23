@@ -38,8 +38,6 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     pendingQuestion,
     answerQuestion,
     dismissQuestion,
-    pendingUiRequest,
-    answerUiRequest,
     sendMessage,
     resendUserMessage,
     regenerateResponse,
@@ -50,17 +48,13 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     steerRunningTask,
     followUpRunningTask,
     refreshDaemonStatus,
-    currentTrace,
     traceSpans,
     fileChanges,
-    telemetryNotices,
-    isCollectingTrace,
     lastRunMetrics,
     streamingMetrics,
     sessionTotalTokens,
     currentContextTokens,
-    contextWindowLimit,
-    agentStatus
+    contextWindowLimit
   } = useThunderChat();
 
   // Keyboard shortcut: ⌘N for new conversation
@@ -169,22 +163,16 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         onEditPrompt={prefillComposer}
         prefillPrompt={composerPrefill}
         daemonOnline={Boolean(daemonStatus?.available)}
-        currentTrace={currentTrace}
         traceSpans={traceSpans}
         fileChanges={fileChanges}
-        telemetryNotices={telemetryNotices}
-        isCollectingTrace={isCollectingTrace}
         lastRunMetrics={lastRunMetrics}
         streamingMetrics={streamingMetrics}
         sessionTotalTokens={sessionTotalTokens}
         currentContextTokens={currentContextTokens}
         contextWindowLimit={contextWindowLimit}
-        agentStatus={agentStatus}
         pendingQuestion={pendingQuestion}
         onAnswerQuestion={answerQuestion}
         onDismissQuestion={dismissQuestion}
-        pendingUiRequest={pendingUiRequest}
-        onAnswerUiRequest={answerUiRequest}
       />
     </div>,
     host

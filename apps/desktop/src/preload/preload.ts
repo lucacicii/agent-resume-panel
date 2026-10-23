@@ -30,12 +30,9 @@ import type {
   ThunderChatTaskOptions,
   ThunderChatTaskResult,
   ThunderImageAttachment,
-  ThunderTaskTrace,
   ThunderTitleResult,
   ThunderPermissionMode,
   ThunderModeChanged,
-  ThunderUiRequest,
-  ThunderUiAnswer
 } from "../main/thunder/thunderProtocol";
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type {
@@ -139,17 +136,29 @@ export interface DesktopApi {
   getPanelHome(): Promise<string>;
   getSettings(): Promise<PanelSettings>;
   backupTargetStatus(): Promise<BackupStorageTargetStatus[]>;
-  backupListIcloud(): Promise<BackupStoredItem[]>;
-  backupExport(args: { target: BackupStorageTarget; includeCredentials: boolean; includeNativeConversations: boolean; password?: string }): Promise<BackupResult>;
+  backupListStored(args: { target: BackupStorageTarget }): Promise<BackupStoredItem[]>;
+  backupExport(args: { target: BackupStorageTarget; includeNativeConversations: boolean }): Promise<BackupResult>;
   backupSelectImport(): Promise<BackupPreview | null>;
-  backupSelectIcloudImport(args: { backupId: string; password: string }): Promise<BackupPreview>;
+  /** `password` is only read for `.arbak` backups written by older releases. */
+  backupSelectStoredImport(args: { target: BackupStorageTarget; backupId: string; password?: string }): Promise<BackupPreview>;
   onBackupProgress(callback: (event: BackupProgressEvent) => void): () => void;
   backupImport(args: {
     importToken: string;
-    includeCredentials: boolean;
     restoreNativeConversations: boolean;
     password?: string;
   }): Promise<BackupResult>;
+  /** WebDAV server settings. The password itself is never returned. */
+  backupWebdavGetConfig(): Promise<{ url: string; username: string; folder: string; hasPassword: boolean }>;
+  backupWebdavSaveConfig(args: {
+    url: string;
+    username: string;
+    folder: string;
+    /** Empty or omitted keeps the stored password. */
+    password?: string;
+    clearPassword?: boolean;
+  }): Promise<{ url: string; username: string; folder: string; hasPassword: boolean }>;
+  /** Uses the draft values in the form; nothing is saved. */
+  backupWebdavTest(args: { url: string; username: string; folder: string; password?: string }): Promise<{ ok: boolean; message: string }>;
   listMcpClients(): Promise<McpClientInfo[]>;
   getMcpManualConfig(): Promise<string>;
   registerMcpClient(args: { clientId: McpClientInfo["id"]; replace?: boolean }): Promise<{ ok: boolean }>;
@@ -1659,19 +1668,11 @@ export interface DesktopApi {
     sessionId: string;
     mode: ThunderPermissionMode;
   }): Promise<{ mode: ThunderPermissionMode } | null>;
-  /**
-   * Answer a dialog raised as `ui_request` (a permission approval, a plan
-   * review, ...). `cancelled` resolves it as refused immediately rather than
-   * letting the daemon wait out its timeout.
-   */
-  thunderChatAnswerUi(answer: ThunderUiAnswer): Promise<{ requestId: string; delivered: boolean }>;
   /** Drop everything queued and return its text, for an editor restore. */
   thunderChatClearTaskQueue(args: {
     taskId: string;
   }): Promise<{ steering: string[]; followUp: string[] } | null>;
-  thunderChatGetTrace(args: { sessionId: string; taskId?: string }): Promise<ThunderTaskTrace | null>;
   thunderChatGetActiveStream(args: { sessionId: string }): Promise<ThunderActiveStreamSnapshot | null>;
-  thunderChatListTraces(args: { sessionId: string }): Promise<Array<{ task_id: string; started_at_ms: number; duration_ms?: number; prompt?: string }>>;
   onThunderChatEvent(callback: (payload: ThunderChatStreamPayload) => void): () => void;
   /**
    * Approval-mode changes, for every session — filter by `sessionId`.
@@ -1680,8 +1681,6 @@ export interface DesktopApi {
    * is live, which is the whole point of it.
    */
   onThunderModeChanged(callback: (payload: ThunderModeChanged) => void): () => void;
-  /** Dialogs waiting for an answer (permission approvals, plan reviews, ...). */
-  onThunderUiRequest(callback: (request: ThunderUiRequest) => void): () => void;
   onThunderModelsChanged(callback: () => void): () => void;
   onScheduleRunEvent(callback: (payload: { scheduleId: string; runId: string; event: ThunderAgentEvent; accumulatedOutput: string }) => void): () => void;
   onScheduleStatusChanged(callback: (payload: { scheduleId: string; runId: string; status: string; output?: string; error?: string }) => void): () => void;
@@ -1691,16 +1690,19 @@ const api: DesktopApi = {
   getPanelHome: () => ipcRenderer.invoke("panel:getHome"),
   getSettings: () => ipcRenderer.invoke("settings:get"),
   backupTargetStatus: () => ipcRenderer.invoke("backup:targetStatus"),
-  backupListIcloud: () => ipcRenderer.invoke("backup:listIcloud"),
+  backupListStored: (args) => ipcRenderer.invoke("backup:listStored", args),
   backupExport: (args) => ipcRenderer.invoke("backup:export", args),
   backupSelectImport: () => ipcRenderer.invoke("backup:selectImport"),
-  backupSelectIcloudImport: (args) => ipcRenderer.invoke("backup:selectIcloudImport", args),
+  backupSelectStoredImport: (args) => ipcRenderer.invoke("backup:selectStoredImport", args),
   onBackupProgress: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, progress: BackupProgressEvent) => callback(progress);
     ipcRenderer.on("backup:progress", handler);
     return () => ipcRenderer.removeListener("backup:progress", handler);
   },
   backupImport: (args) => ipcRenderer.invoke("backup:import", args),
+  backupWebdavGetConfig: () => ipcRenderer.invoke("backup:webdav:getConfig"),
+  backupWebdavSaveConfig: (args) => ipcRenderer.invoke("backup:webdav:saveConfig", args),
+  backupWebdavTest: (args) => ipcRenderer.invoke("backup:webdav:test", args),
   listMcpClients: () => ipcRenderer.invoke("mcp:listClients"),
   getMcpManualConfig: () => ipcRenderer.invoke("mcp:manualConfig"),
   registerMcpClient: (args) => ipcRenderer.invoke("mcp:register", args),
@@ -2220,10 +2222,7 @@ const api: DesktopApi = {
   thunderChatClearTaskQueue: (args) => ipcRenderer.invoke("thunder:chat:clearTaskQueue", args),
   thunderChatGetPermissionState: (args) => ipcRenderer.invoke("thunder:chat:getPermissionState", args),
   thunderChatSetMode: (args) => ipcRenderer.invoke("thunder:chat:setMode", args),
-  thunderChatAnswerUi: (answer) => ipcRenderer.invoke("thunder:chat:answerUi", answer),
-  thunderChatGetTrace: (args) => ipcRenderer.invoke("thunder:chat:getTrace", args),
   thunderChatGetActiveStream: (args) => ipcRenderer.invoke("thunder:chat:getActiveStream", args),
-  thunderChatListTraces: (args) => ipcRenderer.invoke("thunder:chat:listTraces", args),
   onThunderChatEvent: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: ThunderChatStreamPayload) => callback(payload);
     ipcRenderer.on("thunder:chat:event", handler);
@@ -2233,11 +2232,6 @@ const api: DesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, payload: ThunderModeChanged) => callback(payload);
     ipcRenderer.on("thunder:mode:changed", handler);
     return () => ipcRenderer.removeListener("thunder:mode:changed", handler);
-  },
-  onThunderUiRequest: (callback) => {
-    const handler = (_event: Electron.IpcRendererEvent, payload: ThunderUiRequest) => callback(payload);
-    ipcRenderer.on("thunder:ui:request", handler);
-    return () => ipcRenderer.removeListener("thunder:ui:request", handler);
   },
   onThunderModelsChanged: (callback) => {
     const handler = () => callback();
