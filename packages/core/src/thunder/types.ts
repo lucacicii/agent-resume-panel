@@ -80,14 +80,6 @@ export interface ThunderModelInfo {
   max_tokens?: number;
 }
 
-export interface ThunderTelemetryNotice {
-  layer: string;
-  action: string;
-  ground_truth: string;
-  self_healed?: string;
-  guidance?: string;
-}
-
 export interface ThunderFileChangeRecord {
   path: string;
   tool: string;
@@ -166,29 +158,6 @@ export interface ThunderMetricsSnapshot {
   wall_duration_ms?: number;
 }
 
-/**
- * What a Thunder run is doing right now — the payload of the `agent_status`
- * custom event.
- *
- * Thunder's `StatusPlugin` is the single authority for this, so a consumer
- * reads it rather than re-deriving a phase from the raw stream (which is what
- * the chat used to do, badly: no event is emitted at all while an approval gate
- * has the run parked).
- *
- * Frames are emitted **only when the status changes**, and `seq` is monotonic
- * within a run, so a consumer drops any frame that does not move forward.
- */
-export type ThunderAgentPhase =
-  | "idle"
-  | "thinking"
-  | "streaming"
-  | "tool"
-  | "awaiting_user"
-  | "paused"
-  | "compacting"
-  | "done"
-  | "error";
-
 export interface ThunderAgentStatus {
   session_id: string;
   phase: ThunderAgentPhase;
@@ -200,37 +169,6 @@ export interface ThunderAgentStatus {
   /** When this run started, not when this frame was made. */
   started_at_ms: number;
   seq: number;
-}
-
-export interface ThunderTraceSpan {
-  id: string;
-  turn: number;
-  type: "thinking" | "token" | "tool" | "telemetry" | "file";
-  name: string;
-  startedAtMs: number;
-  durationMs?: number;
-  status?: "running" | "completed" | "failed";
-  data?: Record<string, unknown>;
-}
-
-export interface ThunderTaskTrace {
-  task_id: string;
-  session_id: string;
-  model?: string;
-  workspace_dir?: string;
-  prompt?: string;
-  started_at_ms: number;
-  finished_at_ms?: number;
-  duration_ms?: number;
-  /** Wall-clock time from task receipt (user message) to completion. */
-  wall_duration_ms?: number;
-  finish_reason?: string;
-  stats?: ThunderAgentStats;
-  metrics?: ThunderMetricsSnapshot;
-  final_content?: string;
-  events?: ThunderObservedEvent[];
-  file_changes?: ThunderFileChangeRecord[];
-  telemetry_notices?: ThunderTelemetryNotice[];
 }
 
 export type ThunderAgentEvent =
@@ -585,7 +523,6 @@ export interface ThunderActiveStreamSnapshot {
   streamingTools: ThunderToolExecutionRecord[];
   metrics?: ThunderMetricsSnapshot;
   /** Latest `agent_status` frame, kept so a remount shows the live phase. */
-  agentStatus?: ThunderAgentStatus;
   events: ThunderObservedEvent[];
 }
 

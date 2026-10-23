@@ -969,16 +969,13 @@ export type {
   ThunderQuestionItem,
   ThunderQuestionOption,
   ThunderAgentEvent,
-  ThunderTelemetryNotice,
   ThunderFileChangeRecord,
   ThunderFileChangePayload,
   ThunderTraceSpan,
-  ThunderTaskTrace,
   ThunderTurnStats,
   ThunderAgentStats,
   ThunderMetricsSnapshot,
   ThunderAgentPhase,
-  ThunderAgentStatus,
   ThunderToolCallFunction,
   ThunderToolCall,
   ThunderToolExecutionRecord,
@@ -996,8 +993,6 @@ export type {
   ThunderModeChangeSource,
   ThunderModeChanged,
   ThunderUiRequestSource,
-  ThunderUiRequest,
-  ThunderUiAnswer
 } from "./thunder/types";
 
 /** The approval modes in the order `Shift+Tab` cycles them (a value, not a type). */
