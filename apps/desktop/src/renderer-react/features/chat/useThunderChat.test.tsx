@@ -540,7 +540,7 @@ describe("useThunderChat approval mode", () => {
     // A daemon that predates `set_mode` rejects; the chip must say so by going
     // back rather than showing a mode the session is not actually judged by.
     (window.agentResume.thunderChatSetMode as any).mockRejectedValueOnce(new Error("unknown method"));
-    act(() => result.current.setPermissionMode("acceptEdits"));
+    act(() => result.current.setPermissionMode("yolo"));
     await waitFor(() => expect(result.current.permissionMode).toBe("plan"));
   });
 
@@ -575,12 +575,12 @@ describe("useThunderChat approval mode", () => {
     act(() =>
       harness.emitMode({
         sessionId: "sess_a",
-        mode: "ask",
+        mode: "plan",
         previous: "yolo",
         source: "user"
       })
     );
-    expect(result.current.permissionMode).toBe("ask");
+    expect(result.current.permissionMode).toBe("plan");
   });
 
   it("announces an approval the plan dialog made, because the chip moved on its own", async () => {
@@ -594,13 +594,13 @@ describe("useThunderChat approval mode", () => {
       harness.emitMode({
         sessionId: "sess_a",
         taskId: "task_1",
-        mode: "acceptEdits",
+        mode: "yolo",
         previous: "plan",
         source: "planApproved"
       })
     );
 
-    expect(result.current.permissionMode).toBe("acceptEdits");
+    expect(result.current.permissionMode).toBe("yolo");
     expect(result.current.titleNotice?.text).toContain("Plan approved");
   });
 

@@ -456,18 +456,49 @@ export interface ThunderChatStreamPayload {
 /**
  * The approval mode a session is judged by, spelled the way Thunder spells it.
  *
- * These four are the canonical wire values; Thunder's parser also tolerates a
- * long tail of pre-0.4 aliases, but a host should only ever *send* these.
+ * Thunder implements exactly two: `plan` (read-only, `write_plan` /
+ * `exit_plan_mode` are the only writes) and `yolo` (nothing asks). Its parser
+ * still tolerates the retired `ask` / `acceptEdits` names, and a mode set from
+ * another host arrives as one of them, but both branch to `yolo` inside the
+ * daemon — see `normalizeThunderPermissionMode`.
  */
-export type ThunderPermissionMode = "plan" | "ask" | "acceptEdits" | "yolo";
+export type ThunderPermissionMode = "plan" | "yolo";
 
-/** The order `Shift+Tab` cycles in — Thunder's `Mode::ALL`. */
-export const THUNDER_PERMISSION_MODES: ThunderPermissionMode[] = [
-  "plan",
-  "ask",
-  "acceptEdits",
-  "yolo"
-];
+/** The order `Shift+Tab` cycles in — Thunder's own two-mode toggle. */
+export const THUNDER_PERMISSION_MODES: ThunderPermissionMode[] = ["plan", "yolo"];
+
+/**
+ * Fold whatever a daemon reports into the two modes a surface can show.
+ *
+ * `ask` and `acceptEdits` are legacy names: the daemon has no approval gate to
+ * attach them to, so a session carrying one runs exactly like `yolo`. Mapping
+ * them here keeps that fact in one place instead of letting a retired name
+ * reach a chip (or a type union) that no longer has room for it.
+ *
+ * `""` is "unknown" — the daemon has not answered yet, or named something this
+ * build has never heard of. Callers render it as "not known yet", never as a
+ * mode.
+ */
+export function normalizeThunderPermissionMode(
+  raw: string | null | undefined
+): ThunderPermissionMode | "" {
+  switch (raw?.trim().toLowerCase()) {
+    case "plan":
+      return "plan";
+    case "yolo":
+    case "ask":
+    case "default":
+    case "bypass":
+    case "bypasspermissions":
+    case "acceptedits":
+    case "accept_edits":
+    case "autoedit":
+    case "auto_edit":
+      return "yolo";
+    default:
+      return "";
+  }
+}
 
 /** What made a session's mode move. */
 export type ThunderModeChangeSource = "user" | "planApproved" | "runOption";

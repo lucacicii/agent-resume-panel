@@ -21650,8 +21650,8 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 /* Approval-mode chip (`tb-chip-mode-<mode>`). The tint carries the signal:
    "Plan" and "YOLO" are both just words, and they are the two extremes a user
-   has to tell apart before typing. The gradient runs from most cautious to
-   least — plan is the one that should catch the eye. */
+   has to tell apart before typing. Plan — the one that should catch the eye —
+   is cautious; YOLO is the opposite end and reads as such. */
 .tb-chip-mode-plan {
   background: color-mix(in srgb, var(--color-warning) 16%, var(--color-secondary-bg));
   border-color: color-mix(in srgb, var(--color-warning) 45%, transparent);
@@ -21659,24 +21659,6 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 .tb-chip-mode-plan .tb-composer-native-select {
   color: color-mix(in srgb, var(--color-warning) 78%, var(--color-label-primary));
-}
-
-.tb-chip-mode-ask {
-  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-secondary-bg));
-  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
-}
-
-.tb-chip-mode-ask .tb-composer-native-select {
-  color: color-mix(in srgb, var(--color-accent) 78%, var(--color-label-primary));
-}
-
-.tb-chip-mode-acceptEdits {
-  background: color-mix(in srgb, var(--color-teal) 16%, var(--color-secondary-bg));
-  border-color: color-mix(in srgb, var(--color-teal) 45%, transparent);
-}
-
-.tb-chip-mode-acceptEdits .tb-composer-native-select {
-  color: color-mix(in srgb, var(--color-teal) 72%, var(--color-label-primary));
 }
 
 .tb-chip-mode-yolo {

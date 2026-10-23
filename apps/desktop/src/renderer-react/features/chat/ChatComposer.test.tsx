@@ -198,9 +198,9 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
 
     it("shows the session's mode, and says so when it is not known yet", () => {
       const { rerender } = render(
-        <ChatComposer {...defaultProps} permissionMode="ask" onSelectPermissionMode={vi.fn()} />
+        <ChatComposer {...defaultProps} permissionMode="plan" onSelectPermissionMode={vi.fn()} />
       );
-      expect(screen.getByTestId("chat-composer-mode").textContent).toContain("Ask");
+      expect(screen.getByTestId("chat-composer-mode").textContent).toContain("Plan");
 
       // `""` is "the daemon has not answered yet", which must not be rendered
       // as any particular mode.
@@ -210,7 +210,7 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
       expect(screen.getByTestId("chat-composer-mode").textContent).toContain("Mode: …");
     });
 
-    it("offers all four modes and reports the one picked", async () => {
+    it("offers both modes and reports the one picked", async () => {
       const onSelectPermissionMode = vi.fn();
       const contextMenuShow = vi.fn().mockResolvedValue(null);
       (window as any).agentResume.contextMenuShow = contextMenuShow;
@@ -226,12 +226,7 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
 
       await waitFor(() => expect(contextMenuShow).toHaveBeenCalledTimes(1));
       const items = contextMenuShow.mock.calls[0][0].items;
-      expect(items.map((item: { label: string }) => item.label)).toEqual([
-        "Plan",
-        "Ask",
-        "Accept Edits",
-        "YOLO"
-      ]);
+      expect(items.map((item: { label: string }) => item.label)).toEqual(["Plan", "YOLO"]);
       expect(items.filter((item: { checked?: boolean }) => item.checked)).toHaveLength(1);
     });
 
@@ -287,7 +282,7 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
         <ChatComposer
           {...defaultProps}
           onSend={onSend}
-          permissionMode="ask"
+          permissionMode="yolo"
           onSelectPermissionMode={onSelectPermissionMode}
         />
       );
@@ -305,7 +300,7 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
       render(
         <ChatComposer
           {...defaultProps}
-          permissionMode="ask"
+          permissionMode="yolo"
           onSelectPermissionMode={onSelectPermissionMode}
         />
       );

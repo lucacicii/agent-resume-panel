@@ -11,4 +11,4 @@
  *
  * Everything exported here must stay pure data or pure logic — no `node:*`.
  */
-export { THUNDER_PERMISSION_MODES } from "./thunder/types";
+export { THUNDER_PERMISSION_MODES, normalizeThunderPermissionMode } from "./thunder/types";
