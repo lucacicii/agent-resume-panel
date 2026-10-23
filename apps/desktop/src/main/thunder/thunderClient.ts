@@ -28,6 +28,11 @@ import type {
   ThunderUiRequest,
   ThunderUiAnswer
 } from "./thunderProtocol";
+import {
+  normalizePingResponse,
+  type ThunderPingResponse,
+  type ThunderPingResult
+} from "./thunderPing";
 
 /** How long a loaded `settings.thunder` snapshot is trusted before re-reading it. */
 const THUNDER_SETTINGS_TTL_MS = 5_000;
@@ -178,7 +183,7 @@ export class ThunderClient {
         // Models might be empty if no provider credentials yet
       }
       return {
-        available: Boolean(ping?.pong),
+        available: ping.pong,
         repoPath: resolved.repoPath,
         daemonPath: resolved.binaryPath || resolved.scriptPath,
         tuiPath,
@@ -521,8 +526,8 @@ export class ThunderClient {
     });
   }
 
-  public async ping(): Promise<{ pong: boolean; version?: string }> {
-    return this.sendCommand("ping", {}, 5000);
+  public async ping(): Promise<ThunderPingResult> {
+    return normalizePingResponse(await this.sendCommand<ThunderPingResponse>("ping", {}, 5000));
   }
 
   public async listModels(): Promise<ThunderModelInfo[]> {
