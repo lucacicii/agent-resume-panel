@@ -88,6 +88,17 @@ export type ThunderAgentEvent =
       kind: string;
       payload: Record<string, unknown>;
     }
+  | {
+      /**
+       * The context was rebuilt to fit: `tokens_before` was replaced by a summary plus
+       * `tokens_after`. The run continues, but a user who watched the window shrink
+       * deserves a line saying why.
+       */
+      type: "context_compacted";
+      turn?: number | null;
+      tokens_before: number;
+      tokens_after: number;
+    }
   | { type: "turn_end"; turn: number; stats?: import("@agent-resume/core").ThunderTurnStats }
   | {
       type: "user_question";

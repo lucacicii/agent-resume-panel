@@ -112,6 +112,28 @@ function observed(taskId: string, sessionId: string, event: Record<string, unkno
   return { taskId, sessionId, event: { agent_id: "root", event, timestamp_ms: Date.now() } };
 }
 
+describe("useThunderChat context compaction", () => {
+  it("leaves a line in the turn that explains the smaller context", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    act(() => {
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "context_compacted",
+          turn: 1,
+          tokens_before: 128_000,
+          tokens_after: 42_000
+        })
+      );
+    });
+
+    const notice = result.current.liveSegments.find((segment) => segment.kind === "notice");
+    expect(notice).toEqual({ kind: "notice", text: "上下文已压缩：128k → 42k" });
+  });
+});
+
 describe("useThunderChat turn finalization", () => {
   afterEach(() => {
     vi.clearAllMocks();
