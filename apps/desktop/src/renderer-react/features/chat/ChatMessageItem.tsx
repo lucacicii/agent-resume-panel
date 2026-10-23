@@ -152,6 +152,13 @@ export function ChatMessageItem({
             />
           );
         }
+        if (segment.kind === "notice") {
+          return (
+            <div className="tb-turn-notice" key={`seg_notice_${segmentIndex}`}>
+              {segment.text}
+            </div>
+          );
+        }
         if (segment.kind === "tools") {
           return (
             <ToolCallsState
@@ -227,6 +234,13 @@ export function ChatMessageItem({
                                 isStreaming={false}
                                 defaultExpanded={false}
                               />
+                            );
+                          }
+                          if (seg.kind === "notice") {
+                            return (
+                              <div key={`turn_${turn.turn}_n_${sIdx}`} className="tb-turn-notice">
+                                {seg.text}
+                              </div>
                             );
                           }
                           if (seg.kind === "tools" && seg.tools && seg.tools.length > 0) {

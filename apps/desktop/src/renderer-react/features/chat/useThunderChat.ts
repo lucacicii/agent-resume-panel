@@ -47,7 +47,13 @@ export interface ActiveToolInfo {
 export type LiveSegment =
   | { kind: "reasoning"; text: string }
   | { kind: "text"; text: string }
-  | { kind: "tools"; tools: ActiveToolInfo[] };
+  | { kind: "tools"; tools: ActiveToolInfo[] }
+  /**
+   * Something the run did to itself, worth saying out loud: today only context
+   * compaction. Rendered as a one-line note inside the turn that triggered it, so
+   * the timeline explains the shorter context instead of leaving the user to notice.
+   */
+  | { kind: "notice"; text: string };
 
 /** A chat message plus the ordered segments this renderer watched it stream in. */
 export type RenderedChatMessage = ThunderChatMessage & {
@@ -236,6 +242,11 @@ function appendDelta(segments: LiveSegment[], kind: "reasoning" | "text", delta:
     return;
   }
   segments.push({ kind, text: delta });
+}
+
+/** Append a standalone note to the turn's segments. */
+function appendNotice(segments: LiveSegment[], text: string): void {
+  segments.push({ kind: "notice", text });
 }
 
 /** Add a tool call to the trailing tool run, or open a new run. */
@@ -1903,6 +1914,20 @@ export function useThunderChat() {
             result: result?.output,
             isError: Boolean(result?.is_error)
           }));
+          publishSegments();
+          break;
+        }
+        case "context_compacted": {
+          // The kernel rebuilt the context to fit: say so, in the turn it happened in.
+          // Nothing is lost silently in a chat that has this line, and the next turn's
+          // smaller `prompt_tokens` reads as expected rather than as a bug.
+          const before = (ev as { tokens_before?: number }).tokens_before ?? 0;
+          const after = (ev as { tokens_after?: number }).tokens_after ?? 0;
+          const turnOfEvent = openTurn(turnNo);
+          appendNotice(
+            turnOfEvent.segments,
+            `上下文已压缩：${Math.round(before / 1000)}k → ${Math.round(after / 1000)}k`
+          );
           publishSegments();
           break;
         }
