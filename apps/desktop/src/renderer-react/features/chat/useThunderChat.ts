@@ -644,6 +644,12 @@ export function useThunderChat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   /**
+   * Set by `task_paused`: the run stopped at a tool boundary and waits for us.
+   * `null` while running — the pause button does not pretend an instant pause,
+   * the banner only flips when the daemon confirms it.
+   */
+  const [pausedTask, setPausedTask] = useState<{ taskId: string; reason: string } | null>(null);
+  /**
    * Input queued into the running task.
    *
    * `steering` enters at the next turn boundary (after the tool calls already
@@ -1041,6 +1047,9 @@ export function useThunderChat() {
         const snapMetrics = snapshot?.metrics;
         setIsStreaming(true);
         setActiveTaskId(stream.taskId);
+        // The pause banner is per-task live state; a snapshot restore does not
+        // carry it, so start clean rather than show another session's banner.
+        setPausedTask(null);
         setLiveSegments(stream.segments);
         setLiveTurns(stream.turns.map((turn) => ({ ...turn })));
         setStreamTokensCount(snapMetrics ? snapMetrics.live_tokens : live.tokensCount);
@@ -1257,6 +1266,10 @@ export function useThunderChat() {
         }
       }
 
+      // A finished run cannot be paused anymore; drop the banner only if it
+      // belonged to this task.
+      setPausedTask((prev) => (!prev || prev.taskId === effectiveTaskId ? null : prev));
+
       const streamed = opts.finalContent ?? streamState?.streamingText ?? "";
       // Partial text still belongs to the transcript: show it under the failure.
       const content = opts.failureNotice
@@ -1403,6 +1416,9 @@ export function useThunderChat() {
       // The snapshot refills it from the run's first frame.
       setLastRunMetrics(null);
       setIsStreaming(true);
+      // A fresh run starts moving; any leftover pause banner from the previous
+      // one is stale.
+      setPausedTask(null);
 
       const taskId = `task_${Date.now()}`;
       setActiveTaskId(taskId);
@@ -1740,6 +1756,36 @@ export function useThunderChat() {
     }
   }, [finalizeSessionTurn, isStreaming, prefillComposer]);
 
+  /**
+   * Pause the run at its next tool boundary. The button does not flip state on
+   * its own: the daemon's `task_paused` frame is what the banner waits for,
+   * because the tool in flight still runs to completion.
+   */
+  const pauseCurrentTask = useCallback(async (): Promise<boolean> => {
+    const taskId = activeTaskIdRef.current;
+    if (!taskId) return false;
+    try {
+      return await desktopApi().thunderChatPauseTask({ taskId });
+    } catch (err) {
+      console.error("Failed to pause thunder task:", err);
+      return false;
+    }
+  }, []);
+
+  /** Resume a paused run; drops the banner only when the daemon accepted it. */
+  const resumeCurrentTask = useCallback(async (): Promise<boolean> => {
+    const taskId = pausedTask?.taskId || activeTaskIdRef.current;
+    if (!taskId) return false;
+    try {
+      const resumed = await desktopApi().thunderChatResumeTask({ taskId });
+      if (resumed) setPausedTask(null);
+      return resumed;
+    } catch (err) {
+      console.error("Failed to resume thunder task:", err);
+      return false;
+    }
+  }, [pausedTask]);
+
   // Subscribe to real-time events from Thunder daemon
   useEffect(() => {
     const unsub = desktopApi().onThunderChatEvent((payload: ThunderChatStreamPayload) => {
@@ -2034,7 +2080,12 @@ export function useThunderChat() {
           break;
         }
         case "task_paused": {
-          console.info("[thunder-event:task_paused]", (ev as any).reason);
+          const reason = String((ev as any).reason || "");
+          // Keyed to the session on screen: a pause in a background conversation
+          // must not hang a banner over this one.
+          if (isCurrentSession && taskId) {
+            setPausedTask({ taskId, reason });
+          }
           break;
         }
         case "steer_accepted": {
@@ -2170,6 +2221,9 @@ export function useThunderChat() {
     composerPrefill,
     prefillComposer,
     cancelCurrentTask,
+    pausedTask,
+    pauseCurrentTask,
+    resumeCurrentTask,
     pendingQuestion,
     answerQuestion,
     dismissQuestion,

@@ -990,7 +990,6 @@ export type {
   ThunderPermissionMode,
   ThunderModeChangeSource,
   ThunderModeChanged,
-  ThunderUiRequestSource,
 } from "./thunder/types";
 
 /** The approval modes in the order `Shift+Tab` cycles them (a value, not a type). */

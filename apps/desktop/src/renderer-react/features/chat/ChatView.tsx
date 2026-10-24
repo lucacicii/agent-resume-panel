@@ -44,6 +44,9 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     composerPrefill,
     prefillComposer,
     cancelCurrentTask,
+    pausedTask,
+    pauseCurrentTask,
+    resumeCurrentTask,
     queued,
     steerRunningTask,
     followUpRunningTask,
@@ -152,6 +155,9 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         isWorkspaceLocked={isWorkspaceLocked}
         onSendMessage={sendMessage}
         onCancelTask={cancelCurrentTask}
+        pausedTask={pausedTask}
+        onPauseTask={pauseCurrentTask}
+        onResumeTask={resumeCurrentTask}
         queuedCount={queued.steering.length + queued.followUp.length}
         onSteerMessage={(message, attachments) => void steerRunningTask(message, attachments)}
         onFollowUpMessage={(message, attachments) =>

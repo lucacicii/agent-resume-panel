@@ -275,6 +275,14 @@ interface ChatComposerProps {
   onCancel: () => void;
   isStreaming: boolean;
   /**
+   * Pause at the next tool boundary / resume a paused run. The banner only
+   * flips when the daemon's `task_paused` frame arrives — the tool in flight
+   * still runs to completion, so the button must not pretend an instant pause.
+   */
+  pausedTask?: { taskId: string; reason: string } | null;
+  onPauseTask?: () => void;
+  onResumeTask?: () => void;
+  /**
    * Queue text into the running task.
    *
    * `steer` enters at the next turn boundary (after the tool calls already in
@@ -367,6 +375,9 @@ export function ChatComposer({
   onSend,
   onCancel,
   isStreaming,
+  pausedTask,
+  onPauseTask,
+  onResumeTask,
   onSteer,
   onFollowUp,
   queuedCount,
@@ -1416,6 +1427,17 @@ export function ChatComposer({
       onDrop={handleDrop}
     >
       {docked ?? null}
+      {isStreaming && pausedTask && onResumeTask && (
+        <div className="tb-composer-paused" aria-label="Task paused">
+          <span>
+            <ThemeIcon name="pause" size={ICON_SIZE.inline} /> Task paused
+            {pausedTask.reason ? ` · ${pausedTask.reason}` : ""}
+          </span>
+          <button type="button" className="tb-composer-paused-resume" onClick={onResumeTask}>
+            Resume
+          </button>
+        </div>
+      )}
       {isStreaming && (queuedCount ?? 0) > 0 && (
         <div className="tb-composer-queued" aria-label="Queued messages">
           <span><ThemeIcon name="inbox" size={ICON_SIZE.inline} /> {queuedCount} queued</span>
@@ -1842,6 +1864,25 @@ export function ChatComposer({
           </div>
 
           <div className="tb-composer-tools-right">
+            {isStreaming && onPauseTask && (
+              <button
+                type="button"
+                className="tb-composer-action-btn is-pause"
+                onClick={pausedTask?.taskId ? onResumeTask : onPauseTask}
+                aria-label={pausedTask?.taskId ? "Resume task" : "Pause task"}
+                title={
+                  pausedTask?.taskId
+                    ? "Resume task"
+                    : "Pause at the next tool boundary"
+                }
+              >
+                {pausedTask?.taskId ? (
+                  <ThemeIcon name="play" size={ICON_SIZE.dense} />
+                ) : (
+                  <ThemeIcon name="pause" size={ICON_SIZE.dense} />
+                )}
+              </button>
+            )}
             <button
               type="button"
               className={`tb-composer-action-btn${isStreaming ? " is-stop" : ""}${!isStreaming && !text.trim() && pendingImages.length === 0 ? " is-disabled" : ""}`}

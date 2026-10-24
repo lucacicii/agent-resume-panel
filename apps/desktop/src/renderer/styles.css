@@ -22096,6 +22096,49 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   background: var(--color-destructive);
 }
 
+.tb-composer-action-btn.is-pause {
+  /* Quieter than send/stop: it neither submits nor kills, it parks the run. */
+  background: var(--color-bg-secondary, rgba(127, 127, 127, 0.18));
+  color: var(--color-text-primary, #1f2937);
+}
+
+.tb-composer-paused {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 800px;
+  margin: 0 auto 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--color-warning-bg, rgba(251, 191, 36, 0.12));
+  font-size: 12px;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.tb-composer-paused span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-warning, #b45309);
+  font-weight: 600;
+}
+
+.tb-composer-paused-resume {
+  border: none;
+  border-radius: 6px;
+  padding: 2px 10px;
+  background: var(--color-warning, #b45309);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tb-composer-paused-resume:hover {
+  filter: brightness(1.1);
+}
+
 .tb-stop-icon {
   width: 10px;
   height: 10px;

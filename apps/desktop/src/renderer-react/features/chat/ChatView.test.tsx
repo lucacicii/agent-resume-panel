@@ -115,7 +115,6 @@ describe("ChatView", () => {
       thunderChatGetActiveStream: vi.fn().mockResolvedValue(null),
       onThunderChatEvent: vi.fn().mockReturnValue(() => undefined),
       onThunderModeChanged: vi.fn().mockReturnValue(() => undefined),
-      onThunderUiRequest: vi.fn().mockReturnValue(() => undefined),
       thunderChatGetPermissionState: vi.fn().mockResolvedValue({ mode: "yolo" }),
       thunderChatSetMode: vi.fn().mockResolvedValue({ mode: "yolo" }),
       thunderChatAnswerUi: vi.fn().mockResolvedValue(true),

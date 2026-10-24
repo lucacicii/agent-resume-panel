@@ -128,6 +128,9 @@ export function ThunderChatView({
       isWorkspaceLocked={chat.isWorkspaceLocked}
       onSendMessage={handleSend}
       onCancelTask={chat.cancelCurrentTask}
+      pausedTask={chat.pausedTask}
+      onPauseTask={chat.pauseCurrentTask}
+      onResumeTask={chat.resumeCurrentTask}
       onNewSession={chat.createNewSession}
       onRegenerate={chat.regenerateResponse}
       onResend={chat.resendUserMessage}

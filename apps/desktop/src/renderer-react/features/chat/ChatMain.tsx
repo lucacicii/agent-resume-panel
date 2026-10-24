@@ -70,6 +70,13 @@ interface ChatMainProps {
     }
   ) => void;
   onCancelTask: () => void;
+  /**
+   * Pause/resume the running task. The daemon pauses at a tool boundary, so the
+   * banner waits for its `task_paused` frame instead of trusting the click.
+   */
+  pausedTask?: { taskId: string; reason: string } | null;
+  onPauseTask?: () => void;
+  onResumeTask?: () => void;
   onNewSession: () => void;
   onRegenerate?: (index: number) => void;
   onResend?: (index: number) => void;
@@ -117,6 +124,9 @@ export function ChatMain({
   isWorkspaceLocked,
   onSendMessage,
   onCancelTask,
+  pausedTask,
+  onPauseTask,
+  onResumeTask,
   onNewSession,
   onRegenerate,
   onResend,
@@ -410,9 +420,7 @@ export function ChatMain({
   const showEmptyState = !hasMessages;
   /** The agent is blocked on ask_user_question — the card docks above the composer. */
   const hasQuestion = Boolean(pendingQuestion && pendingQuestion.questions.length > 0);
-  /** A `ui_request` dialog is docked in the same slot; only one ever shows at a
-      time, because the daemon raises one blocking dialog per run. */
-  const hasDialog = Boolean(hasQuestion);
+  const hasDialog = hasQuestion;
 
   // A strategy: follow streaming content unless the user scrolled away (B).
   // The question card also docks/un-docks, so re-pin then too.
@@ -635,6 +643,9 @@ export function ChatMain({
         onSend={onSendMessage}
         onCancel={onCancelTask}
         isStreaming={isStreaming}
+        pausedTask={pausedTask}
+        onPauseTask={onPauseTask ? () => void onPauseTask() : undefined}
+        onResumeTask={onResumeTask ? () => void onResumeTask() : undefined}
         queuedCount={queuedCount}
         onSteer={onSteerMessage}
         onFollowUp={onFollowUpMessage}

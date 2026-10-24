@@ -20,8 +20,6 @@ interface Harness {
     previous?: string;
     source: string;
   }): void;
-  /** A blocking dialog, same channel treatment. */
-  emitUi(request: Record<string, unknown>): void;
 }
 
 /** The daemon's model list, as the settings pane receives it. */
@@ -48,7 +46,6 @@ function thunderStatus() {
 function installHarness(): Harness {
   let emit: ((payload: HarnessEvent) => void) | undefined;
   let emitMode: ((payload: any) => void) | undefined;
-  let emitUi: ((request: any) => void) | undefined;
   let resolveRun: ((value: unknown) => void) | undefined;
   let rejectRun: ((reason?: unknown) => void) | undefined;
 
@@ -80,12 +77,6 @@ function installHarness(): Harness {
         emitMode = undefined;
       };
     }),
-    onThunderUiRequest: vi.fn().mockImplementation((callback: (request: any) => void) => {
-      emitUi = callback;
-      return () => {
-        emitUi = undefined;
-      };
-    }),
     onThunderModelsChanged: vi.fn().mockReturnValue(() => {})
   } as unknown as typeof window.agentResume;
 
@@ -93,8 +84,7 @@ function installHarness(): Harness {
     emit: (payload) => emit?.(payload),
     resolveRun: (value) => resolveRun?.(value),
     rejectRun: (error) => rejectRun?.(error),
-    emitMode: (payload) => emitMode?.(payload),
-    emitUi: (request) => emitUi?.(request)
+    emitMode: (payload) => emitMode?.(payload)
   };
 }
 
