@@ -5783,22 +5783,6 @@ code {
   color: var(--color-accent, #3b82f6);
 }
 
-.wb-terminal-project-chip.is-workspace {
-  color: var(--color-label-secondary);
-}
-
-.wb-terminal-project-chip.is-workspace:hover {
-  color: var(--color-label-primary);
-}
-
-.wb-terminal-project-chip-worktree {
-  font-size: 10px;
-  opacity: 0.8;
-  padding: 0 3px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.08);
-}
-
 .wb-terminal-mode-toggle-btn {
   display: inline-flex;
   align-items: center;
@@ -7272,27 +7256,6 @@ body.is-pane-resizing-v * {
 }
 
 /* The task card's badge: which worktree this workbench is looking at. */
-.wb-task-worktree {
-  appearance: none;
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  max-width: 100%;
-  padding: 1px var(--space-1-5);
-  border: 1px solid var(--color-separator);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--color-label-secondary);
-  font-family: inherit;
-  font-size: 10px;
-}
-
-.wb-task-worktree:hover {
-  color: var(--text);
-  background: var(--color-fill-secondary);
-}
-
 /* ---- the task settings dialog ---- */
 
 .wb-task-settings-head {
@@ -14719,9 +14682,6 @@ html[data-window-mode="standalone-note"] #react-workbench {
   line-height: 20px; max-width: 170px;
 }
 .wb-task-add-project:hover { border-color: var(--color-accent); color: var(--color-label-primary); }
-.wb-task-target { margin: 0; font-size: 10px; color: var(--color-label-tertiary); display: flex; align-items: center; gap: var(--space-0-5); }
-.wb-task-target-reset { appearance: none; border: 0; background: transparent; color: inherit;padding: 0 var(--space-0-5); display: inline-flex; }
-.wb-task-target-reset:hover { color: var(--color-accent); }
 .wb-task-project {
   display: inline-flex; align-items: center; gap: var(--space-0-5); padding: 0 var(--space-1) 0 var(--space-1-5);
   border: 1px solid transparent; border-radius: 999px; max-width: 170px;

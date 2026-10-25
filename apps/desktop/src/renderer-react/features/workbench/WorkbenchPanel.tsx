@@ -6764,7 +6764,17 @@ export function WorkbenchPanel(): ReactPortal | null {
                       type="button"
                       className="wb-task-project-chip"
                       title={path}
-                      onClick={() => { setSessionTarget(path); selectProject(path, { keepSessionKey: true }); }}
+                      onClick={() => {
+                        // Clicking the focused chip again releases the override:
+                        // new sessions fall back to the automatic rule (the only
+                        // repository, else the primary one) instead of this one.
+                        if (sessionTarget && projectPathKey(path) === projectPathKey(sessionTarget)) {
+                          setSessionTarget(null);
+                          return;
+                        }
+                        setSessionTarget(path);
+                        selectProject(path, { keepSessionKey: true });
+                      }}
                     >
                       {path.split(/[\\/]/).filter(Boolean).at(-1) || path}
                     </button>
@@ -6792,24 +6802,6 @@ export function WorkbenchPanel(): ReactPortal | null {
                   : `+ ${t("desktop.workbench.addProject")}`}
               </button>
             </div>
-            <p className="wb-task-target">
-              {t("desktop.workbench.sessionTarget", sessionTarget
-                ? basename(sessionTarget)
-                : scopeProjects.length > 0
-                  ? basename(taskScope?.primaryProject || scopeProjects[0])
-                  : "~")}
-              {sessionTarget ? (
-                <button
-                  type="button"
-                  className="wb-task-target-reset"
-                  onClick={() => setSessionTarget(null)}
-                  title={t("desktop.workbench.sessionTargetReset")}
-                  aria-label={t("desktop.workbench.sessionTargetReset")}
-                >
-                  <ThemeIcon name="undo" size={ICON_SIZE.inline} aria-hidden="true" />
-                </button>
-              ) : null}
-            </p>
           </section>
         )}
         <div className="wb-left-tabs" role="tablist" aria-label={t("desktop.workbench.leftPaneTabs")}>
