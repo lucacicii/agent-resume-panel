@@ -1,12 +1,127 @@
+import { useCallback, useEffect, useState } from "react";
 import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
 import { useI18n } from "../../../i18n";
+import { showContextMenuAt, type NativeContextMenuItem } from "../../../nativeContextMenu";
+import { desktopApi } from "../../../bridge";
+
+/** Where the project header button sends a directory. */
+export type DirectoryOpenTarget = "zed" | "vscode" | "finder";
+
+const OPEN_TARGET_STORAGE_KEY = "workbench-open-directory-in";
+const OPEN_TARGETS: DirectoryOpenTarget[] = ["zed", "vscode", "finder"];
+
+function readOpenTarget(): DirectoryOpenTarget {
+  try {
+    const stored = localStorage.getItem(OPEN_TARGET_STORAGE_KEY);
+    return OPEN_TARGETS.includes(stored as DirectoryOpenTarget) ? (stored as DirectoryOpenTarget) : "zed";
+  } catch {
+    return "zed";
+  }
+}
 
 type WorkbenchSideView = "scripts" | "browser" | null;
+
+/**
+ * The project header's "open this directory" control.
+ *
+ * Clicking it runs the remembered target — Zed by default — and the caret opens
+ * the menu that changes it, so the common case is one click and choosing another
+ * app never requires going through settings.
+ */
+function DirectoryOpenControl({
+  directory,
+  onOpenDirectory
+}: {
+  directory: string;
+  onOpenDirectory: (target: DirectoryOpenTarget) => void;
+}): React.JSX.Element {
+  const { t } = useI18n();
+  const [target, setTarget] = useState<DirectoryOpenTarget>(readOpenTarget);
+  const [icons, setIcons] = useState<Partial<Record<DirectoryOpenTarget, string>>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const loaded = await desktopApi().workbenchAppIcons({ apps: OPEN_TARGETS });
+        // A bridge that predates this call resolves nothing: the control must
+        // still render, with its own glyph.
+        if (!cancelled) setIcons((loaded ?? {}) as Partial<Record<DirectoryOpenTarget, string>>);
+      } catch {
+        // no icons: the button keeps its own glyph
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const labelFor = useCallback(
+    (value: DirectoryOpenTarget) => t(`desktop.workbench.openDirectoryIn.${value}`),
+    [t]
+  );
+
+  const choose = useCallback(
+    async (anchor: HTMLElement) => {
+      const rect = anchor.getBoundingClientRect();
+      const items: NativeContextMenuItem[] = OPEN_TARGETS.map((value) => ({
+        id: value,
+        label: labelFor(value),
+        type: value === target ? "checkbox" : undefined,
+        checked: value === target,
+        ...(icons[value] ? { icon: icons[value] } : {})
+      }));
+      const chosen = await showContextMenuAt({ x: rect.left, y: rect.bottom + 4 }, items);
+      if (!chosen || !OPEN_TARGETS.includes(chosen as DirectoryOpenTarget)) return;
+      const next = chosen as DirectoryOpenTarget;
+      setTarget(next);
+      try {
+        localStorage.setItem(OPEN_TARGET_STORAGE_KEY, next);
+      } catch {
+        // remembering the choice is optional
+      }
+      onOpenDirectory(next);
+    },
+    [icons, labelFor, onOpenDirectory, target]
+  );
+
+  return (
+    <span className="wb-detail-project-open">
+      <button
+        type="button"
+        className="wb-detail-project-reveal"
+        aria-label={labelFor(target)}
+        title={`${labelFor(target)}\n${directory}`}
+        onClick={() => onOpenDirectory(target)}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          void choose(event.currentTarget);
+        }}
+      >
+        {icons[target] ? (
+          <img className="wb-detail-project-app-icon" src={icons[target]} alt="" aria-hidden="true" />
+        ) : (
+          <ThemeIcon name="folder-open" size={ICON_SIZE.dense} aria-hidden="true" />
+        )}
+      </button>
+      <button
+        type="button"
+        className="wb-detail-project-reveal-caret"
+        aria-label={t("desktop.workbench.openDirectoryWith")}
+        aria-haspopup="menu"
+        title={t("desktop.workbench.openDirectoryWith")}
+        onClick={(event) => void choose(event.currentTarget)}
+      >
+        <ThemeIcon name="chevron-down" size={ICON_SIZE.inline} aria-hidden="true" />
+      </button>
+    </span>
+  );
+}
 
 export function WorkbenchDetailHeader({
   title,
   directory,
-  onRevealDirectory,
+  onOpenDirectory,
   imageUrl,
   side,
   onToggleSide,
@@ -17,8 +132,8 @@ export function WorkbenchDetailHeader({
   title: string;
   /** Absolute directory the header points at, or null when there is none. */
   directory: string | null;
-  /** Reveal `directory` in Finder; omitted when it cannot be shown. */
-  onRevealDirectory?: () => void;
+  /** Send `directory` to an editor or the Finder; omitted when it cannot be shown. */
+  onOpenDirectory?: (target: DirectoryOpenTarget) => void;
   /** The scoped task's template image; absent when the task has none. */
   imageUrl?: string | null;
   side: WorkbenchSideView;
@@ -46,14 +161,8 @@ export function WorkbenchDetailHeader({
         {directoryWorktree ? (
           <span className="wb-detail-project-path-worktree" title={directoryWorktree.path}>⌥ {directoryWorktree.branch}</span>
         ) : null}
-        {directory && onRevealDirectory ? (
-          <button
-            type="button"
-            className="wb-detail-project-reveal"
-            aria-label={t("desktop.common.revealInFinder")}
-            title={t("desktop.common.revealInFinder")}
-            onClick={onRevealDirectory}
-          ><ThemeIcon name="folder-open" size={ICON_SIZE.dense} aria-hidden="true" /></button>
+        {directory && onOpenDirectory ? (
+          <DirectoryOpenControl directory={directory} onOpenDirectory={onOpenDirectory} />
         ) : null}
       </span>
       {centerContent ? <div className="wb-detail-head-center">{centerContent}</div> : null}

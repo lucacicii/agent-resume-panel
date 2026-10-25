@@ -7,7 +7,7 @@
 | Feature keywords | Code path | Notes |
 | --- | --- | --- |
 | Electron lifecycle and application IPC | `apps/desktop/src/main/main.ts` | Window setup, session synchronization, IPC handlers, and core orchestration. |
-| task workbench windows | `apps/desktop/src/main/taskWindows.ts` | One window per workbench (singleton by workbenchId, four-window cap), and the registry the rest of main routes through. |
+| task workbench windows | `apps/desktop/src/main/taskWindows.ts` | One window per workbench (singleton by workbenchId, four-window cap), and the registry the rest of main routes through. A task has exactly one workbench: the header tab strip that could create more was removed, so `ensureTaskWorkbench` is the only creator and the board opens or focuses the window. |
 | narrow IPC helper | `apps/desktop/src/main/ipcUtils.ts` | Shared error boundary for selected IPC routes. |
 | preload API | `apps/desktop/src/preload/preload.ts` | Typed bridge exposed as `agentResume`; update alongside matching main and renderer work. |
 | embedded terminal | `apps/desktop/src/main/ptyHost.ts` | Lazy loads node-pty so terminal failures do not block other desktop functions. Each session is owned by the one window that renders it (`ownerWebContentsId`); workbenchId on the session is what lets a reopened workbench adopt a running pty instead of spawning a second agent. |

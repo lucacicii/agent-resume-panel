@@ -322,7 +322,11 @@
     "desktop.settings.workspaceMentionId": "Mention id",
     "desktop.settings.workspaceMentionCwd": "Work folder (agent writes here)",
     "desktop.settings.workspaceMentionAdd": "Add workspace pack",
-    "desktop.settings.workspaceMentionRemove": "Remove workspace pack"
+    "desktop.settings.workspaceMentionRemove": "Remove workspace pack",
+    "desktop.workbench.openDirectoryIn.zed": "Open in Zed",
+    "desktop.workbench.openDirectoryIn.vscode": "Open in VS Code",
+    "desktop.workbench.openDirectoryIn.finder": "Reveal in Finder",
+    "desktop.workbench.openDirectoryWith": "Open with…"
   },
   "ja": {
     "desktop.nav.label": "ナビゲーション",
@@ -647,7 +651,11 @@
     "desktop.settings.workspaceMentionId": "メンション ID",
     "desktop.settings.workspaceMentionCwd": "作業フォルダ（エージェントの書き込み先）",
     "desktop.settings.workspaceMentionAdd": "ワークスペースパックを追加",
-    "desktop.settings.workspaceMentionRemove": "ワークスペースパックを削除"
+    "desktop.settings.workspaceMentionRemove": "ワークスペースパックを削除",
+    "desktop.workbench.openDirectoryIn.zed": "Zed で開く",
+    "desktop.workbench.openDirectoryIn.vscode": "VS Code で開く",
+    "desktop.workbench.openDirectoryIn.finder": "Finder で表示",
+    "desktop.workbench.openDirectoryWith": "開くアプリを選択…"
   },
   "zh-cn": {
     "desktop.nav.label": "导航",
@@ -972,6 +980,10 @@
     "desktop.settings.workspaceMentionId": "提及 ID",
     "desktop.settings.workspaceMentionCwd": "工作目录（agent 写入此处）",
     "desktop.settings.workspaceMentionAdd": "新增工作区 pack",
-    "desktop.settings.workspaceMentionRemove": "删除工作区 pack"
+    "desktop.settings.workspaceMentionRemove": "删除工作区 pack",
+    "desktop.workbench.openDirectoryIn.zed": "在 Zed 中打开",
+    "desktop.workbench.openDirectoryIn.vscode": "在 VS Code 中打开",
+    "desktop.workbench.openDirectoryIn.finder": "在 Finder 中显示",
+    "desktop.workbench.openDirectoryWith": "选择打开方式…"
   }
 }

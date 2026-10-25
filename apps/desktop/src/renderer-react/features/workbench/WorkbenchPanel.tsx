@@ -108,12 +108,9 @@ import { TaskSettingsSheet } from "./TaskSettingsSheet";
 import { WorkbenchDetailHeader } from "./layout/WorkbenchDetailHeader";
 import { taskFromRecord, type WorkbenchTask } from "./task";
 import {
-  createTaskWorkbench,
-  deleteTaskWorkbench,
   ensureTaskWorkbenches,
   mergeTaskSessionKeys,
   readActiveWorkbenchId,
-  renameTaskWorkbench,
   setTaskWorkbenchLayout,
   workbenchDisplayName,
   writeActiveWorkbenchId,
@@ -779,10 +776,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   /** Persisted workbenches of the scoped task (GTD task → n workbenches). */
   const [workbenches, setWorkbenches] = useState<Workbench[]>([]);
   const [activeWorkbenchId, setActiveWorkbenchId] = useState<string | null>(null);
-  /** workbenchId → bound session keys (`provider:id`), for tab status dots. */
-  const [workbenchSessionKeys, setWorkbenchSessionKeys] = useState<Record<string, string[]>>({});
-  const [renamingWorkbenchId, setRenamingWorkbenchId] = useState<string | null>(null);
-  const [workbenchRenameDraft, setWorkbenchRenameDraft] = useState("");
   /**
    * Where the NEXT session starts. Decoupled from the panel context
    * (`selectedProject`): null means "let the task decide" — one project →
@@ -3465,15 +3458,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         ?? null;
       setActiveWorkbenchId(next);
       if (next) writeActiveWorkbenchId(taskNoteId, next);
-      const api = desktopApi();
-      if (typeof api.listTaskWorkbenchSessionLinks === "function") {
-        void Promise.all(list.map(async (workbench) => {
-          const links = await api.listTaskWorkbenchSessionLinks({ workbenchId: workbench.workbenchId }).catch(() => []);
-          return [workbench.workbenchId, links.map((link) => `${link.provider}:${link.agentSessionId}`)] as const;
-        })).then((entries) => {
-          if (!cancelled) setWorkbenchSessionKeys(Object.fromEntries(entries));
-        }).catch(() => undefined);
-      }
     }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [active, taskScope?.noteId]);
@@ -3504,67 +3488,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     setThunderChats((current) => current.filter((item) => item.workbenchId !== workbenchId));
     setBrowsers((current) => current.filter((item) => item.workbenchId !== workbenchId));
   }, []);
-  const activateWorkbench = useCallback((workbench: Workbench) => {
-    setActiveWorkbenchId(workbench.workbenchId);
-    activeWorkbenchIdRef.current = workbench.workbenchId;
-    const taskNoteId = taskScopeRef.current?.noteId;
-    if (taskNoteId) writeActiveWorkbenchId(taskNoteId, workbench.workbenchId);
-    if (workbench.projectPath) selectProject(workbench.projectPath, { keepSessionKey: true });
-  }, [selectProject]);
-
-  const addWorkbench = useCallback(async () => {
-    const taskNoteId = taskScopeRef.current?.noteId;
-    if (!taskNoteId) return;
-    try {
-      const created = await createTaskWorkbench(taskNoteId, { projectPath: selectedProjectRef.current });
-      if (!created) return;
-      const list = await ensureTaskWorkbenches(taskNoteId);
-      setWorkbenches(list);
-      workbenchesRef.current = list;
-      activateWorkbench(created);
-      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
-    } catch (error) {
-      setStatus({ text: statusError(error), kind: "error" });
-    }
-  }, [activateWorkbench]);
-
-  const commitWorkbenchRename = useCallback(async () => {
-    const workbenchId = renamingWorkbenchId;
-    const name = workbenchRenameDraft.trim();
-    setRenamingWorkbenchId(null);
-    if (!workbenchId || !name) return;
-    try {
-      const updated = await renameTaskWorkbench(workbenchId, name);
-      if (!updated) return;
-      setWorkbenches((current) => current.map((item) => item.workbenchId === workbenchId ? updated : item));
-      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
-    } catch (error) {
-      setStatus({ text: statusError(error), kind: "error" });
-    }
-  }, [renamingWorkbenchId, workbenchRenameDraft]);
-
   /** Close and destroy every pane owned by a deleted workbench (PTYs, browsers, editors). */
-
-  const removeWorkbench = useCallback(async (workbench: Workbench) => {
-    const taskNoteId = taskScopeRef.current?.noteId;
-    if (!taskNoteId) return;
-    if (workbenchesRef.current.length <= 1) return;
-    if (!(await confirmDestructive(t("desktop.workbench.deleteWorkbenchConfirm", workbenchDisplayName(workbench)), t("desktop.common.delete")))) return;
-    try {
-      await deleteTaskWorkbench(workbench.workbenchId);
-      discardWorkbenchPanes(workbench.workbenchId);
-      const list = await ensureTaskWorkbenches(taskNoteId);
-      setWorkbenches(list);
-      workbenchesRef.current = list;
-      if (workbench.workbenchId === activeWorkbenchIdRef.current) {
-        const next = list[0];
-        if (next) activateWorkbench(next);
-      }
-      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
-    } catch (error) {
-      setStatus({ text: statusError(error), kind: "error" });
-    }
-  }, [activateWorkbench, discardWorkbenchPanes, t]);
 
   /**
    * Re-attach the terminals a workbench had before its window was closed.
@@ -4789,92 +4713,27 @@ const openQuickAccessFile = useCallback(async (file: QuickAccessFile) => {
     : headerDirectory
       ? (aliases[headerDirectory] || basename(headerDirectory))
       : t("desktop.workbench.allSessions");
-  const revealHeaderDirectory = () => {
-    const target = headerDirectory;
-    if (!target) return;
+  /** Send the header's directory to an editor (default Zed), or reveal it in the Finder. */
+  const openHeaderDirectory = (target: "zed" | "vscode" | "finder") => {
+    const directory = headerDirectory;
+    if (!directory) return;
     void (async () => {
       try {
-        await desktopApi().workbenchRevealPath({ rootPath: target, targetPath: target });
+        await desktopApi().workbenchOpenInApp({ rootPath: directory, targetPath: directory, app: target });
       } catch (error) {
         notifyDesktop({ text: error instanceof Error ? error.message : String(error), kind: "error" });
       }
     })();
   };
-  const workbenchTabsBar = taskScope && workbenches.length > 0 ? (
-    <div className="wb-workbench-bar" role="tablist" aria-label={t("desktop.workbench.workbenchTabs")}>
-      {workbenches.map((workbench) => {
-        const wbDot = rollupDot({ work: { sessions: workbenchSessionKeys[workbench.workbenchId] ?? [] } }, dotByKey);
-        return (
-        <div
-          key={workbench.workbenchId}
-          className={`wb-workbench-tab${workbench.workbenchId === activeWorkbenchId ? " active" : ""}`}
-        >
-          {renamingWorkbenchId === workbench.workbenchId ? (
-            <input
-              className="wb-workbench-tab-input"
-              value={workbenchRenameDraft}
-              autoFocus
-              aria-label={t("desktop.common.rename")}
-              onChange={(event) => setWorkbenchRenameDraft(event.target.value)}
-              onBlur={() => void commitWorkbenchRename()}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") { event.preventDefault(); void commitWorkbenchRename(); }
-                if (event.key === "Escape") { event.preventDefault(); setRenamingWorkbenchId(null); }
-              }}
-            />
-          ) : (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={workbench.workbenchId === activeWorkbenchId}
-              className="wb-workbench-tab-label"
-              title={workbench.projectPath || workbenchDisplayName(workbench)}
-              onClick={() => activateWorkbench(workbench)}
-              onDoubleClick={() => {
-                setRenamingWorkbenchId(workbench.workbenchId);
-                setWorkbenchRenameDraft(workbenchDisplayName(workbench));
-              }}
-            >
-              <ThemeIcon name="square-kanban" size={ICON_SIZE.dense} aria-hidden="true" />
-              {wbDot && wbDot.status !== "open" ? <span className={`session-dot${sessionDotStatusClass(wbDot.status)}`} aria-hidden="true" /> : null}
-              {workbenchDisplayName(workbench)}
-            </button>
-          )}
-          {workbenches.length > 1 ? (
-            <button
-              type="button"
-              className="wb-workbench-tab-close"
-              aria-label={t("desktop.workbench.deleteWorkbench")}
-              title={t("desktop.workbench.deleteWorkbench")}
-              onClick={() => void removeWorkbench(workbench)}
-            >
-              <ThemeIcon name="close" size={ICON_SIZE.inline} />
-            </button>
-          ) : null}
-        </div>
-        );
-      })}
-      <button
-        type="button"
-        className="wb-workbench-add"
-        aria-label={t("desktop.workbench.newWorkbench")}
-        title={t("desktop.workbench.newWorkbench")}
-        onClick={() => void addWorkbench()}
-      >
-        <ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />
-      </button>
-    </div>
-  ) : null;
 
   const detailHeader = (
     <WorkbenchDetailHeader
       title={headerTitle}
       directory={headerDirectory}
-      onRevealDirectory={headerDirectory ? revealHeaderDirectory : undefined}
+      onOpenDirectory={headerDirectory ? openHeaderDirectory : undefined}
       imageUrl={taskScope ? taskImage : null}
       side={side}
       onToggleSide={(view) => setSide((current) => current === view ? null : view)}
-      centerContent={workbenchTabsBar}
     />
   );
 

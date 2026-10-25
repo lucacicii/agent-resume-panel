@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, clipboard, shell, type WebContents } from "electron";
+import { BrowserWindow, Menu, clipboard, nativeImage, shell, type WebContents } from "electron";
 
 /**
  * Native context menus.
@@ -17,6 +17,8 @@ export interface ContextMenuItemSpec {
   type?: "normal" | "separator" | "checkbox";
   enabled?: boolean;
   checked?: boolean;
+  /** `data:image/png;base64,…`; only what a picker needs, not arbitrary art. */
+  icon?: string;
   submenu?: ContextMenuItemSpec[];
 }
 
@@ -24,6 +26,7 @@ const MAX_ITEMS = 60;
 const MAX_DEPTH = 3;
 const MAX_LABEL_LENGTH = 200;
 const MAX_ID_LENGTH = 120;
+const MAX_ICON_LENGTH = 200_000;
 
 /** Renderer input is untrusted: clamp depth, count, and string sizes. */
 export function sanitizeContextMenuItems(value: unknown, depth = 1): ContextMenuItemSpec[] {
@@ -42,6 +45,9 @@ export function sanitizeContextMenuItems(value: unknown, depth = 1): ContextMenu
     if (typeof raw.id === "string" && raw.id.trim()) item.id = raw.id.slice(0, MAX_ID_LENGTH);
     if (raw.enabled === false) item.enabled = false;
     if (type === "checkbox") item.checked = raw.checked === true;
+    if (typeof raw.icon === "string" && raw.icon.startsWith("data:image/") && raw.icon.length <= MAX_ICON_LENGTH) {
+      item.icon = raw.icon;
+    }
     if (Array.isArray(raw.submenu)) {
       const submenu = sanitizeContextMenuItems(raw.submenu, depth + 1);
       if (submenu.length) item.submenu = submenu;
@@ -58,8 +64,10 @@ export function contextMenuTemplate(
 ): Electron.MenuItemConstructorOptions[] {
   return items.map((item) => {
     if (item.type === "separator") return { type: "separator" } as Electron.MenuItemConstructorOptions;
+    const icon = item.icon ? nativeImage.createFromDataURL(item.icon) : undefined;
     return {
       label: item.label,
+      ...(icon && !icon.isEmpty() ? { icon } : {}),
       type: item.type === "checkbox" ? "checkbox" : "normal",
       enabled: item.enabled !== false,
       checked: item.type === "checkbox" ? item.checked === true : undefined,

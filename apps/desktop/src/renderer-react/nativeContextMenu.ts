@@ -14,6 +14,8 @@ export interface NativeContextMenuItem {
   type?: "normal" | "separator" | "checkbox";
   enabled?: boolean;
   checked?: boolean;
+  /** `data:image/…` shown beside the label (macOS draws it in the row). */
+  icon?: string;
   submenu?: NativeContextMenuItem[];
 }
 

@@ -26,6 +26,10 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 - **The ACP chat looks like the board chat**: same message anatomy (`tb-message-row` → avatar → container → bubble → `tb-markdown-view`), same composer box (`tb-composer-box`, uncapped — ACP has no centred 800px message column to align with), same toolbar metrics — so switching between the Thunder chat and an ACP session no longer changes how the conversation is drawn. ACP keeps what only it has: plan cards, attachments, tool chips, day separators and the mode/permission bars. The old IM-style bubble rules (`.chat-bubble`, `.chat-message`, `.chat-sender`, `.chat-body`, `.chat-footer`, `.chat-copy-btn`) are gone — 20 dead rules, ~135 lines of CSS
 
+- **The workbench tab strip is gone**: a task no longer shows a row of workbench tabs in its header. Nothing else could create, rename or delete a workbench, so a task now has exactly one — which is what the rest of the app already assumed (`workbenchId` is the window key, and the board opens or focuses that window instead of mounting a second copy). Removes the strip, its add/rename/delete handlers, the per-workbench session-link map that fed its dots, and the `.wb-workbench-*` styles
+
+- **The project header opens the directory in an editor**: the old reveal-in-Finder button became a split control — the main click sends the directory to the remembered app (**Zed by default**), and the caret opens a menu with Zed / VS Code / Finder, remembering what you pick. The button wears the chosen app's own icon (and so does each menu row), read from the bundle with `app.getFileIcon` rather than shipping third-party brand marks. Opening goes through `open -a`, because a GUI-launched app does not inherit the login shell's `PATH` and `code` / `zed` may not resolve even when installed
+
 ### [0.2.36]
 
 #### Added
@@ -852,6 +856,10 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - **所有 composer 共用一套补全**：`/`、`@`、`#` 在聊天、工作台终端、ACP 聊天三处含义一致。`@` 在各处按同样顺序找到同样的实体（工作区 pack、项目、任务、笔记、会话）；终端与 ACP 这类纯文本面插入实体的**绝对路径**而不是注入内容，因为它们没有提示词编译环节，而 CLI agent 自己就能打开路径。`#` 在各处用同样的键浏览目录（Tab 接受、→ 进入子目录）。笔记与任务在那两处也能引用：终端无法安全地接收粘贴的正文，所以 `@` 改为给出笔记文件的绝对路径——由新增的只读 `notes:absolutePaths` 解析，面板目录布局仍留在 main 进程里。候选来源与 `@` 排序收敛到 `composerMentions`，插入行为收敛到 `useReferenceSuggestions`，终端里那份重复的 token 解析已删除——由 `chatTokens` 统一提供
 
 - **ACP 聊天的外观与看板聊天统一**：同样的消息解剖（`tb-message-row` → 头像 → 容器 → 气泡 → `tb-markdown-view`）、同样的输入框（`tb-composer-box`，但不设 800px 上限——ACP 没有需要对齐的居中消息列）、同样的工具栏度量——在 Thunder 聊天与 ACP 会话之间切换，对话的绘制方式不再变。ACP 只保留自己独有的东西：plan 卡片、附件、工具 chip、日期分隔、模式/权限条。旧 IM 式气泡样式（`.chat-bubble`、`.chat-message`、`.chat-sender`、`.chat-body`、`.chat-footer`、`.chat-copy-btn`）已清除——20 条死规则、约 135 行 CSS
+
+- **工作台页签条移除**：任务头部不再显示 workbench 页签行。由于新建/重命名/删除 workbench 只有这一个入口，现在每个任务固定一个 workbench——这本来就是 app 其余部分的前提（`workbenchId` 即窗口键，板子只打开或聚焦那个窗口，不会挂第二份）。同时移除页签条、其增删改处理函数、为页签状态灯供数的 workbench→会话映射，以及 `.wb-workbench-*` 样式
+
+- **项目头部按钮可直接在编辑器打开目录**：原来的「在 Finder 中显示」改成主操作 + 下拉——主按钮用记住的应用打开（**默认 Zed**），下拉里可选 Zed / VS Code / Finder 并记住选择。按钮显示所选 App 自己的图标（菜单每一行也是），图标由 `app.getFileIcon` 从 app 包里读，不在仓库里塞第三方品牌图。打开走 `open -a`：GUI 启动的应用不继承登录 shell 的 `PATH`，即使装了 `code` / `zed` 也可能解析不到
 
 ### [0.2.36]
 

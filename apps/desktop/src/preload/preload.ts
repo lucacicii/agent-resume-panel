@@ -1019,6 +1019,14 @@ export interface DesktopApi {
     | { ok: false; reason: "exists" }
   >;
   workbenchOpenPath(args: { rootPath: string; filePath: string }): Promise<{ ok: boolean }>;
+  /** `data:image/png` icons for the apps that can open a directory, keyed by target. */
+  workbenchAppIcons(args: { apps: string[] }): Promise<Record<string, string>>;
+  /** Open a directory in an editor (`zed` / `vscode`) or reveal it in the Finder. */
+  workbenchOpenInApp(args: {
+    rootPath: string;
+    targetPath: string;
+    app: "zed" | "vscode" | "finder";
+  }): Promise<{ ok: boolean }>;
   workbenchRevealPath(args: {
     rootPath: string;
     targetPath: string;
@@ -1943,6 +1951,8 @@ const api: DesktopApi = {
   workbenchSaveFileText: (args) => ipcRenderer.invoke("workbench:saveFileText", args),
   workbenchCreateFileText: (args) => ipcRenderer.invoke("workbench:createFileText", args),
   workbenchOpenPath: (args) => ipcRenderer.invoke("workbench:openPath", args),
+  workbenchAppIcons: (args) => ipcRenderer.invoke("workbench:appIcons", args),
+  workbenchOpenInApp: (args) => ipcRenderer.invoke("workbench:openInApp", args),
   workbenchRevealPath: (args) => ipcRenderer.invoke("workbench:revealPath", args),
   terminalGitStatus: (args) => ipcRenderer.invoke("terminal:gitStatus", args),
   terminalGitFetch: (args) => ipcRenderer.invoke("terminal:gitFetch", args),

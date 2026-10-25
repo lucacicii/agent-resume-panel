@@ -1,6 +1,7 @@
-import { shell } from "electron";
+import { app, shell } from "electron";
 import { execFile, spawn } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { expandHome } from "@agent-resume/core";
@@ -931,6 +932,87 @@ export function registerWorkbenchFsIpc(): void {
     const error = await shell.openPath(filePath);
     if (error) throw new Error(error);
     return { ok: true };
+  });
+
+  /**
+   * Open a directory in an editor or the Finder.
+   *
+   * `open -a` rather than the editors' CLIs: a GUI-launched app does not inherit
+   * the login shell's PATH, so `code` / `zed` may not resolve even when the app
+   * is installed. Opening by application name works from that environment, and a
+   * missing app fails loudly instead of silently doing nothing.
+   */
+  safeHandle(
+    "workbench:openInApp",
+    async (_event, args: { rootPath: string; targetPath: string; app: string }) => {
+      const rootPath = resolveCwd(args.rootPath);
+      const targetPath = resolvePathWithinRoot(args.targetPath, rootPath);
+      if (!fs.existsSync(targetPath)) throw new Error("路径不存在");
+      const app = typeof args.app === "string" ? args.app : "finder";
+      if (app === "finder") {
+        shell.showItemInFolder(targetPath);
+        return { ok: true };
+      }
+      const appName = app === "zed" ? "Zed" : app === "vscode" ? "Visual Studio Code" : "";
+      if (!appName) throw new Error(`不支持的应用: ${app}`);
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn("open", ["-a", appName, targetPath], { stdio: ["ignore", "ignore", "pipe"] });
+        let stderr = "";
+        child.stderr?.on("data", (chunk) => {
+          stderr += String(chunk);
+        });
+        child.on("error", reject);
+        child.on("close", (code) => {
+          if (code === 0) resolve();
+          else reject(new Error(stderr.trim() || `无法用 ${appName} 打开该目录`));
+        });
+      });
+      return { ok: true };
+    }
+  );
+
+  /**
+   * The icon macOS shows for the app that would open a directory.
+   *
+   * Asking the OS for the bundle's own icon keeps the button honest — it shows
+   * the app you will actually get — and avoids shipping third-party brand marks
+   * in this repo. Cached for the process lifetime: an app icon does not change
+   * while the app runs.
+   */
+  const appIconCache = new Map<string, string>();
+  safeHandle("workbench:appIcons", async (_event, args: { apps?: unknown }) => {
+    const requested = Array.isArray(args?.apps)
+      ? args.apps.filter((entry): entry is string => typeof entry === "string")
+      : [];
+    const home = os.homedir();
+    const bundles: Record<string, string[]> = {
+      zed: ["/Applications/Zed.app", path.join(home, "Applications", "Zed.app")],
+      vscode: [
+        "/Applications/Visual Studio Code.app",
+        path.join(home, "Applications", "Visual Studio Code.app")
+      ],
+      finder: ["/System/Library/CoreServices/Finder.app"]
+    };
+    const out: Record<string, string> = {};
+    for (const key of requested) {
+      const cached = appIconCache.get(key);
+      if (cached) {
+        out[key] = cached;
+        continue;
+      }
+      const bundle = (bundles[key] ?? []).find((candidate) => fs.existsSync(candidate));
+      if (!bundle) continue;
+      try {
+        const image = await app.getFileIcon(bundle, { size: "small" });
+        if (image.isEmpty()) continue;
+        const dataUrl = image.toDataURL();
+        appIconCache.set(key, dataUrl);
+        out[key] = dataUrl;
+      } catch {
+        // an icon is decoration: the control falls back to its own glyph
+      }
+    }
+    return out;
   });
 
   safeHandle("workbench:revealPath", async (_event, args: { rootPath: string; targetPath: string }) => {

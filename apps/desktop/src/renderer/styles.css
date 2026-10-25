@@ -5931,40 +5931,6 @@ body.is-pane-resizing-v * {
   display: none;
 }
 
-.wb-detail-head-center .wb-workbench-bar {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-0-5);
-  height: 26px;
-  padding: 0;
-  border-bottom: none;
-  background: transparent;
-  flex-shrink: 0;
-}
-
-.wb-detail-head-center .wb-workbench-tab {
-  height: 24px;
-  border-radius: var(--radius-sm);
-  border: 1px solid transparent;
-  background: var(--color-fill-secondary);
-}
-
-.wb-detail-head-center .wb-workbench-tab.active {
-  background: var(--color-fill-primary);
-  border-color: var(--color-separator);
-}
-
-.wb-detail-head-center .wb-workbench-tab-label {
-  padding: 0 var(--space-2);
-  line-height: 24px;
-}
-
-.wb-detail-head-center .wb-workbench-add {
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-sm);
-}
-
 .wb-detail-project-label {
   flex: 1 1 auto;
   min-width: 0;
@@ -6026,6 +5992,51 @@ body.is-pane-resizing-v * {
   color: var(--color-label-secondary);
 
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+/* Main action + caret: one click opens the remembered editor, the caret changes it. */
+/* The app's own icon, at the size of the glyph it replaces. */
+.wb-detail-project-app-icon {
+  width: 15px;
+  height: 15px;
+  object-fit: contain;
+  display: block;
+}
+
+.wb-detail-project-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  align-self: center;
+}
+
+.wb-detail-project-open .wb-detail-project-reveal {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.wb-detail-project-reveal-caret {
+  appearance: none;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-top-right-radius: var(--radius-sm);
+  border-bottom-right-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-label-tertiary);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.wb-detail-project-reveal-caret:hover,
+.wb-detail-project-reveal-caret:focus-visible {
+  background: var(--color-fill-secondary);
+  color: var(--color-label-primary);
 }
 
 .wb-detail-project-reveal:hover,
@@ -10821,7 +10832,6 @@ textarea.wb-editor-host {
   .wb-git-clean-action-btn,
   .wb-diff-ask-agent,
   .wb-diff-split-toggle,
-  .wb-workbench-tab-close,
   .wb-terminal-tab-close {
     transition: none;
   }
@@ -17422,109 +17432,6 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   opacity: 0.5;
   cursor: default;
 }
-
-/* ===== Task workbench tab strip (GTD task → n workbenches) ===== */
-.wb-workbench-bar {
-  display: flex;
-  align-items: stretch;
-  gap: var(--space-0-5);
-  flex-shrink: 0;
-  height: 32px;
-  padding: 0 var(--space-2);
-  border-bottom: 1px solid var(--color-separator);
-  background: var(--color-sidebar-bg);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.wb-workbench-bar::-webkit-scrollbar {
-  display: none;
-}
-
-.wb-workbench-tab {
-  display: flex;
-  align-items: center;
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
-}
-
-.wb-workbench-tab.active {
-  background: var(--color-sidebar-bg);
-  border-color: var(--color-separator);
-}
-
-.wb-workbench-tab-label {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1-5);
-  height: 100%;
-  padding: 0 var(--space-2-5);
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font-size: var(--font-size-caption, 12px);
-  font-family: inherit;
-  white-space: nowrap;
-}
-
-.wb-workbench-tab.active .wb-workbench-tab-label {
-  color: var(--text);
-  font-weight: var(--font-weight-semibold, 600);
-}
-
-.wb-workbench-tab-close {
-  appearance: none;
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  margin-right: var(--space-1);
-  border: none;
-  border-radius: var(--radius-sm, 4px);
-  background: transparent;
-  color: var(--muted);
-}
-
-.wb-workbench-tab-close:hover {
-  color: var(--text);
-  background: var(--color-fill-tertiary);
-}
-
-.wb-workbench-tab-input {
-  width: 120px;
-  height: 22px;
-  margin: 0 var(--space-1);
-  padding: 0 var(--space-1-5);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm, 4px);
-  background: var(--color-control-bg, var(--panel));
-  color: var(--text);
-  font-size: var(--font-size-caption, 12px);
-  font-family: inherit;
-}
-
-.wb-workbench-add {
-  appearance: none;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
-  align-self: center;
-  margin-left: var(--space-0-5);
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--muted);
-
-}
-
-.wb-workbench-add:hover {
-  color: var(--text);
-  background: var(--color-fill-tertiary);
-}
-
 /* GTD new-task dialog */
 .gtd-new-task-panel {
   display: flex;

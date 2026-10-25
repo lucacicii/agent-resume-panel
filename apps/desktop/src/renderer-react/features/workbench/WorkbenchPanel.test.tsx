@@ -2892,7 +2892,6 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     await activateTaskDirectory("/work/app", { noteId: "task-a" });
-    await waitFor(() => expect(document.querySelector(".wb-workbench-tab.active")).toBeTruthy());
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
@@ -6078,14 +6077,18 @@ describe("WorkbenchPanel", () => {
     confirmStub.mockRestore();
   });
 
-  it("names the task and points at the primary repository with a Finder shortcut", async () => {
+  it("names the task and points at the primary repository, opening it in Zed by default", async () => {
+    const workbenchOpenInApp = vi.fn(async () => ({ ok: true }));
     const workbenchRevealPath = vi.fn(async () => ({ ok: true }));
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
         "desktop.workbench.allSessions": "All sessions",
         "desktop.workbench.taskSessions": "{0} sessions",
-        "desktop.common.revealInFinder": "Reveal in Finder"
+        "desktop.workbench.openDirectoryIn.zed": "Open in Zed",
+        "desktop.workbench.openDirectoryIn.vscode": "Open in VS Code",
+        "desktop.workbench.openDirectoryIn.finder": "Reveal in Finder",
+        "desktop.workbench.openDirectoryWith": "Open with…"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -6100,6 +6103,7 @@ describe("WorkbenchPanel", () => {
         { noteId: "wi-multi", title: "Multi repo work", gtdStatus: "next", work: { sessions: [], projects: ["/work/app", "/work/api"], primaryProject: "/work/app" } }
       ],
       workbenchRevealPath,
+      workbenchOpenInApp,
       terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
       terminalDestroy: async () => ({ ok: true }),
       terminalResize: async () => ({ ok: true })
@@ -6123,7 +6127,10 @@ describe("WorkbenchPanel", () => {
     const reveal = document.querySelector(".wb-detail-project-reveal") as HTMLButtonElement;
     expect(reveal).not.toBeNull();
     fireEvent.click(reveal);
-    await waitFor(() => expect(workbenchRevealPath).toHaveBeenCalledWith({ rootPath: "/work/app", targetPath: "/work/app" }));
+    // The header's default target is the editor, not the Finder.
+    await waitFor(() =>
+      expect(workbenchOpenInApp).toHaveBeenCalledWith({ rootPath: "/work/app", targetPath: "/work/app", app: "zed" })
+    );
   });
 
   it("shows persistent waiting tooltip for closed sessions and avoids double signal when open", async () => {
@@ -6299,163 +6306,9 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(document.querySelectorAll(".wb-left-tab")[0]?.classList.contains("active")).toBe(true));
   });
 
-  it("loads a task's workbenches as a tab strip and switches the active one", async () => {
-    const wb = (overrides: Record<string, unknown>) => ({
-      taskNoteId: "wi-1", layoutJson: null, createdAtMs: 1, updatedAtMs: 1, ...overrides
-    });
-    const listTaskWorkbenches = vi.fn(async () => [
-      wb({ workbenchId: "wb-1", name: "Backend", projectPath: "/work/api", position: 0 }),
-      wb({ workbenchId: "wb-2", name: "Frontend", projectPath: "/work/web", position: 1 })
-    ]);
-    const ensureTaskWorkbench = vi.fn(async () =>
-      wb({ workbenchId: "wb-1", name: "Backend", projectPath: "/work/api", position: 0 })
-    );
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
-        "desktop.common.rename": "Rename",
-        "desktop.workbench.tasksView": "Tasks",
-        "desktop.workbench.filterTasks": "Filter tasks",
-        "desktop.workbench.noTasks": "No tasks yet",
-        "desktop.workbench.taskView": "Task",
-        "desktop.workbench.taskOpenNote": "Open note",
-        "desktop.workbench.taskClear": "Exit task",
-        "desktop.workbench.taskNext": "Next:",
-        "desktop.workbench.taskSessions": "{0} sessions",
-        "desktop.workbench.workbenchTabs": "Workbenches",
-        "desktop.workbench.newWorkbench": "New workbench",
-        "desktop.workbench.deleteWorkbench": "Delete workbench",
-        "desktop.workbench.deleteWorkbenchConfirm": "Delete workbench \"{0}\"?"
-      } }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      listProjects: async () => [],
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [],
-      notesListTasks: async () => [{
-        noteId: "wi-1", scope: "project", projectPath: "/work/api",
-        filename: "realtime-status.md", relDir: "projects/app", relMdPath: "notes/projects/app/realtime-status.md",
-        title: "Realtime status", createdAtMs: 1, updatedAtMs: 1, gtdStatus: "next",
-        work: { sessions: [], projects: ["/work/api", "/work/web"], primaryProject: "/work/api" }
-      }],
-      listTaskWorkbenches,
-      ensureTaskWorkbench,
-      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
-      terminalDestroy: async () => ({ ok: true }),
-      terminalResize: async () => ({ ok: true })
-    } as unknown as typeof window.agentResume;
+;
 
-    localStorage.setItem("workbench-sidebar-view-v2", "workitems");
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-
-    await act(async () => {
-      window.dispatchEvent(new CustomEvent("agent-resume:workbench-task", { detail: {
-        noteId: "wi-1", title: "Realtime status", status: "next", sessions: [],
-        projects: ["/work/api", "/work/web"], primaryProject: "/work/api"
-      } }));
-    });
-
-    await waitFor(() => expect(document.querySelectorAll(".wb-workbench-tab").length).toBe(2));
-    const labels = [...document.querySelectorAll<HTMLButtonElement>(".wb-workbench-tab-label")];
-    expect(labels.map((label) => label.textContent)).toEqual(["Backend", "Frontend"]);
-    expect(ensureTaskWorkbench).toHaveBeenCalledWith({ taskNoteId: "wi-1" });
-
-    fireEvent.click(labels[1]);
-    await waitFor(() => expect(document.querySelector(".wb-workbench-tab.active")?.textContent).toContain("Frontend"));
-  });
-
-  it("scopes note panes to the active workbench, even on the same project", async () => {
-    const wb = (overrides: Record<string, unknown>) => ({
-      taskNoteId: "wi-iso", layoutJson: null, projectPath: "/work/app", createdAtMs: 1, updatedAtMs: 1, ...overrides
-    });
-    const notesRead = vi.fn(async ({ noteId }: { noteId: string }) => ({
-      record: {
-        noteId, scope: "project", projectPath: "/work/app", filename: "realtime.md",
-        relDir: "", relMdPath: "realtime.md", title: "Realtime status",
-        createdAtMs: 1, updatedAtMs: 1, work: { sessions: [] }
-      },
-      content: "# Realtime status"
-    }));
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
-        "desktop.workbench.tasksView": "Tasks",
-        "desktop.workbench.filterTasks": "Filter tasks",
-        "desktop.workbench.noTasks": "No tasks yet",
-        "desktop.workbench.taskView": "Task",
-        "desktop.workbench.taskOpenNote": "Open note",
-        "desktop.workbench.taskClear": "Exit task",
-        "desktop.workbench.taskNext": "Next:",
-        "desktop.workbench.taskSessions": "{0} sessions",
-        "desktop.notes.allNotes": "All notes",
-        "desktop.notes.editorPlaceholder": "Edit Markdown…"
-      } }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      listProjects: async () => [],
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [],
-      notesRead,
-      notesCreateLinkedChild: vi.fn(async () => ({ noteId: "child-1", filename: "child.md" })),
-      notesListTasks: async () => [{
-        noteId: "wi-iso", scope: "project", projectPath: "/work/app",
-        filename: "realtime.md", relDir: "", relMdPath: "realtime.md",
-        title: "Realtime status", createdAtMs: 1, updatedAtMs: 1, gtdStatus: "next",
-        work: { sessions: [], projects: ["/work/app"], primaryProject: "/work/app" }
-      }],
-      // Both workbenches bind the SAME project: only workbench scoping can isolate their panes.
-      listTaskWorkbenches: async () => [
-        wb({ workbenchId: "wb-1", name: "Alpha", position: 0 }),
-        wb({ workbenchId: "wb-2", name: "Beta", position: 1 })
-      ],
-      ensureTaskWorkbench: async () => wb({ workbenchId: "wb-1", name: "Alpha", position: 0 }),
-      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
-      terminalDestroy: async () => ({ ok: true }),
-      terminalResize: async () => ({ ok: true })
-    } as unknown as typeof window.agentResume;
-
-    localStorage.setItem("workbench-sidebar-view-v2", "workitems");
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    await act(async () => {
-      window.dispatchEvent(new CustomEvent("agent-resume:workbench-task", { detail: {
-        noteId: "wi-iso", title: "Realtime status", status: "next", sessions: [],
-        projects: ["/work/app"], primaryProject: "/work/app"
-      } }));
-    });
-
-    await waitFor(() => expect(document.querySelectorAll(".wb-workbench-tab").length).toBe(2));
-    // Add an extra (child) note → opens as a pane scoped to workbench wb-1.
-    fireEvent.click(await screen.findByRole("button", { name: "desktop.notes.newLinkedChild" }));
-    await waitFor(() => expect(document.querySelector(".wb-note-pane")).not.toBeNull());
-
-    // Switch to the sibling workbench on the same project: the note pane is gone.
-    const labels = [...document.querySelectorAll<HTMLButtonElement>(".wb-workbench-tab-label")];
-    fireEvent.click(labels[1]);
-    await waitFor(() => expect(document.querySelector(".wb-note-pane")).toBeNull());
-    expect(document.querySelectorAll(".wb-terminal-tab.is-note").length).toBe(0);
-
-    // Back to the first workbench restores its pane stack.
-    fireEvent.click(labels[0]);
-    await waitFor(() => expect(document.querySelector(".wb-note-pane")).not.toBeNull());
-  });
+;
 
   it("honors a deep-linked workbench over the stored one", async () => {
     const wb = (overrides: Record<string, unknown>) => ({
@@ -6513,8 +6366,9 @@ describe("WorkbenchPanel", () => {
       } }));
     });
 
-    await waitFor(() => expect(document.querySelectorAll(".wb-workbench-tab").length).toBe(2));
-    await waitFor(() => expect(document.querySelector(".wb-workbench-tab.active")?.textContent).toContain("Beta"));
+    // The deep-linked workbench wins over the stored preference, and the choice
+    // is what gets written back.
+    await waitFor(() => expect(localStorage.getItem("workbench-active-v1:wi-dl")).toBe("wb-b"));
     localStorage.removeItem("workbench-active-v1:wi-dl");
   });
 
@@ -6790,7 +6644,6 @@ describe("WorkbenchPanel", () => {
         projects: ["/work/app"], primaryProject: "/work/app"
       } }));
     });
-    await waitFor(() => expect(document.querySelectorAll(".wb-workbench-tab").length).toBe(1));
 
     fireEvent.click(await screen.findByRole("button", { name: "New linked child note" }));
     await waitFor(() => expect(notesCreateLinkedChild).toHaveBeenCalledWith({ parentNoteId: "wi-child" }));
@@ -6977,8 +6830,7 @@ describe("WorkbenchPanel", () => {
           detail: { noteId: "wi-run", title: "Deploy", status: "inbox", sessions: [], projects: ["/work/app"], primaryProject: "/work/app" }
         }));
       });
-      await waitFor(() => expect(document.querySelectorAll(".wb-workbench-tab").length).toBe(1));
-
+  
       // The already-open window path: main sends the run request as IPC.
       await act(async () => {
         runScriptListener?.({ name: "dev", command: "pnpm dev", cwd: "/work/app" });
