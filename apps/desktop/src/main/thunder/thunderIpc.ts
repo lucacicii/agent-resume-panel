@@ -224,7 +224,6 @@ export function registerThunderIpc(): void {
             backgroundMd: string;
             projects: string[];
             noteAbsPath?: string;
-            worktreeLines?: string[];
           }
         | undefined;
 
@@ -236,20 +235,19 @@ export function registerThunderIpc(): void {
             status: taskCtx.status,
             backgroundMd: taskCtx.backgroundMd,
             projects: taskCtx.projects,
-            noteAbsPath: taskCtx.noteAbsPath,
-            worktreeLines: taskCtx.worktreeLines
+            noteAbsPath: taskCtx.noteAbsPath
           };
           if (!effectiveWorkspaceDir) {
-            effectiveWorkspaceDir = taskCtx.dir;
+            // The task's primary repository is the jail root; a task without
+            // one runs from home.
+            effectiveWorkspaceDir = taskCtx.primaryDir || os.homedir();
           }
-          // Referenced repositories join the jail as extra roots: same
-          // read/write standing as the neutral workspace, so read_file /
-          // write_file / shell targets inside them stop tripping the path
-          // traversal guard. Only directories that actually exist on this
-          // machine are passed (synced-from-elsewhere paths are skipped). The
-          // task's worktrees belong here for the same reason — an agent working
-          // in one has to be able to write to it.
-          extraWorkspaceDirs = [...taskCtx.projects, ...taskCtx.worktreeDirs].filter((projectDir) => {
+          // The other referenced repositories join the jail as extra roots:
+          // same read/write standing as the root, so read_file / write_file /
+          // shell targets inside them stop tripping the path traversal guard.
+          // Only directories that actually exist on this machine are passed
+          // (synced-from-elsewhere paths are skipped).
+          extraWorkspaceDirs = taskCtx.projects.filter((projectDir) => {
             try {
               return fs.statSync(projectDir).isDirectory();
             } catch {

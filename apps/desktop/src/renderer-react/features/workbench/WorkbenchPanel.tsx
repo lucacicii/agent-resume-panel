@@ -126,17 +126,12 @@ import {
   GitGraphPortals,
   GitCommitBranches,
   GitActionIcons,
-  BranchGraphNavigation,
-  WorktreeSelector
+  BranchGraphNavigation
 } from "./git/GitGraphView";
-import { useTaskWorktrees, type CheckoutScope } from "./git/useTaskWorktrees";
 import { PaneTabThumb } from "./PaneTabThumb";
 import { useTabPreview } from "./tabPreview/useTabPreview";
 import type { TabPreviewTarget } from "./tabPreview/types";
-import { useWorktreeCleanup } from "./git/useWorktreeCleanup";
-import { useWorktreeReminders } from "./git/useWorktreeReminders";
 import { TaskSettingsSheet } from "./TaskSettingsSheet";
-import { WorktreeCreateSheet } from "./WorktreeCreateSheet";
 import { WorkbenchDetailHeader } from "./layout/WorkbenchDetailHeader";
 import { taskFromRecord, type WorkbenchTask } from "./task";
 import {
@@ -809,11 +804,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [leftTab, setLeftTab] = useState<"note" | "session">("session");
   /** The task settings dialog: folders and worktrees for this workbench. */
   const [taskSettingsOpen, setTaskSettingsOpen] = useState(false);
-  /**
-   * The new-worktree sheet, and which surface opened it: the checkout appears in
-   * the scope that asked for it, which is not always the shared default.
-   */
-  const [worktreeCreateFor, setWorktreeCreateFor] = useState<{ scope: CheckoutScope; repoRoot: string | null } | null>(null);
   /** Left-panel note list: all notes, optionally filtered to the task's note tree. */
   const [noteItems, setNoteItems] = useState<Array<{ noteId: string; title: string; updatedAtMs: number; gtdStatus?: GtdStatus }>>([]);
   const [noteFilter, setNoteFilter] = useState<"task" | "all">("task");
@@ -986,34 +976,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     return null;
   }, [activePane, activeScopeKey, terminals, acpChats, thunderChats, editors, diffs]);
 
-  const worktrees = useTaskWorktrees({
-    noteId: taskScope?.noteId ?? null,
-    repos: sideRootProjects,
-    activeCwd: activePaneCwd
-  });
-  const worktreeReminders = useWorktreeReminders({
-    noteId: taskScope?.noteId ?? null,
-    // The task's own column, however it was changed — from this panel's header or
-    // from the board in the main window.
-    status: taskRollup?.status ?? taskScope?.status,
-    worktrees,
-    onOpenWorktrees: () => setTaskSettingsOpen(true)
-  });
-  const worktreeCleanup = useWorktreeCleanup({
-    noteId: taskScope?.noteId ?? null,
-    repos: sideRootProjects,
-    // Orphans are only listed where they can be acted on, and only while that
-    // surface is open: the list is a few git calls and nothing changes it but a
-    // deleted task.
-    active: taskSettingsOpen,
-    checkoutGone: worktrees.checkoutIsGone,
-    onRemoved: (target) => {
-      setStatus({ text: t("desktop.workbench.worktreeDeleted", target.branchLabel), kind: "ok" });
-      // The selection may have been pointing at what just went away; the hook's
-      // own lookup drops a checkout that is no longer in the listing.
-      void worktrees.refresh();
-    }
-  });
   const sideRepoRoot = taskScope
     ? (sessionTarget
       || liveTaskEarly?.primaryProject
@@ -1047,45 +1009,23 @@ export function WorkbenchPanel(): ReactPortal | null {
    * separately from the shared default, which is what lets one of them be pinned
    * to a worktree while the others follow the workbench.
    */
-  const gitRoots = useMemo(
-    () => sideRepoRoots.map((root) => worktrees.rootFor("git", root)),
-    [sideRepoRoots, worktrees.rootFor]
-  );
-  const filesRoots = useMemo(
-    () => sideRepoRoots.map((root) => worktrees.rootFor("files", root)),
-    [sideRepoRoots, worktrees.rootFor]
-  );
-  const formatExplorerRootLabel = useCallback(
-    (root: string) => {
-      const option = worktrees.checkouts.find((item) => projectPathKey(item.path) === projectPathKey(root));
-      if (!option) return basename(root);
-      if (option.isMain) {
-        return sideRepoRoots.length > 1 ? `${option.repoLabel} (main)` : option.repoLabel;
-      }
-      return `${option.repoLabel} [⌥ ${option.branchLabel}]`;
-    },
-    [sideRepoRoots.length, worktrees.checkouts]
-  );
+  const gitRoots = sideRepoRoots;
+  const filesRoots = sideRepoRoots;
+  const formatExplorerRootLabel = useCallback((root: string) => basename(root), []);
   /**
    * What the search reads. The search pane carries its own checkout selector, so
    * its scope is the one that decides: a pinned Search has to search the checkout
    * the pane says it is on, or the control would be relabelling the pane without
    * changing a thing.
    */
-  const searchRoots = useMemo(
-    () => sideRepoRoots.map((root) => worktrees.rootFor("search", root)),
-    [sideRepoRoots, worktrees.rootFor]
-  );
+  const searchRoots = sideRepoRoots;
   /**
    * Roots the explorer and git panels span. A focused project (a chip click)
    * narrows to that one; a shared task workspace shows every referenced
    * project; a plain project selection stays itself.
    */
-  const sideRoots = useMemo(
-    () => sideRepoRoots.map((root) => worktrees.rootFor("default", root)),
-    [sideRepoRoots, worktrees.rootFor]
-  );
-  const sideRoot = sideRepoRoot ? worktrees.rootFor("default", sideRepoRoot) : null;
+  const sideRoots = sideRepoRoots;
+  const sideRoot = sideRepoRoot;
   /** Stable identity of the root set, for effects that must reset when it changes. */
   const sideRootsKey = sideRoots.map(projectPathKey).join("\0");
   const sideRootsRef = useRef<string[]>(sideRoots);
@@ -1095,8 +1035,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const gitRootsRef = useRef<string[]>(gitRoots);
   gitRootsRef.current = gitRoots;
   /** For the callbacks that read their inputs from refs to stay stable. */
-  const worktreesRef = useRef(worktrees);
-  worktreesRef.current = worktrees;
   /**
    * A pane failed to read one of its roots, which may be nothing more than the
    * checkout it had been given having been removed from under it: an agent that
@@ -1105,58 +1043,16 @@ export function WorkbenchPanel(): ReactPortal | null {
    * checkout and says nothing, which is what the reader would have asked for. A
    * read that failed with the checkout still there is reported as it always was.
    */
-  const reportReadFailure = useCallback(
-    (message: string, roots: readonly string[]) => {
-      void (async () => {
-        if (await worktreesRef.current.dropVanishedCheckouts(roots)) return;
-        setStatus({ text: message, kind: "error" });
-      })();
-    },
-    [setStatus]
-  );
+  const reportReadFailure = useCallback((message: string) => {
+    setStatus({ text: message, kind: "error" });
+  }, [setStatus]);
   /** Git's own voice, held stable for the hook and routed through the checkouts. */
   const notifyGitStatus = useCallback(
     (status: { text: string; kind?: "error" | "ok" | "warning" }) => {
-      if (status.kind === "error") reportReadFailure(status.text, gitRootsRef.current);
+      if (status.kind === "error") reportReadFailure(status.text);
       else setStatus(status);
     },
     [reportReadFailure, setStatus]
-  );
-  /**
-   * Where a checkout can be made: a repository that is really there, and really
-   * is a git repository. A folder that is neither cannot have worktrees, and the
-   * panel never turns one into a repository to make the feature apply.
-   */
-  const gitRepos = useMemo(
-    () => (worktrees.listing?.repos ?? [])
-      .filter((repo) => repo.exists && repo.isGitRepo)
-      .map((repo) => ({ repoRoot: repo.repoRoot, label: repo.label, baseBranch: repo.baseBranch })),
-    [worktrees.listing]
-  );
-  const canCreateWorktree = Boolean(taskScope) && gitRepos.length > 0;
-  /** The repository a surface is working in, so the sheet opens on that one. */
-  const openWorktreeCreate = (scope: CheckoutScope) => {
-    const diverted = sideRepoRoots.find((root) => worktrees.checkoutFor(scope, root));
-    setWorktreeCreateFor({ scope, repoRoot: diverted ?? sideRepoRoots[0] ?? null });
-  };
-  /**
-   * The checkout control a pane head carries. It renders nothing unless the task
-   * actually has a worktree, so a task without one keeps exactly the chrome it
-   * had before — which is also what makes this safe to put in every pane head.
-   */
-  const worktreeControl = (scope: CheckoutScope, hint?: string) => (
-    <WorktreeSelector
-      checkouts={worktrees.checkouts}
-      checkoutFor={worktrees.checkoutFor}
-      scope={scope}
-      pinned={worktrees.isPinned(scope)}
-      ariaLabel={t("desktop.workbench.worktreeSelect")}
-      hint={hint}
-      onSelect={(repoRoot, path) => worktrees.select(scope, repoRoot, path)}
-      onPin={() => worktrees.pin(scope)}
-      onUnpin={() => worktrees.unpin(scope)}
-      onCreate={canCreateWorktree ? () => openWorktreeCreate(scope) : undefined}
-    />
   );
   /** The root an absolute path belongs to (longest match), or "" when outside every root. */
   const projectForPath = useCallback(
@@ -2305,10 +2201,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const branchStatusLabel = branchStatusNested
     ? t("desktop.workbench.nestedRepoCount", branchStatusTerminal?.nestedRepos?.length || 0)
     : (branchStatusTerminal?.branch || projectTracking?.branch || null);
-  /** Set when the active terminal runs inside a worktree, so the chip can say so. */
-  const branchStatusWorktree = branchStatusTerminal
-    ? worktrees.checkouts.find((option) => !option.isMain && projectPathKey(option.path) === projectPathKey(branchStatusTerminal.cwd))?.branchLabel ?? null
-    : null;
   const branchStatusPane: TerminalPane | null = branchStatusTerminal || (
     selectedProject && branchStatusLabel
       ? {
@@ -3343,7 +3235,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       base = base || selectedProject || await desktopApi().homePath();
       // Where the terminal scope points decides this, so ⌘T lands in the checkout
       // you are working in rather than always in the main one.
-      const cwd = worktreesRef.current.rootFor("terminal", base);
+      const cwd = base;
       // A pane is only visible under its own project scope: when the new terminal
       // starts somewhere else than the current selection (the shared workspace of
       // a multi-repo task), the selection follows or the pane lands hidden.
@@ -3395,7 +3287,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const resolveNewSessionCwd = useCallback(async (targetProject?: string): Promise<string> => {
     // Whatever this resolves to, the terminal scope has the last word: it is the
     // folder the next session starts in.
-    const inTerminalScope = (value: string) => worktreesRef.current.rootFor("terminal", value);
+    const inTerminalScope = (value: string) => value;
     if (targetProject) return inTerminalScope(targetProject);
     const scope = taskScopeRef.current;
     if (scope) {
@@ -3628,8 +3520,6 @@ export function WorkbenchPanel(): ReactPortal | null {
    * dialog, and only as a reminder: the close goes ahead unless the user asks to
    * look at them first, and nothing is ever deleted on the way out.
    */
-  const worktreeRemindersRef = useRef(worktreeReminders);
-  worktreeRemindersRef.current = worktreeReminders;
   useEffect(() => {
     if (document.documentElement.dataset.windowMode !== "task") return;
     const stop = desktopApi().onTaskWindowCloseRequested?.(() => {
@@ -3641,7 +3531,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         const stillDirty = editorsRef.current.some((pane) => pane.dirty);
         // `ok: false` is main's "do not close yet", which is what a user who
         // chose to look at the worktrees has asked for.
-        const mayClose = stillDirty ? false : await worktreeRemindersRef.current.remindBeforeClose();
+        const mayClose = !stillDirty;
         await desktopApi().taskWindowCloseReady?.({ ok: !stillDirty && mayClose }).catch(() => undefined);
       })();
     });
@@ -5497,9 +5387,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     onStatus: setStatus,
     onReconcileEditors: (projectPath) => { void reconcileProjectEditors(projectPath); },
     onOpenSearchSide: () => setSide("search"),
-    // A search reads the same roots the panes do, so a checkout removed from under
-    // it is the same story: the roots fall back and the query runs again, quietly.
-    onRootsUnreadable: (roots) => worktreesRef.current.dropVanishedCheckouts(roots)
   });
 
   useEffect(() => {
@@ -6651,7 +6538,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       <button type="button" className={`wb-pane-tab-group-label${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newTerminal")} title={t("desktop.workbench.newTerminal")} onClick={() => void openBlankTerminal()}>{terminalCreating ? <ThemeIcon name="loader" className="spin" size={ICON_SIZE.dense} aria-hidden="true" /> : <ThemeIcon name="terminal" size={ICON_SIZE.dense} aria-hidden="true" />}{terminalTabCount > 0 ? <span className="wb-pane-tab-group-count" aria-hidden="true">{terminalTabCount}</span> : null}</button>
       {/* Beside the new-terminal button, because that is what it decides: the
           folder the next terminal — and the next session — starts in. */}
-      {worktreeControl("terminal", t("desktop.workbench.worktreeNewTerminalHint"))}
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupTerminal")} ref={terminalTabListRef}>
         <PaneTabThumb listRef={terminalTabListRef} activeKey={activePane} tabCount={terminalTabCount} />
         {currentShellTerminals.map((pane) => <div className={`wb-terminal-tab is-terminal${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} {...tabPreview.bind(activePane === pane.key ? null : terminalPreviewTarget(pane))}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="terminal" size={ICON_SIZE.dense} aria-hidden="true" /><span className="wb-terminal-tab-title">{pane.title}</span></button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
@@ -6707,24 +6593,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     || (taskScope ? (taskScope.primaryProject || scopeProjects[0] || null) : null)
     || selectedProject
     || null;
-  const headerDirectory = headerDirectoryBase ? worktrees.rootFor("default", headerDirectoryBase) : null;
-  /**
-   * The header names a worktree when it is looking at one, and says which: the
-   * path alone would read as a folder that no longer has anything to do with the
-   * repository the task references.
-   */
-  const headerCheckout = headerDirectory
-    ? worktrees.checkouts.find((option) => !option.isMain && projectPathKey(option.path) === projectPathKey(headerDirectory)) ?? null
-    : null;
-  /** The worktrees the workbench is showing, for the task card's badge. */
-  const activeCheckouts = useMemo(
-    () => sideRepoRoots.flatMap((root) => {
-      const path = worktrees.checkoutFor("default", root);
-      const option = path ? worktrees.checkouts.find((item) => projectPathKey(item.path) === projectPathKey(path)) : undefined;
-      return option && !option.isMain ? [option] : [];
-    }),
-    [sideRepoRoots, worktrees.checkouts, worktrees.checkoutFor]
-  );
+  const headerDirectory = headerDirectoryBase;
   const headerTitle = taskScope
     ? (taskScope.title || taskScope.noteId)
     : headerDirectory
@@ -6814,8 +6683,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       title={headerTitle}
       directory={headerDirectory}
       onRevealDirectory={headerDirectory ? revealHeaderDirectory : undefined}
-      directoryWorktree={headerCheckout ? { branch: headerCheckout.branchLabel, path: headerCheckout.path } : null}
-      branchStatusWorktree={branchStatusWorktree}
       imageUrl={taskScope ? taskImage : null}
       side={side}
       branchStatusLabel={branchStatusLabel}
@@ -6873,18 +6740,6 @@ export function WorkbenchPanel(): ReactPortal | null {
                 <ThemeIcon name="settings" size={ICON_SIZE.default} />
               </button>
             </div>
-            {activeCheckouts.length ? (
-              <button
-                type="button"
-                className="wb-task-worktree"
-                title={activeCheckouts.map((option) => `${option.repoLabel} ▸ ${option.branchLabel}`).join("\n")}
-                aria-haspopup="dialog"
-                onClick={() => setTaskSettingsOpen(true)}
-              >
-                <ThemeIcon name="git-branch" size={ICON_SIZE.inline} aria-hidden="true" />
-                {activeCheckouts.length > 1 ? activeCheckouts.length : activeCheckouts[0].branchLabel}
-              </button>
-            ) : null}
             {taskScope.next && (
               <p className="wb-task-line">
                 <span className="wb-task-label">{t("desktop.workbench.taskNext")}</span>
@@ -7246,7 +7101,7 @@ export function WorkbenchPanel(): ReactPortal | null {
 
             const cdTerminalTo = (targetPath: string) => {
               if (pane.ptyId == null) return;
-              const targetCwd = worktrees.rootFor("terminal", targetPath) || targetPath;
+              const targetCwd = targetPath;
               void desktopApi().terminalInput({ id: pane.ptyId, data: `cd ${shellQuotePath(targetCwd)}\r` });
               onTerminalInput(pane.key);
               setTerminalCdTargets((current) => ({ ...current, [pane.key]: targetPath }));
@@ -7274,8 +7129,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                         <div className="wb-terminal-project-switcher-list">
                           {scopeProjects.map((path) => {
                             const label = aliases[path] || basename(path);
-                            const targetCwd = worktrees.rootFor("terminal", path) || path;
-                            const checkout = worktrees.checkouts.find((option) => !option.isMain && projectPathKey(option.path) === projectPathKey(targetCwd));
+                            const targetCwd = path;
                             const isCdTarget = projectPathKey(terminalCdTargets[pane.key] || "") === projectPathKey(path);
                             return (
                               <button
@@ -7287,7 +7141,6 @@ export function WorkbenchPanel(): ReactPortal | null {
                                 onClick={() => handleCdToProject(path)}
                               >
                                 <span className="wb-terminal-project-chip-label">{label}</span>
-                                {checkout ? <span className="wb-terminal-project-chip-worktree" title={checkout.path}>⌥ {checkout.branchLabel}</span> : null}
                               </button>
                             );
                           })}
@@ -7532,8 +7385,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               }}
             />;
           })}{terminalCreating && !currentTerminals.some((pane) => !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={ICON_SIZE.prominent} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length && !currentThunderChats.length && !currentBrowsers.length && !currentNotePanes.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side === "browser" ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel"><BrowserSidePanel active={active} browsers={panelBrowsers} projectPath={panelProject} onRequestCreate={() => void openBrowser(panelProject ?? undefined)} onOpenSource={(path, line) => void openFile(path, { path, line: line ?? 1, column: 1, endColumn: 1 }, projectForPath(path) || undefined)} onSendToSession={sendProbePromptToSession} /></aside></> : side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} roots={filesRoots} formatRootLabel={formatExplorerRootLabel} headExtra={worktreeControl("files")} activePath={currentFilePath} onOpenFile={(path) => void openFile(path, undefined, projectForPath(path) || undefined)} onOpenPreview={(path) => void openFile(path, undefined, projectForPath(path) || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message, root) => root ? reportReadFailure(message, [root]) : setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /> : side === "search" ? <WorkbenchSearchSidePane
-            headExtra={worktreeControl("search")}
+          {side === "browser" ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel"><BrowserSidePanel active={active} browsers={panelBrowsers} projectPath={panelProject} onRequestCreate={() => void openBrowser(panelProject ?? undefined)} onOpenSource={(path, line) => void openFile(path, { path, line: line ?? 1, column: 1, endColumn: 1 }, projectForPath(path) || undefined)} onSendToSession={sendProbePromptToSession} /></aside></> : side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} roots={filesRoots} formatRootLabel={formatExplorerRootLabel} activePath={currentFilePath} onOpenFile={(path) => void openFile(path, undefined, projectForPath(path) || undefined)} onOpenPreview={(path) => void openFile(path, undefined, projectForPath(path) || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => reportReadFailure(message)} /><WorkbenchScriptsPane compact hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /> : side === "search" ? <WorkbenchSearchSidePane
             selectedProject={searchRoots.length ? searchRoots[0] : null}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
@@ -7602,8 +7454,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           /> : <div className="wb-side-pane">
             <div className="wb-side-pane-head wb-git-pane-head">
               <span className="wb-side-pane-title">{gitHistoryContext ? gitHistoryTitle : t("desktop.workbench.sidePanelGit")}</span>
-              {worktreeControl("git")}
-              <div className="wb-git-actions">{gitHistoryContext ? <>
+                      <div className="wb-git-actions">{gitHistoryContext ? <>
                 <button type="button" className="wb-git-action-btn" onClick={closeGitHistory} aria-label={gitHistoryBackLabel}><ThemeIcon name="chevron-left" size={ICON_SIZE.default} /></button>
                 <button type="button" className="wb-git-action-btn" disabled={gitLogLoading} onClick={retryGitHistory} aria-label={t("desktop.common.refresh")}><ThemeIcon name="refresh" size={ICON_SIZE.default} className={gitLogLoading ? "spin" : undefined} /></button>
               </> : <>
@@ -7746,39 +7597,10 @@ export function WorkbenchPanel(): ReactPortal | null {
       statusLabel={t(desktopGtdLabelKey(taskRollup?.status ?? taskScope.status))}
       projects={scopeProjects}
       aliases={aliases}
-      worktrees={worktrees}
-      cleanup={worktreeCleanup}
       onAddProject={() => void pickTaskProject()}
       onRemoveProject={(path) => void removeProject(path)}
       onRevealPath={(path) => { void desktopApi().workbenchRevealPath({ rootPath: path, targetPath: path }).catch(() => undefined); }}
-      onCreateWorktree={() => openWorktreeCreate("default")}
     /> : null}
-    <WorktreeCreateSheet
-      open={worktreeCreateFor !== null}
-      onClose={() => setWorktreeCreateFor(null)}
-      repos={gitRepos}
-      root={worktrees.root}
-      preferredRepo={worktreeCreateFor?.repoRoot ?? null}
-      savedBaseBranch={worktrees.state.baseBranch}
-      onCreate={async (input) => {
-        const scope = worktreeCreateFor?.scope ?? "default";
-        const created = await desktopApi().workbenchCreateWorktree({
-          noteId: taskScope?.noteId ?? "",
-          repoRoot: input.repoRoot,
-          branch: input.branch,
-          baseBranch: input.baseBranch
-        });
-        await worktrees.refresh();
-        // The checkout just made is the one being worked in: show it everywhere
-        // the workbench is not pinned elsewhere. It is keyed by the repository as
-        // the task names it, which is what every root in the panel is spelled
-        // with — not by the git root main resolved it to.
-        worktrees.select(scope, input.repoRoot, created.path);
-        setStatus({ text: t("desktop.workbench.worktreeCreated", created.path), kind: "ok" });
-        return created;
-      }}
-      onOpenTerminal={(cwd) => void openBlankTerminal(cwd)}
-    />
     <GitChangesPanel
       visible={side === "git" && !gitHistoryContext}
       git={git}

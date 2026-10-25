@@ -125,9 +125,8 @@ describe("ChatView", () => {
         { noteId: "task-todo-1", title: "First Todo Task", gtdStatus: "inbox", updatedAtMs: 5000 },
         { noteId: "task-next", title: "In Progress Task", gtdStatus: "next", updatedAtMs: 4000 },
         { noteId: "task-waiting", title: "Waiting Task", gtdStatus: "waiting", updatedAtMs: 3000 },
-        { noteId: "task-todo-2", title: "Second Todo Task", gtdStatus: "inbox", updatedAtMs: 6000 }
+        { noteId: "task-todo-2", title: "Second Todo Task", gtdStatus: "inbox", updatedAtMs: 6000, work: { projects: ["/work/gtd/task-todo-2"], primaryProject: "/work/gtd/task-todo-2" } }
       ]),
-      notesEnsureTaskWorkspace: vi.fn().mockResolvedValue({ dir: "/work/gtd/task-todo-2" }),
       notesTaskNoteIdForSession: vi.fn().mockResolvedValue(null),
       notesRead: vi.fn().mockResolvedValue({
         record: { title: "Second Todo Task", gtdStatus: "inbox" },
@@ -739,9 +738,6 @@ describe("ChatView", () => {
     fireEvent.click(wsBtn);
 
     await waitFor(() => {
-      expect(window.agentResume.notesEnsureTaskWorkspace).toHaveBeenCalledWith({
-        noteId: "task-todo-2"
-      });
       // Should show [待办] Second Todo Task
       expect(wsBtn.textContent).toContain("Second Todo Task");
       expect(wsBtn.textContent).toContain("[待办]");

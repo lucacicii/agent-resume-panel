@@ -42,7 +42,7 @@ export async function renderTaskContext(input: TaskContextInput): Promise<string
     `Status: ${record.gtdStatus || "inbox"} · Next: ${frontmatter?.next ?? record.work.next ?? "-"} · Decision: ${frontmatter?.decision ?? record.work.decision ?? "-"}`
   ];
   const declared = frontmatter?.projects ?? record.work.projects ?? [];
-  const projects = mergeProjects(input.panelHome, declared, sessionProjects);
+  const projects = mergeTaskProjects(input.panelHome, declared, sessionProjects);
   if (projects.length > 0) {
     lines.push(`Repos: ${projects.map((item) => `${projectLabel(item)} → ${item}`).join("; ")}`);
   }
@@ -66,22 +66,22 @@ export async function writeTaskContextFile(input: TaskContextInput): Promise<str
   return file;
 }
 
-/** The note's background knowledge as prose, without the note's own heading. */
-function knowledgeText(body: string): string {
-  return taskPromptBody(body).replace(/^\s*#\s+[^\n]*(?:\n+|$)/, "").trim();
-}
-
-function projectLabel(projectPath: string): string {
-  return projectPath.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || projectPath;
-}
-
 /** Declared projects keep their order; session-derived ones join when they live outside panel data. */
-function mergeProjects(panelHome: string, declared: readonly string[], sessionProjects: readonly string[]): string[] {
+export function mergeTaskProjects(panelHome: string, declared: readonly string[], sessionProjects: readonly string[]): string[] {
   const merged = new Set(declared.map((entry) => entry.trim()).filter(Boolean));
   for (const projectPath of sessionProjects) {
     if (!insideDir(panelHome, projectPath)) merged.add(projectPath.trim());
   }
   return [...merged];
+}
+
+/** The note's background knowledge as prose, without the note's own heading. */
+export function knowledgeText(body: string): string {
+  return taskPromptBody(body).replace(/^\s*#\s+[^\n]*(?:\n+|$)/, "").trim();
+}
+
+function projectLabel(projectPath: string): string {
+  return projectPath.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || projectPath;
 }
 
 function insideDir(dir: string, candidate: string): boolean {

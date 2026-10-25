@@ -138,7 +138,6 @@ import {
   setWorkbenchWatcherActive
 } from "./workbenchWatcher";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
-import { registerWorktreeIpc } from "./worktreeGit";
 import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
 import {
   closeAllTaskWindows,
@@ -214,12 +213,9 @@ import {
   notesCreateTask,
   notesAddTaskProject,
   notesRemoveTaskProject,
-  notesEnsureTaskWorkspace,
   notesLinkSessionToTask,
   notesListTaskSessionLinks,
   notesListTasks,
-  notesOpenTaskWorkspace,
-  notesTaskWorkspace,
   notesTaskNoteIdForSession,
   notesListChildCounts,
   notesListLinkedChildIds,
@@ -3784,30 +3780,12 @@ function registerIpc(): void {
     }
     return notesRemoveTaskProject({ noteId: args.noteId, projectPath: args.projectPath });
   });
-  ipcMain.handle("notes:ensureTaskWorkspace", async (_event, args: { noteId?: unknown }) => {
-    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
-      throw new Error("A task note id is required.");
-    }
-    return notesEnsureTaskWorkspace(args.noteId);
-  });
   ipcMain.handle("notes:listTaskSessionLinks", async () => notesListTaskSessionLinks());
   ipcMain.handle("notes:taskNoteIdForSession", async (_event, args: { provider?: unknown; sessionId?: unknown }) => {
     if (typeof args?.provider !== "string" || typeof args?.sessionId !== "string") {
       throw new Error("A session provider and id are required.");
     }
     return (await notesTaskNoteIdForSession({ provider: args.provider, sessionId: args.sessionId })) ?? null;
-  });
-  ipcMain.handle("notes:taskWorkspace", async (_event, args: { noteId?: unknown }) => {
-    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
-      throw new Error("A task note id is required.");
-    }
-    return notesTaskWorkspace(args.noteId);
-  });
-  ipcMain.handle("notes:openTaskWorkspace", async (_event, args: { noteId?: unknown }) => {
-    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
-      throw new Error("A task note id is required.");
-    }
-    return notesOpenTaskWorkspace(args.noteId);
   });
   ipcMain.handle("notes:addTaskProject", async (_event, args: { noteId?: unknown; projectPath?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
@@ -4237,7 +4215,6 @@ app.whenReady().then(async () => {
   registerWorkbenchFsIpc();
   registerWorkbenchWatcherIpc(() => mainWindow, (sender) => isTaskWindowSender(sender));
   registerWorkbenchGitIpc(() => app.getLocale());
-  registerWorktreeIpc({ liveSessionsInPath: (target) => ptyInPathResolver?.(target) ?? 0 });
   registerWorkbenchScriptsIpc();
   registerBrowserIpc({
     getMainWindow: () => mainWindow,
