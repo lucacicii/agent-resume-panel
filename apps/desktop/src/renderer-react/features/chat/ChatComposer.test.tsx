@@ -2,6 +2,7 @@ import React from "react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { ChatComposer, compileChatPrompt } from "./ChatComposer";
+import { stripMachineContext } from "./promptEnvelope";
 import type { SkillDescriptor, AgentToolDescriptor } from "@agent-resume/core";
 
 describe("compileChatPrompt", () => {
@@ -116,6 +117,16 @@ describe("compileChatPrompt", () => {
     expect(result).toContain("user: How does caching work?");
     expect(result).toContain("assistant: It uses Redis TTLs.");
     expect(result).toContain("Please review these resources");
+  });
+
+  it("compiled context can be stripped back to the sentence the user typed", async () => {
+    const compiled = await compileChatPrompt("@Project Plan check this #src/index.ts", {
+      workspaceDir: "/work/repo",
+      referencedMentions: [{ kind: "note", id: "note-1", title: "Architecture Doc", badge: "笔记" }],
+      referencedFiles: ["src/index.ts"]
+    });
+    expect(compiled).toContain("[Referenced Note: Architecture Doc]");
+    expect(stripMachineContext(compiled)).toBe("@Project Plan check this #src/index.ts");
   });
 
   it("resolves referenced file (#) and reads its text content", async () => {

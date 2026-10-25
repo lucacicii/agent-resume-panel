@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { useThunderChat, buildConversationRows, stripPromptEnvelope } from "./useThunderChat";
+import { useThunderChat, buildConversationRows } from "./useThunderChat";
 
 interface HarnessEvent {
   taskId: string;
@@ -791,18 +791,6 @@ describe("useThunderChat turn splitting", () => {
       .map((segment) => segment.text);
     expect(reasoning).toEqual(["轮一思考", "轮二思考"]);
     expect(result.current.messages.at(-1)?.segments).toBeUndefined();
-  });
-});
-
-describe("stripPromptEnvelope", () => {
-  it("drops the transport prefixes a user never typed", () => {
-    expect(stripPromptEnvelope("[Active Workspace: /a]\n\n改一下登录接口")).toBe("改一改登录接口".replace("改一改", "改一下"));
-    expect(stripPromptEnvelope("[Additional workspace roots (read/write): /x, /y]\n\n[Active Workspace: /a]\n\n看看这两个仓")).toBe("看看这两个仓");
-    expect(stripPromptEnvelope("[GTD Task Context]\n# Active GTD Task: T\n\n[End Task Context]\n\n干活")).toBe("干活");
-  });
-
-  it("leaves a plain user message untouched", () => {
-    expect(stripPromptEnvelope("普通的一句话")).toBe("普通的一句话");
   });
 });
 

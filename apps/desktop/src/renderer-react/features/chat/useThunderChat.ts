@@ -17,6 +17,7 @@ import type {
   ThunderModeChanged,
 } from "@agent-resume/core";
 import { useTraceCollector } from "./useTraceCollector";
+import { stripMachineContext } from "./promptEnvelope";
 
 export interface ChatRunMetrics {
   tps?: number;
@@ -512,38 +513,6 @@ function freezeSegments(segments: LiveSegment[], content: string): LiveSegment[]
  *    of dots that hangs off it — and a run that reads back as a flat list of
  *    per-turn blocks is a different thing from the run the user just watched.
  */
-/**
- * Strip the machine prefixes this app prepends for the agent's benefit from a
- * user turn read back out of a conversation.
- *
- * The transcript is a record of what the user said; the blocks below are
- * transport (workspace, granted roots, task context) and never something a
- * person typed. A reopened session reads the daemon's copy, so cleaning here is
- * what keeps that row identical to the one the composer showed when it was sent.
- */
-export function stripPromptEnvelope(content: string): string {
-  let text = content;
-  // Leading machine lines, in the order they are assembled.
-  const leading = [
-    /^\[Additional workspace roots \(read\/write\):[^\]]*\]\n*/,
-    /^\[Active Workspace:[^\]]*\]\n*/,
-    /^\[Workspace [^\]]*\](?:\n(?!\n)[^\n]*)*\n*/,
-    /^\[GTD Task Context\][\s\S]*?\[End Task Context\]\n*/
-  ];
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const pattern of leading) {
-      const next = text.replace(pattern, "");
-      if (next !== text) {
-        text = next;
-        changed = true;
-      }
-    }
-  }
-  return text.trim() ? text : content;
-}
-
 export function buildConversationRows(rawMessages: ThunderChatMessage[]): RenderedChatMessage[] {
   const result: RenderedChatMessage[] = [];
   const toolResultsByCallId = new Map<string, string>();
@@ -576,7 +545,7 @@ export function buildConversationRows(rawMessages: ThunderChatMessage[]): Render
       // on the far side of it can belong to the run being collected.
       flushRun(result, run);
       run = [];
-      const display = typeof msg.content === "string" ? stripPromptEnvelope(msg.content) : msg.content;
+      const display = typeof msg.content === "string" ? stripMachineContext(msg.content) : msg.content;
       result.push({
         ...msg,
         content: display,
