@@ -1541,6 +1541,11 @@ export interface DesktopApi {
     taskId: string;
     prompt: string;
     roleContext?: string;
+    /**
+     * Extra directories this run may also touch, with the same read/write
+     * standing as its workspace (packs cited with `@` in the same message).
+     */
+    extraWorkspaceDirs?: string[];
     sessionId?: string;
     model?: string;
     workspaceDir?: string;

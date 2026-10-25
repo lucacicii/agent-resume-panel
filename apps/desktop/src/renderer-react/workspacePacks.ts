@@ -1,4 +1,4 @@
-import type { WorkbenchComposerMention, WorkbenchComposerMentionRoot } from "@agent-resume/core";
+import type { WorkbenchComposerMention } from "@agent-resume/core";
 
 /**
  * Renderer-side mirror of `normalizeWorkbenchComposerMentions` from
@@ -12,7 +12,6 @@ import type { WorkbenchComposerMention, WorkbenchComposerMentionRoot } from "@ag
  */
 export const COMPOSER_MENTION_ID = /^[A-Za-z0-9_-]{1,40}$/;
 export const COMPOSER_MENTIONS_MAX = 50;
-export const COMPOSER_MENTION_ROOTS_MAX = 20;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -35,27 +34,6 @@ function normalizeMentionPath(value: unknown, homeDir?: string): string | undefi
   return trimmed || "/";
 }
 
-function normalizeRoots(
-  value: unknown,
-  cwd: string,
-  homeDir?: string
-): WorkbenchComposerMentionRoot[] {
-  const seen = new Set<string>([cwd.toLowerCase()]);
-  const roots: WorkbenchComposerMentionRoot[] = [{ path: cwd, role: "work" }];
-  if (!Array.isArray(value)) return roots;
-  for (const entry of value) {
-    if (!isRecord(entry)) continue;
-    const rootPath = normalizeMentionPath(entry.path, homeDir);
-    if (!rootPath) continue;
-    const key = rootPath.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    roots.push({ path: rootPath, role: "reference" });
-    if (roots.length >= COMPOSER_MENTION_ROOTS_MAX) break;
-  }
-  return roots;
-}
-
 export function normalizeComposerMentions(
   value: unknown,
   homeDir?: string
@@ -72,7 +50,7 @@ export function normalizeComposerMentions(
     const cwd = normalizeMentionPath(entry.cwd, homeDir);
     if (!cwd) continue;
     seen.add(key);
-    output.push({ id, cwd, roots: normalizeRoots(entry.roots, cwd, homeDir) });
+    output.push({ id, cwd });
     if (output.length >= COMPOSER_MENTIONS_MAX) break;
   }
   return output;

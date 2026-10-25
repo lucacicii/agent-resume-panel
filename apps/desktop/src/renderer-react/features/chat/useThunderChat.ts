@@ -1406,6 +1406,7 @@ export function useThunderChat() {
         workspaceDir?: string;
         thinking_level?: string;
         roleContext?: string;
+        extraWorkspaceDirs?: string[];
         attachments?: ThunderImageAttachment[];
       }
     ) => {
@@ -1503,6 +1504,7 @@ export function useThunderChat() {
           taskId,
           prompt: trimmed,
           roleContext: options?.roleContext,
+          extraWorkspaceDirs: options?.extraWorkspaceDirs,
           sessionId: effectiveSessionId,
           model,
           workspaceDir: ws,

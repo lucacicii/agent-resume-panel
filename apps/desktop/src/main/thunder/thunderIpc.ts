@@ -203,6 +203,8 @@ export function registerThunderIpc(): void {
         taskId: string;
         prompt: string;
         roleContext?: string;
+        /** Extra directories the renderer cites for this run (`@pack` alongside the root). */
+        extraWorkspaceDirs?: string[];
         sessionId?: string;
         model?: string;
         workspaceDir?: string;
@@ -277,6 +279,25 @@ export function registerThunderIpc(): void {
       });
 
       try {
+        // Roots the renderer asked for (other `@pack`s in the same message) join
+        // the task's own roots. Only absolute, existing directories are passed,
+        // and never one that duplicates the jail root.
+        const requestedRoots = Array.isArray(args.extraWorkspaceDirs) ? args.extraWorkspaceDirs : [];
+        const resolvedRoot = effectiveWorkspaceDir ? path.resolve(effectiveWorkspaceDir) : "";
+        const extraRoots = [...new Set(
+          [...(extraWorkspaceDirs ?? []), ...requestedRoots]
+            .filter((dir): dir is string => typeof dir === "string" && dir.trim().length > 0)
+            .map((dir) => path.resolve(dir))
+            .filter((dir) => dir !== resolvedRoot)
+            .filter((dir) => {
+              try {
+                return fs.statSync(dir).isDirectory();
+              } catch {
+                return false;
+              }
+            })
+        )];
+
         return await client.runTask({
           taskId: args.taskId,
           prompt: args.prompt,
@@ -284,7 +305,7 @@ export function registerThunderIpc(): void {
           sessionId: effectiveSessionId,
           model: args.model,
           workspaceDir: effectiveWorkspaceDir,
-          extraWorkspaceDirs,
+          extraWorkspaceDirs: extraRoots.length > 0 ? extraRoots : undefined,
           taskNoteId: args.taskNoteId,
           gtdContext,
           thinking_level: args.thinking_level,

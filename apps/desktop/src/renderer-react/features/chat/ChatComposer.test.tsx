@@ -14,10 +14,6 @@ describe("compileChatPrompt", () => {
             {
               id: "anfeng",
               cwd: "/Users/lucas/wb/wlgk/anfeng",
-              roots: [
-                { path: "/Users/lucas/wb/wlgk/anfeng", role: "work" },
-                { path: "/Users/lucas/wb/wlgk/shared", role: "reference" }
-              ]
             }
           ]
         }
@@ -122,18 +118,6 @@ describe("compileChatPrompt", () => {
     expect(result).toContain("Please review these resources");
   });
 
-  it("injects a workspace pack's work folder and read-only references (@anfeng)", async () => {
-    const result = await compileChatPrompt("look at the build", {
-      referencedMentions: [{ kind: "workspace", id: "anfeng", title: "anfeng", badge: "工作区", path: "/Users/lucas/wb/wlgk/anfeng" }]
-    });
-
-    expect(result).toContain("[Workspace anfeng]");
-    expect(result).toContain("Work cwd (write here only): /Users/lucas/wb/wlgk/anfeng");
-    expect(result).toContain("Reference (read only):");
-    expect(result).toContain("/Users/lucas/wb/wlgk/shared");
-    expect(result).toContain("look at the build");
-  });
-
   it("resolves referenced file (#) and reads its text content", async () => {
     const result = await compileChatPrompt("Check this file #src/index.ts", {
       workspaceDir: "/work/repo",
@@ -210,10 +194,6 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
             {
               id: "anfeng",
               cwd: "/Users/lucas/wb/wlgk/anfeng",
-              roots: [
-                { path: "/Users/lucas/wb/wlgk/anfeng", role: "work" },
-                { path: "/Users/lucas/wb/wlgk/shared", role: "reference" }
-              ]
             }
           ]
         }
@@ -265,6 +245,80 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
       fireEvent.click(option);
 
       await waitFor(() => expect(onSelectFinderDir).toHaveBeenCalledWith("/Users/lucas/wb/wb-auth/web-ums"));
+    });
+  });
+
+  describe("# browses the bound workspace", () => {
+    it("lists the directory the conversation is bound to", async () => {
+      const listDirectory = vi.fn().mockResolvedValue({ entries: [{ name: "src", isDirectory: true }] });
+      (window as any).agentResume.workbenchListDirectory = listDirectory;
+
+      const { container } = render(
+        <ChatComposer {...defaultProps} workspaceDir="/Users/lucas/wb/wlgk/anfeng" />
+      );
+      const textarea = container.querySelector("textarea")!;
+      fireEvent.change(textarea, { target: { value: "#", selectionStart: 1 } });
+
+      await screen.findByText("#src/");
+      expect(listDirectory).toHaveBeenCalledWith({
+        rootPath: "/Users/lucas/wb/wlgk/anfeng",
+        dirPath: "/Users/lucas/wb/wlgk/anfeng"
+      });
+    });
+  });
+
+  describe("@ tasks and multiple packs", () => {
+    it("binds a cited task so the run inherits its repositories", async () => {
+      const onSelectGtdTask = vi.fn();
+      (window as any).agentResume.homePath = vi.fn().mockResolvedValue("/Users/lucas");
+      const { container } = render(
+        <ChatComposer {...defaultProps} onSelectGtdTask={onSelectGtdTask} />
+      );
+      const textarea = container.querySelector("textarea")!;
+      fireEvent.change(textarea, { target: { value: "@Refactor", selectionStart: 9 } });
+
+      const option = await waitFor(() => {
+        const el = screen.getAllByRole("option").find((node) => node.textContent?.includes("@Refactor router"));
+        if (!el) throw new Error("no task option");
+        return el as HTMLElement;
+      });
+      fireEvent.click(option);
+
+      await waitFor(() =>
+        expect(onSelectGtdTask).toHaveBeenCalledWith("task-xyz", "/Users/lucas")
+      );
+    });
+
+    it("grants every other cited pack as an extra root", async () => {
+      (window as any).agentResume.getSettings = vi.fn().mockResolvedValue({
+        workbench: {
+          composerMentions: [
+            { id: "front", cwd: "/work/front" },
+            { id: "back", cwd: "/other/back" }
+          ]
+        }
+      });
+      const onSend = vi.fn();
+      const { container } = render(
+        <ChatComposer {...defaultProps} onSend={onSend} workspaceDir="/other/back" />
+      );
+      await waitFor(() => expect(window.agentResume.getSettings).toHaveBeenCalled());
+      const textarea = container.querySelector("textarea")!;
+      fireEvent.change(textarea, {
+        target: { value: "@front @back 改一下登录接口", selectionStart: 13 }
+      });
+      fireEvent.keyDown(textarea, { key: "Enter" });
+
+      await waitFor(() => expect(onSend).toHaveBeenCalled());
+      const [prompt, options] = onSend.mock.calls[0];
+      // The root stays the bound workspace; the other pack joins as an extra root.
+      expect(options.extraWorkspaceDirs).toEqual(["/work/front"]);
+      // Pack tokens are dropped, and the grant is stated plainly instead.
+      expect(options.workspaceDir).toBe("/other/back");
+      expect(prompt).toContain("Additional workspace roots (read/write): /work/front");
+      expect(prompt).toContain("改一下登录接口");
+      expect(prompt).not.toContain("@front");
+      expect(prompt).not.toContain("@back");
     });
   });
 

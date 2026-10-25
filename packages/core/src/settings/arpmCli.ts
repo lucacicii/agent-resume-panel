@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { loadSettings, effectivePanelHome } from "./store";
 import {
-  buildMentionPrompt,
   normalizeWorkbenchComposerMentions,
   resolveMention
 } from "./mentions";
@@ -17,7 +16,6 @@ import type { AgentProvider } from "../catalog/types";
 
 const USAGE = `Usage:
   arpm list
-  arpm prompt <id>
   arpm go <id> [--print-cwd] [--launch] [--provider <cli-provider>] [--yolo]
   arpm run [--provider <cli-provider>] [--note <task-id>] [--yolo]
 
@@ -29,13 +27,9 @@ the task's context (facts, repositories, background knowledge) to the session,
 rendered fresh from the catalog.`;
 
 function mentionList(mentions: WorkbenchComposerMention[]): string {
-  if (!mentions.length) return "No workspace mentions configured.";
+  if (!mentions.length) return "No workspace packs configured.";
   return mentions
-    .map((mention) => {
-      const refs = mention.roots.filter((root) => root.role === "reference").map((root) => root.path);
-      const refPart = refs.length ? `\n  reference:\n${refs.map((item) => `    ${item}`).join("\n")}` : "";
-      return `${mention.id}\n  cwd: ${mention.cwd}${refPart}`;
-    })
+    .map((mention) => `${mention.id}\n  cwd: ${mention.cwd}`)
     .join("\n\n");
 }
 
@@ -210,14 +204,6 @@ export async function runArpmCli(argv: string[]): Promise<number> {
       console.log(mentionList(mentions));
       return 0;
     }
-    if (command === "prompt") {
-      const id = rest[0]?.trim() || "";
-      if (!id || rest.length > 1) {
-        throw new Error("Usage: arpm prompt <id>");
-      }
-      console.log(buildMentionPrompt(requireMention(mentions, id)));
-      return 0;
-    }
     if (command === "go") {
       const flags = parseGoFlags(rest);
       const mention = requireMention(mentions, flags.id);
@@ -225,7 +211,6 @@ export async function runArpmCli(argv: string[]): Promise<number> {
         console.log(mention.cwd);
         return 0;
       }
-      console.log(buildMentionPrompt(mention));
       if (flags.launch) {
         const mode: NewSessionExecutionMode = flags.yolo ? "yolo" : "standard";
         const commandLine = buildNewSessionCommand(flags.provider, mention.cwd, mode);

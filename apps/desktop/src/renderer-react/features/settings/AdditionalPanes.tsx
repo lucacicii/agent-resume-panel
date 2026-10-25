@@ -50,25 +50,14 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
   };
   const slashPhrases = draft.composerSlashPhrases ?? [];
   const workspacePacks = draft.composerMentions ?? [];
-  /** A pack is id + work folder + (optional) newline-separated read-only folders. */
-  const updatePack = (index: number, patch: Partial<{ id: string; cwd: string; references: string }>, commitNow: boolean) => {
-    const next = workspacePacks.map((pack, packIndex) => {
-      if (packIndex !== index) return pack;
-      const id = patch.id !== undefined ? patch.id.replace(/^@+/, "") : pack.id;
-      const cwd = patch.cwd !== undefined ? patch.cwd : pack.cwd;
-      const references = patch.references !== undefined
-        ? patch.references
-        : pack.roots.filter((root) => root.role === "reference").map((root) => root.path).join("\n");
-      return {
-        id,
-        cwd,
-        roots: [
-          { path: cwd, role: "work" as const },
-          ...references.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean)
-            .map((path) => ({ path, role: "reference" as const }))
-        ]
-      };
-    });
+  /** A pack is an id plus the directory it points at. */
+  const updatePack = (index: number, patch: Partial<{ id: string; cwd: string }>, commitNow: boolean) => {
+    const next = workspacePacks.map((pack, packIndex) => packIndex === index
+      ? {
+          id: patch.id !== undefined ? patch.id.replace(/^@+/, "") : pack.id,
+          cwd: patch.cwd !== undefined ? patch.cwd : pack.cwd
+        }
+      : pack);
     const nextDraft = { ...draft, composerMentions: next };
     setDraft(nextDraft);
     if (commitNow) commit(nextDraft);
@@ -268,16 +257,6 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
               onChange={(event) => updatePack(index, { cwd: event.target.value }, false)}
               onBlur={() => commit(draft)}
             />
-            <textarea
-              className="settings-item-body settings-slash-textarea"
-              rows={2}
-              spellCheck={false}
-              value={pack.roots.filter((root) => root.role === "reference").map((root) => root.path).join("\n")}
-              aria-label={t("desktop.settings.workspaceMentionReferences")}
-              placeholder={t("desktop.settings.workspaceMentionReferencesPlaceholder")}
-              onChange={(event) => updatePack(index, { references: event.target.value }, false)}
-              onBlur={() => commit(draft)}
-            />
           </div>
         </div>
       ))}
@@ -285,7 +264,7 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
         <button
           type="button"
           className="tool-btn"
-          onClick={() => update("composerMentions", [...workspacePacks, { id: "", cwd: "", roots: [] }], { commit: false })}
+          onClick={() => update("composerMentions", [...workspacePacks, { id: "", cwd: "" }], { commit: false })}
         ><ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />{t("desktop.settings.workspaceMentionAdd")}</button>
       </div>
     </div></section>

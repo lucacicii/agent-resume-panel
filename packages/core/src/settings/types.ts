@@ -173,23 +173,17 @@ export interface WorkbenchComposerSlashPhrase {
   description?: string;
 }
 
-export type WorkbenchComposerMentionRole = "work" | "reference";
-
-export interface WorkbenchComposerMentionRoot {
-  /** Absolute or `~/…` path. Normalized to an absolute path on save. */
-  path: string;
-  role: WorkbenchComposerMentionRole;
-}
-
 /**
  * Global workspace pack (Settings → Workbench).
- * `id` is the CLI / New session trigger (`anfeng` → `arpm go anfeng`).
- * `cwd` is the work root; extra `roots` are injected into the agent prompt.
+ *
+ * A pack is a named directory: `@anfeng` in a chat composer — or `arpm go
+ * anfeng` in the CLI — points the conversation at `cwd`. It carries no extra
+ * roots: the daemon jails a run to its work directory plus the roots the main
+ * process grants it, and a chat pack has no say in that grant.
  */
 export interface WorkbenchComposerMention {
   id: string;
   cwd: string;
-  roots: WorkbenchComposerMentionRoot[];
 }
 
 export interface WorkbenchEditorSettings {

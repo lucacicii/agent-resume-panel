@@ -73,6 +73,7 @@ interface ChatMainProps {
       workspaceDir?: string;
       model?: string;
       thinking_level?: string;
+      extraWorkspaceDirs?: string[];
       attachments?: import("@agent-resume/core").ThunderImageAttachment[];
     }
   ) => void;

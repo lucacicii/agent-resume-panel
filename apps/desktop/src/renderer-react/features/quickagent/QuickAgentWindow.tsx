@@ -257,7 +257,7 @@ export function QuickAgentWindow(): JSX.Element {
   const handleSend = useCallback(
     (
       prompt: string,
-      options?: { workspaceDir?: string; model?: string; thinking_level?: string }
+      options?: { workspaceDir?: string; model?: string; thinking_level?: string; extraWorkspaceDirs?: string[] }
     ) => {
       const command = parseSlashCommand(prompt);
       if (command) {

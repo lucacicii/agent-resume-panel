@@ -11,7 +11,6 @@ import type {
   ThunderPermissionMode
 } from "@agent-resume/core";
 import { THUNDER_PERMISSION_MODES } from "@agent-resume/core/browser";
-import { buildMentionPrompt } from "@agent-resume/core/browser";
 import type { WorkbenchComposerMention } from "@agent-resume/core";
 import { normalizeComposerMentions } from "../../workspacePacks";
 import type { ChatRunMetrics } from "./useThunderChat";
@@ -214,13 +213,6 @@ export async function compileChatPrompt(
           contextBlocks.push(
             `[Referenced GTD Task: ${mention.title} (Status: ${status})]\n${body}\n[End Referenced Task]`
           );
-        } else if (mention.kind === "workspace" && typeof desktopApi().getSettings === "function") {
-          // A workspace pack carries its own work folder + read-only references;
-          // the block is the same text the arpm CLI hands an agent.
-          const settings = await desktopApi().getSettings();
-          const pack = normalizeComposerMentions(settings?.workbench?.composerMentions)
-            .find((item) => item.id.toLowerCase() === mention.id.toLowerCase());
-          if (pack) contextBlocks.push(buildMentionPrompt(pack));
         } else if (mention.kind === "session" && typeof desktopApi().thunderChatGetConversation === "function") {
           const conv = await desktopApi().thunderChatGetConversation({ sessionId: mention.id });
           if (conv && Array.isArray(conv.messages) && conv.messages.length > 0) {
@@ -283,6 +275,8 @@ interface ChatComposerProps {
       model?: string;
       thinking_level?: string;
       attachments?: ThunderImageAttachment[];
+      /** Other `@pack` directories cited in the same message, granted as extra roots. */
+      extraWorkspaceDirs?: string[];
     }
   ) => void;
   onCancel: () => void;
@@ -1080,14 +1074,33 @@ export function ChatComposer({
       if (item.kind === "workspace" || item.kind === "project") {
         bindMentionDirectory(item);
       }
+      // A task is the multi-repository container: binding it lets the run inherit
+      // every repository the task references (plus its context and worktree rule),
+      // which is more than pasting the note body into the prompt ever did.
+      const boundTask = item.kind === "task" && Boolean(onSelectGtdTask);
+      if (boundTask) {
+        const task = tasks.find((entry) => entry.noteId === item.id);
+        const primary = task?.work?.primaryProject || task?.work?.projects?.[0] || "";
+        void (async () => {
+          const dir = primary || (await desktopApi().homePath().catch(() => ""));
+          if (!dir) return;
+          onSelectGtdTask?.(item.id, dir);
+          window.dispatchEvent(
+            new CustomEvent("agent-resume:workspace-context-changed", {
+              detail: { id: item.title, path: dir }
+            })
+          );
+        })();
+      }
       const inserted = `@${item.title} `;
       const next = `${text.slice(0, atToken.start)}${inserted}${text.slice(cursor)}`;
       const nextCursor = atToken.start + inserted.length;
       setText(next);
       setMentionDismissed(true);
       setActiveMention(0);
-      // Projects carry no reference block, so they are not kept as mentions.
-      if (item.kind !== "project") setReferencedMentions((prev) => [...prev, item]);
+      // Projects carry no reference block, and a bound task supplies its own
+      // context on the run, so neither is kept as a mention.
+      if (item.kind !== "project" && !boundTask) setReferencedMentions((prev) => [...prev, item]);
       requestAnimationFrame(() => {
         const el = textareaRef.current;
         if (el) {
@@ -1097,7 +1110,7 @@ export function ChatComposer({
         setCursor(nextCursor);
       });
     },
-    [atToken, bindMentionDirectory, cursor, text]
+    [atToken, bindMentionDirectory, cursor, onSelectGtdTask, tasks, text]
   );
 
   const enterDirectory = useCallback(
@@ -1190,8 +1203,33 @@ export function ChatComposer({
     setReferencedFiles([]);
     setPendingImages([]);
 
+    // Every `@pack` cited in this message. The bound workspace is the jail root;
+    // the rest are granted as extra roots, so one message can edit and cross-check
+    // several repositories that share no parent directory.
+    const citedPacks = workspacePacks.filter((pack) =>
+      new RegExp(`(^|\\s)@${pack.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=\\s|$)`).test(currentText)
+    );
+    const extraWorkspaceDirs = [...new Set(
+      citedPacks
+        .map((pack) => pack.cwd)
+        .filter((dir) => dir && dir.replace(/[\\/]+$/, "") !== workspaceDir.replace(/[\\/]+$/, ""))
+    )];
+    // Pack tokens are UI affordances: the grant above carries the meaning, and a
+    // bare `@anfeng` in the prompt text would name nothing the model can resolve.
+    let bodyText = currentText;
+    for (const pack of citedPacks) {
+      bodyText = bodyText.replace(
+        new RegExp(`(^|\\s)@${pack.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=\\s|$)`, "g"),
+        "$1"
+      );
+    }
+    bodyText = bodyText.replace(/[ \t]{2,}/g, " ").trim();
+    if (extraWorkspaceDirs.length > 0) {
+      bodyText = `[Additional workspace roots (read/write): ${extraWorkspaceDirs.join(", ")}]\n\n${bodyText}`;
+    }
+
     try {
-      const effectivePrompt = await compileChatPrompt(currentText, {
+      const effectivePrompt = await compileChatPrompt(bodyText, {
         workspaceDir,
         skills,
         tools,
@@ -1202,14 +1240,16 @@ export function ChatComposer({
         workspaceDir,
         model: selectedModel,
         thinking_level: thinkingLevel,
+        extraWorkspaceDirs: extraWorkspaceDirs.length > 0 ? extraWorkspaceDirs : undefined,
         attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined
       });
     } catch (err) {
       console.warn("Failed to compile prompt context:", err);
-      onSend(currentText || "Please analyze the attached image.", {
+      onSend(bodyText || "Please analyze the attached image.", {
         workspaceDir,
         model: selectedModel,
         thinking_level: thinkingLevel,
+        extraWorkspaceDirs: extraWorkspaceDirs.length > 0 ? extraWorkspaceDirs : undefined,
         attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined
       });
     }
