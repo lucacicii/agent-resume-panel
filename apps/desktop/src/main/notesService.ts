@@ -30,7 +30,6 @@ import {
   ensureTaskWorkspace,
   isPanelInternalPath,
   mergeTaskProjects,
-  sessionContextFile,
   taskKnowledgeText,
   taskWorkspaceDir,
   worktreePolicyLines,
@@ -218,19 +217,6 @@ export async function notesGetTaskWorkspaceContext(noteId: string): Promise<{
     worktreeLines: worktreePolicyLines(address),
     worktreeDirs: worktrees.dirs
   };
-}
-
-/**
- * The task's context block for a session that runs in `cwd`: the block is
- * refreshed on demand, and returned only when the session runs outside the
- * workspace (there the agents read the file from their working directory).
- */
-export async function notesTaskSessionContext(args: {
-  noteId: string;
-  cwd: string;
-}): Promise<{ file?: string }> {
-  const { dir } = await notesEnsureTaskWorkspace(args.noteId);
-  return { file: sessionContextFile(dir, args.cwd) };
 }
 
 /** The task a session belongs to, when it is linked to one. */

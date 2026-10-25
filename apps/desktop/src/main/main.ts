@@ -3,10 +3,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import * as os from "node:os";
 import {
   AGENT_TOOL_CATALOG,
   type AgentToolDescriptor,
   absFromRelMdPath,
+  desktopDataDir,
+  writeTaskContextFile,
   discoverSkills,
   readSkillContent,
   skillToToolDescriptor,
@@ -218,7 +221,6 @@ import {
   notesOpenTaskWorkspace,
   notesTaskWorkspace,
   notesTaskNoteIdForSession,
-  notesTaskSessionContext,
   notesListChildCounts,
   notesListLinkedChildIds,
   notesListLinks,
@@ -578,10 +580,10 @@ async function resolveSessionCwd(
       const stat = await fs.stat(expanded);
       if (stat.isDirectory()) return expanded;
     } catch {
-      // fall through to panel home
+      // fall through to home
     }
   }
-  return effectivePanelHome(settings);
+  return os.homedir();
 }
 
 function appResourcesDir(): string {
@@ -1568,7 +1570,8 @@ async function syncAndNotify(): Promise<AgentSessionSyncResult> {
 
 /**
  * A task's context block for a session that keeps `cwd` as its working
- * directory. Best-effort: a missing block must never block the session.
+ * directory, rendered fresh from the catalog on every launch. Best-effort: a
+ * missing block must never block the session.
  */
 async function taskContextFile(
   noteId: string | undefined,
@@ -1577,8 +1580,14 @@ async function taskContextFile(
   const id = noteId?.trim();
   if (!id || !cwd.trim()) return undefined;
   try {
-    const { file } = await notesTaskSessionContext({ noteId: id, cwd });
-    return file;
+    const settings = await loadSettings();
+    const panelHome = effectivePanelHome(settings);
+    // Legacy neutral-workspace sessions still read their context from the
+    // working directory's AGENTS.md; injecting on top would duplicate it.
+    const workspaceDir = path.join(desktopDataDir(panelHome), "workspaces", id);
+    if (path.resolve(cwd) === path.resolve(workspaceDir)) return undefined;
+    const paths = await loadPanelDbPaths(settings);
+    return await writeTaskContextFile({ panelHome, catalogDb: paths.catalogDb, noteId: id });
   } catch {
     return undefined;
   }

@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { DEFAULT_SETTINGS, saveSettings } from "../dist/index.js";
+import { DEFAULT_SETTINGS, NotesStore, ensureExtensionCatalogSchema, saveSettings } from "../dist/index.js";
 import { planArpmRun, runArpmCli } from "../dist/settings/arpmCli.js";
 
 async function withPanelHome(run) {
@@ -102,7 +102,15 @@ test("planArpmRun plans commands with optional task context injection", async ()
     });
     assert.equal(claudeRun.command, "claude");
 
-    // Missing task context file fails fast.
+    // Seed a real task; its context is rendered from the catalog on demand.
+    const dbPath = path.join(panelHome, "catalog.db");
+    await ensureExtensionCatalogSchema(dbPath);
+    const store = new NotesStore(dbPath, panelHome);
+    await store.initialize();
+    const item = await store.createTask({ title: "Wi one", projects: ["/work/app"] });
+    const noteFlag = ["--note", item.noteId];
+
+    // Unknown task fails fast.
     await assert.rejects(
       () =>
         planArpmRun({
@@ -111,43 +119,37 @@ test("planArpmRun plans commands with optional task context injection", async ()
           panelHome,
           settings
         }),
-      /No agent context for task wi-missing yet/
+      /No task wi-missing in the Agent Resume catalog/
     );
 
-    // Seed workspace context file.
-    const wsDir = path.join(panelHome, ".desktop", "workspaces", "wi-1");
-    await fs.mkdir(wsDir, { recursive: true });
-    const agentsFile = path.join(wsDir, "AGENTS.md");
-    await fs.writeFile(agentsFile, "# Task context", "utf8");
-
-    // Claude with task context file injected.
+    // Claude with the rendered task context injected.
     const claudeWithNote = await planArpmRun({
-      args: ["--provider", "claude", "--note", "wi-1"],
+      args: ["--provider", "claude", ...noteFlag],
       cwd: "/repo/my-app",
       panelHome,
       settings
     });
-    assert.equal(
-      claudeWithNote.command,
-      `claude --append-system-prompt "$(cat '${agentsFile}')"`
-    );
+    assert.match(claudeWithNote.command, /^claude --append-system-prompt "\$\(cat '(.+)'\)"$/);
+    const claudeFile = claudeWithNote.command.match(/\$\(cat '(.+)'\)/)[1];
+    assert.ok(claudeFile.includes(item.noteId));
+    assert.match(await fs.readFile(claudeFile, "utf8"), /^# Task: Wi one \(note: /);
     assert.equal(claudeWithNote.warning, undefined);
 
-    // Codex with task context file injected.
+    // Codex with the rendered task context injected.
     const codexWithNote = await planArpmRun({
-      args: ["--provider", "codex", "--note", "wi-1"],
+      args: ["--provider", "codex", ...noteFlag],
       cwd: "/repo/my-app",
       panelHome,
       settings
     });
     assert.equal(
       codexWithNote.command,
-      `codex --cd '/repo/my-app' -c "developer_instructions=$(cat '${agentsFile}')"`
+      `codex --cd '/repo/my-app' -c "developer_instructions=$(cat '${claudeFile}')"`
     );
 
     // Unsupported provider (agy) warns and drops the context flag.
     const agyWithNote = await planArpmRun({
-      args: ["--provider", "agy", "--note", "wi-1"],
+      args: ["--provider", "agy", ...noteFlag],
       cwd: "/repo/my-app",
       panelHome,
       settings
