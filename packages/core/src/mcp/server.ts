@@ -526,7 +526,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     "workbench_read",
     {
       description:
-        "Read one workbench: its task, bound project root (null = the task's neutral workspace), pane layout, and linked sessions. Read-only.",
+        "Read one workbench: its task, bound project root (null = follows the task's folder list), pane layout, and linked sessions. Read-only.",
       inputSchema: workbenchReadSchema
     },
     async (args: { workbenchId: string }) => {

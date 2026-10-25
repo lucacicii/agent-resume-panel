@@ -637,6 +637,8 @@ export {
   normalizeTaskDocument,
   type NormalizedTaskDocument
 } from "./notes/taskNote";
+export { renderTaskContext, writeTaskContextFile, mergeTaskProjects, knowledgeText } from "./notes/taskContext";
+export type { TaskContextInput } from "./notes/taskContext";
 export {
   loadNoteWorkMap,
   setNoteWork,

@@ -899,21 +899,6 @@ export function useThunderChat() {
               } catch {
                 // ignore
               }
-            } else if (conv.workspace && conv.workspace.includes("/workspaces/")) {
-              const match = conv.workspace.match(/\/workspaces\/([a-zA-Z0-9_-]+)/);
-              if (match && match[1]) {
-                setTaskNoteId(match[1]);
-                setWorkspaceSource("gtd");
-                try {
-                  localStorage.setItem("chat-workspace-source", "gtd");
-                  localStorage.setItem("chat-selected-task-note-id", match[1]);
-                } catch {
-                  // ignore
-                }
-              } else {
-                setTaskNoteId(null);
-                setWorkspaceSource("finder");
-              }
             } else {
               setTaskNoteId(null);
               setWorkspaceSource("finder");

@@ -3,10 +3,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import * as os from "node:os";
 import {
   AGENT_TOOL_CATALOG,
   type AgentToolDescriptor,
   absFromRelMdPath,
+  desktopDataDir,
+  writeTaskContextFile,
   discoverSkills,
   readSkillContent,
   skillToToolDescriptor,
@@ -135,7 +138,6 @@ import {
   setWorkbenchWatcherActive
 } from "./workbenchWatcher";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
-import { registerWorktreeIpc } from "./worktreeGit";
 import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
 import {
   closeAllTaskWindows,
@@ -211,14 +213,10 @@ import {
   notesCreateTask,
   notesAddTaskProject,
   notesRemoveTaskProject,
-  notesEnsureTaskWorkspace,
   notesLinkSessionToTask,
   notesListTaskSessionLinks,
   notesListTasks,
-  notesOpenTaskWorkspace,
-  notesTaskWorkspace,
   notesTaskNoteIdForSession,
-  notesTaskSessionContext,
   notesListChildCounts,
   notesListLinkedChildIds,
   notesListLinks,
@@ -578,10 +576,10 @@ async function resolveSessionCwd(
       const stat = await fs.stat(expanded);
       if (stat.isDirectory()) return expanded;
     } catch {
-      // fall through to panel home
+      // fall through to home
     }
   }
-  return effectivePanelHome(settings);
+  return os.homedir();
 }
 
 function appResourcesDir(): string {
@@ -1568,7 +1566,8 @@ async function syncAndNotify(): Promise<AgentSessionSyncResult> {
 
 /**
  * A task's context block for a session that keeps `cwd` as its working
- * directory. Best-effort: a missing block must never block the session.
+ * directory, rendered fresh from the catalog on every launch. Best-effort: a
+ * missing block must never block the session.
  */
 async function taskContextFile(
   noteId: string | undefined,
@@ -1577,8 +1576,14 @@ async function taskContextFile(
   const id = noteId?.trim();
   if (!id || !cwd.trim()) return undefined;
   try {
-    const { file } = await notesTaskSessionContext({ noteId: id, cwd });
-    return file;
+    const settings = await loadSettings();
+    const panelHome = effectivePanelHome(settings);
+    // Legacy neutral-workspace sessions still read their context from the
+    // working directory's AGENTS.md; injecting on top would duplicate it.
+    const workspaceDir = path.join(desktopDataDir(panelHome), "workspaces", id);
+    if (path.resolve(cwd) === path.resolve(workspaceDir)) return undefined;
+    const paths = await loadPanelDbPaths(settings);
+    return await writeTaskContextFile({ panelHome, catalogDb: paths.catalogDb, noteId: id });
   } catch {
     return undefined;
   }
@@ -3152,6 +3157,8 @@ function registerIpc(): void {
     return dir;
   });
 
+  safeHandle("workbench:homePath", () => os.homedir());
+
   safeHandle(
     "workbench:openSession",
     async (_event, args: { provider: AgentProvider; id: string }) => {
@@ -3773,30 +3780,12 @@ function registerIpc(): void {
     }
     return notesRemoveTaskProject({ noteId: args.noteId, projectPath: args.projectPath });
   });
-  ipcMain.handle("notes:ensureTaskWorkspace", async (_event, args: { noteId?: unknown }) => {
-    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
-      throw new Error("A task note id is required.");
-    }
-    return notesEnsureTaskWorkspace(args.noteId);
-  });
   ipcMain.handle("notes:listTaskSessionLinks", async () => notesListTaskSessionLinks());
   ipcMain.handle("notes:taskNoteIdForSession", async (_event, args: { provider?: unknown; sessionId?: unknown }) => {
     if (typeof args?.provider !== "string" || typeof args?.sessionId !== "string") {
       throw new Error("A session provider and id are required.");
     }
     return (await notesTaskNoteIdForSession({ provider: args.provider, sessionId: args.sessionId })) ?? null;
-  });
-  ipcMain.handle("notes:taskWorkspace", async (_event, args: { noteId?: unknown }) => {
-    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
-      throw new Error("A task note id is required.");
-    }
-    return notesTaskWorkspace(args.noteId);
-  });
-  ipcMain.handle("notes:openTaskWorkspace", async (_event, args: { noteId?: unknown }) => {
-    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
-      throw new Error("A task note id is required.");
-    }
-    return notesOpenTaskWorkspace(args.noteId);
   });
   ipcMain.handle("notes:addTaskProject", async (_event, args: { noteId?: unknown; projectPath?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
@@ -4226,7 +4215,6 @@ app.whenReady().then(async () => {
   registerWorkbenchFsIpc();
   registerWorkbenchWatcherIpc(() => mainWindow, (sender) => isTaskWindowSender(sender));
   registerWorkbenchGitIpc(() => app.getLocale());
-  registerWorktreeIpc({ liveSessionsInPath: (target) => ptyInPathResolver?.(target) ?? 0 });
   registerWorkbenchScriptsIpc();
   registerBrowserIpc({
     getMainWindow: () => mainWindow,

@@ -1273,18 +1273,18 @@ export function ChatComposer({
     } else if (chosen.startsWith("gtd:")) {
       const selectedId = chosen.slice(4);
       try {
-        let dir = "";
-        if (typeof desktopApi().notesEnsureTaskWorkspace === "function") {
-          const res = await desktopApi().notesEnsureTaskWorkspace({ noteId: selectedId });
-          dir = res?.dir || "";
-        }
+        // A chat's task cwd is the task's primary repository; a task without
+        // one runs from home.
+        const task = currentTasks.find((item) => item.noteId === selectedId);
+        const primary = task?.work?.primaryProject || task?.work?.projects?.[0] || "";
+        const dir = primary || (await desktopApi().homePath());
         if (onSelectGtdTask) {
           onSelectGtdTask(selectedId, dir);
         } else {
           onSelectWorkspaceDir(dir);
         }
       } catch (err) {
-        console.warn("Failed to ensure task workspace:", err);
+        console.warn("Failed to resolve the task's working directory:", err);
       }
     }
   };

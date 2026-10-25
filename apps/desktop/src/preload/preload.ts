@@ -58,12 +58,6 @@ import type {
   WorkbenchSendSelectionResult
 } from "../shared/workbenchSelection";
 import type { SelectionAction } from "../shared/selectionActions";
-import type {
-  TaskWorktreeListing,
-  TaskWorktreeOrphans,
-  TaskWorktreeState,
-  WorktreeRiskReport
-} from "../shared/worktreeTypes";
 
 export type {
   BrowserIpcEvent,
@@ -410,6 +404,8 @@ export interface DesktopApi {
   hideSession(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
   hideSessions(args: { sessions: Array<{ provider: string; id: string }> }): Promise<{ ok: boolean }>;
   createScratchDir(): Promise<string>;
+  /** The user's home directory — the zero-repository session cwd. */
+  homePath(): Promise<string>;
   workbenchOpenSession(args: {
     provider: string;
     id: string;
@@ -1362,48 +1358,8 @@ export interface DesktopApi {
   notesListTaskSessionLinks(): Promise<Array<{ noteId: string; title?: string; provider: string; sessionId: string }>>;
   /** The task a session is linked to, or null when it is unassigned. */
   notesTaskNoteIdForSession(args: { provider: string; sessionId: string }): Promise<string | null>;
-  /** Allocate/refresh a task's neutral workspace; returns its directory. */
-  notesEnsureTaskWorkspace(args: { noteId: string }): Promise<{ dir: string }>;
-  /** The neutral workspace directory and whether it exists; never creates it. */
-  notesTaskWorkspace(args: { noteId: string }): Promise<{ dir: string; exists: boolean }>;
-  /** Open the neutral workspace in the system file manager. */
-  notesOpenTaskWorkspace(args: { noteId: string }): Promise<{ ok: boolean }>;
   notesAddTaskProject(args: { noteId: string; projectPath: string }): Promise<{ noteId: string }>;
   notesRemoveTaskProject(args: { noteId: string; projectPath: string }): Promise<{ noteId: string }>;
-  /** Every worktree of a task, across the repositories it references. */
-  workbenchListWorktrees(args: {
-    noteId: string;
-    repos: Array<{ repoRoot: string; label: string }>;
-  }): Promise<TaskWorktreeListing>;
-  /** Checkouts of those same repositories left behind by tasks that are gone. */
-  workbenchListOrphanWorktrees(args: {
-    noteId: string;
-    repos: Array<{ repoRoot: string; label: string }>;
-  }): Promise<TaskWorktreeOrphans>;
-  workbenchCreateWorktree(args: {
-    noteId: string;
-    repoRoot: string;
-    branch: string;
-    baseBranch?: string;
-  }): Promise<{ path: string; branch: string; baseBranch: string; repoRoot: string }>;
-  /** Read-only risk report for one checkout; never deletes anything. */
-  workbenchInspectWorktree(args: {
-    repoRoot: string;
-    path: string;
-    baseBranch?: string;
-  }): Promise<WorktreeRiskReport>;
-  workbenchRemoveWorktree(args: {
-    repoRoot: string;
-    path: string;
-    /** Forces a checkout with uncommitted changes away; only after the user confirms. */
-    force?: boolean;
-  }): Promise<{ pruned: boolean }>;
-  workbenchPruneWorktrees(args: { repoRoot: string }): Promise<{ ok: boolean }>;
-  notesGetWorktreeSettings(args: { noteId: string }): Promise<TaskWorktreeState>;
-  notesSetWorktreeSettings(args: {
-    noteId: string;
-    patch: Partial<TaskWorktreeState>;
-  }): Promise<TaskWorktreeState>;
   notesListRoot(): Promise<
     Array<{
       noteId: string;
@@ -1863,6 +1819,7 @@ const api: DesktopApi = {
   hideSession: (args) => ipcRenderer.invoke("sessions:hide", args),
   hideSessions: (args) => ipcRenderer.invoke("sessions:hideMany", args),
   createScratchDir: () => ipcRenderer.invoke("workbench:createScratchDir"),
+  homePath: () => ipcRenderer.invoke("workbench:homePath"),
   workbenchOpenSession: (args) => ipcRenderer.invoke("workbench:openSession", args),
   setWorkbenchActiveSessions: (sessions) => {
     ipcRenderer.send("workbench:activeSessions", sessions);
@@ -2130,19 +2087,8 @@ const api: DesktopApi = {
   notesLinkSessionToTask: (args) => ipcRenderer.invoke("notes:linkSessionToTask", args),
   notesListTaskSessionLinks: () => ipcRenderer.invoke("notes:listTaskSessionLinks"),
   notesTaskNoteIdForSession: (args) => ipcRenderer.invoke("notes:taskNoteIdForSession", args),
-  notesEnsureTaskWorkspace: (args) => ipcRenderer.invoke("notes:ensureTaskWorkspace", args),
-  notesTaskWorkspace: (args) => ipcRenderer.invoke("notes:taskWorkspace", args),
-  notesOpenTaskWorkspace: (args) => ipcRenderer.invoke("notes:openTaskWorkspace", args),
   notesAddTaskProject: (args) => ipcRenderer.invoke("notes:addTaskProject", args),
   notesRemoveTaskProject: (args) => ipcRenderer.invoke("notes:removeTaskProject", args),
-  workbenchListWorktrees: (args) => ipcRenderer.invoke("workbench:worktrees", args),
-  workbenchListOrphanWorktrees: (args) => ipcRenderer.invoke("workbench:worktreeOrphans", args),
-  workbenchCreateWorktree: (args) => ipcRenderer.invoke("workbench:createWorktree", args),
-  workbenchInspectWorktree: (args) => ipcRenderer.invoke("workbench:inspectWorktree", args),
-  workbenchRemoveWorktree: (args) => ipcRenderer.invoke("workbench:removeWorktree", args),
-  workbenchPruneWorktrees: (args) => ipcRenderer.invoke("workbench:pruneWorktrees", args),
-  notesGetWorktreeSettings: (args) => ipcRenderer.invoke("notes:getWorktreeSettings", args),
-  notesSetWorktreeSettings: (args) => ipcRenderer.invoke("notes:setWorktreeSettings", args),
   notesListRoot: () => ipcRenderer.invoke("notes:listRoot"),
   notesListLinks: () => ipcRenderer.invoke("notes:listLinks"),
   notesListLinkedChildIds: () => ipcRenderer.invoke("notes:listLinkedChildIds"),

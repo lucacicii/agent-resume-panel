@@ -1,6 +1,4 @@
 import { spawn } from "node:child_process";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { loadSettings, effectivePanelHome } from "./store";
 import {
   buildMentionPrompt,
@@ -13,7 +11,8 @@ import {
   supportsSessionContext,
   type NewSessionExecutionMode
 } from "../terminal/commands";
-import { desktopDataDir } from "../panelHome";
+import { catalogDbPath } from "../panelHome";
+import { writeTaskContextFile } from "../notes/taskContext";
 import type { AgentProvider } from "../catalog/types";
 
 const USAGE = `Usage:
@@ -26,7 +25,8 @@ Workspace packs live in ~/.agent-resume-panel/settings.desktop.json
 under workbench.composerMentions.
 
 "arpm run" starts an agent in the current directory. With --note it also hands
-the task's context (address table, background knowledge) to the session.`;
+the task's context (facts, repositories, background knowledge) to the session,
+rendered fresh from the catalog.`;
 
 function mentionList(mentions: WorkbenchComposerMention[]): string {
   if (!mentions.length) return "No workspace mentions configured.";
@@ -141,16 +141,11 @@ function parseRunFlags(args: string[]): {
   return { provider, noteId, yolo };
 }
 
-/** The context block a task hands to its sessions. */
-function taskContextPath(panelHome: string, noteId: string): string {
-  return path.join(desktopDataDir(panelHome), "workspaces", noteId, "AGENTS.md");
-}
-
 /**
- * What `arpm run` executes. The session keeps the current directory — the panel
- * opens the terminal in the task's repository or in its neutral workspace —
- * and the task's context arrives through the agent's own
- * append-system-prompt channel either way.
+ * What `arpm run` executes. The session keeps the current directory — the
+ * working directory is wherever the user ran `arpm` — and the task's context
+ * is rendered from the catalog on demand and travels through the agent's own
+ * append-system-prompt channel.
  */
 export async function planArpmRun(input: {
   args: string[];
@@ -168,11 +163,13 @@ export async function planArpmRun(input: {
   let contextFile: string | undefined;
   let warning: string | undefined;
   if (flags.noteId) {
-    contextFile = taskContextPath(input.panelHome, flags.noteId);
-    if (!(await fs.stat(contextFile).then(() => true).catch(() => false))) {
-      throw new Error(
-        `No agent context for task ${flags.noteId} yet. Start a session for it from Agent Resume first.`
-      );
+    contextFile = await writeTaskContextFile({
+      panelHome: input.panelHome,
+      catalogDb: catalogDbPath(input.panelHome),
+      noteId: flags.noteId
+    });
+    if (!contextFile) {
+      throw new Error(`No task ${flags.noteId} in the Agent Resume catalog.`);
     }
     if (!supportsSessionContext(provider)) {
       warning = `${provider} has no session instruction flag; the task context is not injected.`;

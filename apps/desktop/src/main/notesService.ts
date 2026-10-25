@@ -7,7 +7,9 @@ import {
   effectivePanelHome,
   expandHome,
   extractTitle,
+  knowledgeText,
   loadSettings,
+  mergeTaskProjects,
   noteAssetsDirName,
   NotesStore,
   notesRoot,
@@ -26,17 +28,6 @@ import {
 } from "@agent-resume/core";
 import { desktopT } from "./i18nService";
 import { loadPanelDbPaths } from "./panelDatabases";
-import {
-  ensureTaskWorkspace,
-  isPanelInternalPath,
-  mergeTaskProjects,
-  sessionContextFile,
-  taskKnowledgeText,
-  taskWorkspaceDir,
-  worktreePolicyLines,
-  type TaskAddress
-} from "./taskWorkspace";
-import { worktreeContextForTask, type TaskWorktreeContext } from "./worktreeGit";
 
 let notesStore: NotesStore | null = null;
 let notesStoreKey = "";
@@ -92,11 +83,7 @@ export async function notesListTasks(options?: { includeArchived?: boolean }): P
   // is the panel's own, not a repository the task references.
   const sessionProjects = await store.listTaskSessionProjects();
   return items.map((item) => {
-    const list = mergeTaskProjects({
-      panelHome,
-      declared: item.work.projects ?? [],
-      sessionProjects: sessionProjects[item.noteId] ?? []
-    });
+    const list = mergeTaskProjects(panelHome, item.work.projects ?? [], sessionProjects[item.noteId] ?? []);
     return {
       ...item,
       work: { ...item.work, projects: list, primaryProject: item.work.primaryProject ?? list[0] }
@@ -111,126 +98,42 @@ export async function notesListTaskSessionLinks(): Promise<TaskSessionLink[]> {
   return store.listTaskSessionLinks();
 }
 
-function projectLabel(projectPath: string): string {
-  return projectPath.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || projectPath;
-}
-
 /**
- * Allocate (idempotently) the task's neutral workspace and refresh the
- * address table in its `AGENTS.md` / `CLAUDE.md`.
- *
- * The address it built is returned alongside, because every other place that
- * needs to describe the task to an agent — the Thunder preamble, the sandbox's
- * extra roots — must describe it the same way.
+ * A GTD task's execution context for AI chat / external agents: title, status,
+ * background markdown, referenced repositories and the note path. The primary
+ * repository (first one present on this machine) is what a chat uses as its
+ * working root; a task without one runs from home.
  */
-export async function notesEnsureTaskWorkspace(noteId: string): Promise<{
-  dir: string;
-  address: TaskAddress;
-  worktrees: TaskWorktreeContext;
+export async function notesGetTaskWorkspaceContext(noteId: string): Promise<{
+  title: string;
+  status: string;
+  backgroundMd: string;
+  projects: string[];
+  primaryDir?: string;
+  noteAbsPath: string;
 }> {
   const settings = await loadSettings();
   const panelHome = effectivePanelHome(settings);
-  const paths = await loadPanelDbPaths(settings);
   const store = await getDesktopNotesStore();
   const { record, content } = await notesRead(noteId);
   const doc = parseNoteDocument(content);
 
   const declared = (doc.frontmatter.projects ?? []).map((entry) => entry.trim()).filter(Boolean);
   const fromSessions = await store.listTaskSessionProjects();
-  const projects = mergeTaskProjects({
-    panelHome,
-    declared,
-    sessionProjects: fromSessions[noteId] ?? []
-  });
+  const projects = mergeTaskProjects(panelHome, declared, fromSessions[noteId] ?? []);
 
-  const worktrees = await worktreeContextForTask({
-    panelHome,
-    desktopDb: paths.desktopDb,
-    noteId,
-    // Keyed by the path the task declares, which is what the note and the panel
-    // both spell a repository with — not the git root it resolves to.
-    repos: projects.map((projectPath) => ({ repoRoot: projectPath, label: projectLabel(projectPath) }))
-  });
-
-  const address: TaskAddress = {
-    noteId,
-    title: record.title || extractTitle(doc.body) || record.filename || noteId,
-    status: record.gtdStatus ?? "inbox",
-    next: doc.frontmatter.next,
-    decision: doc.frontmatter.decision,
-    noteAbsPath: absFromRelMdPath(panelHome, record.relMdPath),
-    // The worktree convention is opt-in per task, so the block only gains a
-    // location while the switch is on; its absence is what keeps the text
-    // byte-identical for every task that never turned it on.
-    ...(worktrees.enabled ? { worktreeRoot: worktrees.root } : {}),
-    projects: await Promise.all(projects.map(async (projectPath) => ({
-      path: projectPath,
-      label: projectLabel(projectPath),
-      exists: await fs.stat(projectPath).then(() => true).catch(() => false),
-      ...(worktrees.enabled && worktrees.worktrees[projectPath] ? { worktrees: worktrees.worktrees[projectPath] } : {})
-    })))
-  };
-
-  const { dir } = await ensureTaskWorkspace({
-    panelHome,
-    catalogDb: paths.catalogDb,
-    address,
-    // The note's background knowledge rides along, so an agent starting in the
-    // workspace has the task's context without opening the note.
-    knowledge: taskKnowledgeText(doc.body)
-  });
-  return { dir, address, worktrees };
-}
-
-/**
- * Retrieve a GTD task's complete execution context for AI chat / external agents:
- * neutral workspace directory, background markdown, referenced shared projects, and note path.
- *
- * The worktree lines and directories come from the same address the managed block
- * is written from, so an agent told about the task by chat and an agent reading
- * `AGENTS.md` are told the same thing.
- */
-export async function notesGetTaskWorkspaceContext(noteId: string): Promise<{
-  dir: string;
-  title: string;
-  status: string;
-  backgroundMd: string;
-  projects: string[];
-  noteAbsPath: string;
-  /** Where this task's checkouts belong, or the plain convention when unset. */
-  worktreeLines: string[];
-  /** Existing checkout directories, for a sandbox's extra roots. */
-  worktreeDirs: string[];
-}> {
-  const { dir, address, worktrees } = await notesEnsureTaskWorkspace(noteId);
-  const { content } = await notesRead(noteId);
-  const doc = parseNoteDocument(content);
-
-  const backgroundMd = taskKnowledgeText(doc.body) || doc.body.trim();
+  const existing = await Promise.all(
+    projects.map(async (projectPath) => [projectPath, await fs.stat(projectPath).then(() => true).catch(() => false)] as const)
+  );
 
   return {
-    dir,
-    title: address.title,
-    status: address.status ?? "inbox",
-    backgroundMd,
-    projects: address.projects.map((project) => project.path),
-    noteAbsPath: address.noteAbsPath,
-    worktreeLines: worktreePolicyLines(address),
-    worktreeDirs: worktrees.dirs
+    title: record.title || extractTitle(doc.body) || record.filename || noteId,
+    status: record.gtdStatus ?? "inbox",
+    backgroundMd: knowledgeText(doc.body) || doc.body.trim(),
+    projects,
+    ...(existing.find(([, ok]) => ok) ? { primaryDir: existing.find(([, ok]) => ok)![0] } : {}),
+    noteAbsPath: absFromRelMdPath(panelHome, record.relMdPath)
   };
-}
-
-/**
- * The task's context block for a session that runs in `cwd`: the block is
- * refreshed on demand, and returned only when the session runs outside the
- * workspace (there the agents read the file from their working directory).
- */
-export async function notesTaskSessionContext(args: {
-  noteId: string;
-  cwd: string;
-}): Promise<{ file?: string }> {
-  const { dir } = await notesEnsureTaskWorkspace(args.noteId);
-  return { file: sessionContextFile(dir, args.cwd) };
 }
 
 /** The task a session belongs to, when it is linked to one. */
@@ -242,21 +145,6 @@ export async function notesTaskNoteIdForSession(args: {
   return store.findTaskNoteIdForSession(args.provider, args.sessionId);
 }
 
-/** Best-effort refresh: the workspace must never block the primary write. */
-async function refreshTaskWorkspace(noteId: string): Promise<void> {
-  try {
-    // The workspace is allocated on demand when a session is launched into it, so
-    // before that there is nothing to refresh — and no empty directory to leave behind.
-    const panelHome = effectivePanelHome(await loadSettings());
-    const dir = taskWorkspaceDir(panelHome, noteId);
-    if (!(await fs.stat(dir).then(() => true).catch(() => false))) return;
-    await notesEnsureTaskWorkspace(noteId);
-  } catch {
-    /* degrade to "no address table" rather than failing the caller */
-  }
-}
-
-/** Create a task. It references projects instead of belonging to one. */
 export async function notesCreateTask(args: {
   title?: string;
   next?: string;
@@ -269,7 +157,6 @@ export async function notesCreateTask(args: {
   const store = await getDesktopNotesStore();
   const record = await store.createTask(args);
   await store.setNoteGtdStatus(record.noteId, args.status ?? "inbox");
-  await refreshTaskWorkspace(record.noteId);
   return record;
 }
 
@@ -288,7 +175,6 @@ export async function notesRenameTask(noteId: string, title: string): Promise<No
   }
   const normalized = normalizeTaskDocument(doc.frontmatter, doc.body, { name });
   const updated = await store.writeNoteContent(noteId, buildNoteDocument(normalized.frontmatter, normalized.body));
-  await refreshTaskWorkspace(noteId);
   return updated;
 }
 
@@ -321,18 +207,19 @@ export async function notesLinkSessionToTask(args: {
         previousOwner,
         buildNoteDocument({ ...previousDoc.frontmatter, sessions: remaining }, previousDoc.body)
       );
-      await refreshTaskWorkspace(previousOwner);
     }
   }
   const sessions = new Set(doc.frontmatter.sessions ?? []);
   sessions.add(args.sessionKey);
   const frontmatter = { ...doc.frontmatter, sessions: [...sessions] };
-  // A session running in the panel's own workspace directory does not make that
+  // A session running in the panel's own data directories does not make that
   // directory a repository of the task; only the session link is recorded.
-  const referenceable = args.projectPath
-    && !isPanelInternalPath(effectivePanelHome(await loadSettings()), args.projectPath)
-    ? args.projectPath
-    : undefined;
+  const panelHome = effectivePanelHome(await loadSettings());
+  const insidePanelData = (candidate: string): boolean => {
+    const rel = path.relative(path.resolve(panelHome), path.resolve(candidate));
+    return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  };
+  const referenceable = args.projectPath && !insidePanelData(args.projectPath) ? args.projectPath : undefined;
   if (referenceable) {
     const projects = new Set(doc.frontmatter.projects ?? []);
     projects.add(referenceable);
@@ -340,7 +227,6 @@ export async function notesLinkSessionToTask(args: {
     if (!frontmatter.primaryProject) frontmatter.primaryProject = referenceable;
   }
   const updated = await store.writeNoteContent(args.noteId, buildNoteDocument(frontmatter, doc.body));
-  await refreshTaskWorkspace(args.noteId);
   return updated;
 }
 
@@ -367,7 +253,6 @@ export async function notesAddTaskProject(args: {
     primaryProject: doc.frontmatter.primaryProject ?? args.projectPath
   };
   const updated = await store.writeNoteContent(args.noteId, buildNoteDocument(frontmatter, doc.body));
-  await refreshTaskWorkspace(args.noteId);
   return updated;
 }
 
@@ -402,7 +287,6 @@ export async function notesRemoveTaskProject(args: {
   }
 
   const updated = await store.writeNoteContent(args.noteId, buildNoteDocument(frontmatter, doc.body));
-  await refreshTaskWorkspace(args.noteId);
   return updated;
 }
 
@@ -442,7 +326,6 @@ export async function notesWrite(
   // Editing a task (including its background knowledge) keeps the
   // workspace's address table in step; other notes have no workspace.
   if (parseNoteDocument(updated.content ?? content).frontmatter.work) {
-    await refreshTaskWorkspace(noteId);
   }
   return updated;
 }
@@ -482,7 +365,6 @@ export async function notesRename(noteId: string, filename: string): Promise<Not
   const store = await getDesktopNotesStore();
   const renamed = await store.renameNote(noteId, filename);
   // The address table points at the note; a rename moves the target.
-  await refreshTaskWorkspace(noteId);
   return renamed;
 }
 
@@ -537,23 +419,6 @@ export async function notesOpenFolder(): Promise<{ ok: boolean }> {
   const root = notesRoot(store.getPanelHome());
   await shell.openPath(root);
   return { ok: true };
-}
-
-/**
- * The task's neutral workspace: where it is and whether it exists yet.
- * Never creates it — the directory is allocated when a session launches there.
- */
-export async function notesTaskWorkspace(noteId: string): Promise<{ dir: string; exists: boolean }> {
-  const settings = await loadSettings();
-  const dir = taskWorkspaceDir(effectivePanelHome(settings), noteId);
-  return { dir, exists: await fs.stat(dir).then(() => true).catch(() => false) };
-}
-
-/** Open the task's workspace in the system file manager; no-op before it exists. */
-export async function notesOpenTaskWorkspace(noteId: string): Promise<{ ok: boolean }> {
-  const { dir, exists } = await notesTaskWorkspace(noteId);
-  if (exists) await shell.openPath(dir);
-  return { ok: exists };
 }
 
 export async function settingsOpenPanelHome(): Promise<{ ok: boolean }> {
