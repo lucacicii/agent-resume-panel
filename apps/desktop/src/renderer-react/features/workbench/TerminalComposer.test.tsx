@@ -134,7 +134,12 @@ async function renderComposer(options: {
     })),
     listProjects: vi.fn(async () => []),
     notesListTasks: vi.fn(async () => []),
-    notesList: vi.fn(async () => []),
+    notesList: vi.fn(async () => [
+      { noteId: "note-1", title: "Architecture Plan", relDir: "docs", relMdPath: "notes/docs/architecture-plan.md" }
+    ]),
+    notesAbsolutePaths: vi.fn(async ({ relMdPaths }: { relMdPaths: string[] }) =>
+      Object.fromEntries(relMdPaths.map((rel) => [rel, `/Users/lucas/.agent-resume-panel/${rel}`]))
+    ),
     thunderChatListConversations: vi.fn(async () => []),
     notesClipboardHasImage: vi.fn(() => false),
     workbenchPasteClipboardImage: vi.fn(async () => null)
@@ -272,6 +277,18 @@ describe("TerminalComposer", () => {
     expect(await within(listbox).findByText("#src")).toBeTruthy();
     fireEvent.keyDown(textbox(), { key: "Tab" });
     expect(onChange).toHaveBeenCalledWith("please inspect #src");
+  });
+
+  it("hands a note to the agent as a file it can open, not a pasted body", async () => {
+    const { onChange } = await renderComposer({ cwd: "/other", projectPath: "/work/app" });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "read @Arch" } });
+    const listbox = await screen.findByRole("listbox", { name: "@ references" });
+    expect(within(listbox).getByText("@Architecture Plan")).toBeTruthy();
+    fireEvent.keyDown(textbox(), { key: "Tab" });
+    expect(onChange).toHaveBeenCalledWith(
+      "read /Users/lucas/.agent-resume-panel/notes/docs/architecture-plan.md "
+    );
   });
 
   it("offers @ references and types the absolute path the agent can open", async () => {

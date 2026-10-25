@@ -1326,6 +1326,8 @@ export interface DesktopApi {
   notesTaskNoteIdForSession(args: { provider: string; sessionId: string }): Promise<string | null>;
   notesAddTaskProject(args: { noteId: string; projectPath: string }): Promise<{ noteId: string }>;
   notesRemoveTaskProject(args: { noteId: string; projectPath: string }): Promise<{ noteId: string }>;
+  /** Absolute path per note file, keyed by `relMdPath`. */
+  notesAbsolutePaths(args: { relMdPaths: string[] }): Promise<Record<string, string>>;
   notesListRoot(): Promise<
     Array<{
       noteId: string;
@@ -2058,6 +2060,7 @@ const api: DesktopApi = {
   notesTaskNoteIdForSession: (args) => ipcRenderer.invoke("notes:taskNoteIdForSession", args),
   notesAddTaskProject: (args) => ipcRenderer.invoke("notes:addTaskProject", args),
   notesRemoveTaskProject: (args) => ipcRenderer.invoke("notes:removeTaskProject", args),
+  notesAbsolutePaths: (args) => ipcRenderer.invoke("notes:absolutePaths", args),
   notesListRoot: () => ipcRenderer.invoke("notes:listRoot"),
   notesListLinks: () => ipcRenderer.invoke("notes:listLinks"),
   notesListLinkedChildIds: () => ipcRenderer.invoke("notes:listLinkedChildIds"),

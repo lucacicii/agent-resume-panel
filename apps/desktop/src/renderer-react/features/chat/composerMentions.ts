@@ -28,10 +28,14 @@ export type MentionTask = {
   title?: string;
   gtdStatus?: string;
   updatedAtMs?: number;
+  /** Note file behind the task, relative to the panel home. */
+  relMdPath?: string;
+  /** Absolute path to that file, as handed to a raw-text surface. */
+  path?: string;
   work?: { projects?: string[]; primaryProject?: string };
 };
 
-export type MentionNote = { id: string; title: string; folder?: string };
+export type MentionNote = { id: string; title: string; folder?: string; relMdPath?: string; path?: string };
 export type MentionConversation = { id: string; title?: string; message_count?: number };
 export type MentionProject = { id: string; label: string; path: string };
 
@@ -115,10 +119,33 @@ export function useMentionSources(): MentionSources {
         next.notes = (Array.isArray(notes) ? notes : []).map((note) => ({
           id: note.noteId,
           title: note.title || note.noteId,
-          folder: note.relDir
+          folder: note.relDir,
+          relMdPath: note.relMdPath
         }));
       } catch {
         // notes store unavailable
+      }
+      // A composer that types into a running agent cannot paste a note's body
+      // safely, so it hands over the note's file instead. One batch call covers
+      // both lists; a failure just leaves those entries without a path.
+      try {
+        const rels = [
+          ...next.notes.map((note) => note.relMdPath ?? ""),
+          ...next.tasks.map((task) => task.relMdPath ?? "")
+        ].filter(Boolean);
+        if (rels.length && typeof desktopApi().notesAbsolutePaths === "function") {
+          const paths = await desktopApi().notesAbsolutePaths({ relMdPaths: rels });
+          next.notes = next.notes.map((note) =>
+            note.relMdPath && paths[note.relMdPath] ? { ...note, path: paths[note.relMdPath] } : note
+          );
+          next.tasks = next.tasks.map((task) =>
+            task.relMdPath && paths[task.relMdPath]
+              ? { ...task, path: paths[task.relMdPath] }
+              : task
+          );
+        }
+      } catch {
+        // paths are a convenience; the mention still lists without one
       }
       try {
         const conversations = await desktopApi().thunderChatListConversations();
@@ -192,7 +219,7 @@ export function buildMentionSuggestions(
         subtitle: `[${statusLabel}]`,
         badge: "任务",
         gtdStatus: task.gtdStatus,
-        path: task.work?.primaryProject || task.work?.projects?.[0]
+        path: task.path || task.work?.primaryProject || task.work?.projects?.[0]
       });
     }
   }
@@ -203,7 +230,8 @@ export function buildMentionSuggestions(
         id: note.id,
         title: note.title,
         subtitle: note.folder || "笔记",
-        badge: "笔记"
+        badge: "笔记",
+        path: note.path
       });
     }
   }

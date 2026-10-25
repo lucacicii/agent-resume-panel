@@ -3934,6 +3934,23 @@ function registerIpc(): void {
       return source ? { ...record, accent: taskAccent(source, record.noteId) } : record;
     }
   );
+  /**
+   * Absolute paths for note files, so a composer that types into a running agent
+   * can hand it something it can open itself. Resolved here with the same helper
+   * the notes store uses, rather than re-deriving the panel-home layout in the
+   * renderer.
+   */
+  ipcMain.handle("notes:absolutePaths", async (_event, args: { relMdPaths?: unknown }) => {
+    const rels = Array.isArray(args?.relMdPaths)
+      ? args.relMdPaths.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      : [];
+    if (!rels.length) return {} as Record<string, string>;
+    const settings = await loadSettings();
+    const panelHome = effectivePanelHome(settings);
+    const out: Record<string, string> = {};
+    for (const rel of rels) out[rel] = absFromRelMdPath(panelHome, rel);
+    return out;
+  });
   ipcMain.handle("notes:listRoot", async () => notesListRootNotes());
   ipcMain.handle("notes:listLinks", async () => notesListLinks());
   ipcMain.handle("notes:listLinkedChildIds", async () => notesListLinkedChildIds());
