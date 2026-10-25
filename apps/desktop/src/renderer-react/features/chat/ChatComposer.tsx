@@ -277,6 +277,12 @@ interface ChatComposerProps {
       attachments?: ThunderImageAttachment[];
       /** Other `@pack` directories cited in the same message, granted as extra roots. */
       extraWorkspaceDirs?: string[];
+      /**
+       * What the agent receives, when it differs from the text on screen: the
+       * compiled context blocks (@note / #file / skill instructions). The shown
+       * message stays the user's own words.
+       */
+      agentPrompt?: string;
     }
   ) => void;
   onCancel: () => void;
@@ -1214,38 +1220,27 @@ export function ChatComposer({
         .map((pack) => pack.cwd)
         .filter((dir) => dir && dir.replace(/[\\/]+$/, "") !== workspaceDir.replace(/[\\/]+$/, ""))
     )];
-    // Pack tokens are UI affordances: the grant above carries the meaning, and a
-    // bare `@anfeng` in the prompt text would name nothing the model can resolve.
-    let bodyText = currentText;
-    for (const pack of citedPacks) {
-      bodyText = bodyText.replace(
-        new RegExp(`(^|\\s)@${pack.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=\\s|$)`, "g"),
-        "$1"
-      );
-    }
-    bodyText = bodyText.replace(/[ \t]{2,}/g, " ").trim();
-    if (extraWorkspaceDirs.length > 0) {
-      bodyText = `[Additional workspace roots (read/write): ${extraWorkspaceDirs.join(", ")}]\n\n${bodyText}`;
-    }
-
     try {
-      const effectivePrompt = await compileChatPrompt(bodyText, {
+      const effectivePrompt = await compileChatPrompt(currentText, {
         workspaceDir,
         skills,
         tools,
         referencedMentions: mentionsToCompile,
         referencedFiles: filesToCompile
       });
-      onSend(effectivePrompt || "Please analyze the attached image.", {
+      // The shown message is what the user typed; the compiled blocks travel
+      // separately, so the transcript never turns into prompt syntax.
+      onSend(currentText || "Please analyze the attached image.", {
         workspaceDir,
         model: selectedModel,
         thinking_level: thinkingLevel,
         extraWorkspaceDirs: extraWorkspaceDirs.length > 0 ? extraWorkspaceDirs : undefined,
+        agentPrompt: effectivePrompt || undefined,
         attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined
       });
     } catch (err) {
       console.warn("Failed to compile prompt context:", err);
-      onSend(bodyText || "Please analyze the attached image.", {
+      onSend(currentText || "Please analyze the attached image.", {
         workspaceDir,
         model: selectedModel,
         thinking_level: thinkingLevel,

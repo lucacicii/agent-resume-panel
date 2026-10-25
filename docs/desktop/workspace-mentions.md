@@ -20,7 +20,7 @@ Typing it in the **board chat** or the **Quick Agent** window points the convers
 
 A pack is only a name for a directory. It grants no extra folders: a Thunder run is confined to its working directory, and the directories it may also read are decided by the run itself (a GTD task's referenced repositories), not by a pack.
 
-Cite **several packs in one message** (`@front @back …`) and every pack except the bound one is granted to that run as an additional root — same read/write standing as the workspace — so one message can edit and cross-check repositories that share no parent directory. The grant is real: a short `[Additional workspace roots (read/write): …]` line tells the agent which extra directories it may touch, and the pack names themselves are dropped from the text.
+Cite **several packs in one message** (`@front @back …`) and every pack except the bound one is granted to that run as an additional root — same read/write standing as the workspace — so one message can edit and cross-check repositories that share no parent directory. The grant is real and invisible to you: the message on screen stays exactly what you typed (`@front @back 改一下登录接口`), while the agent receives the same sentence plus a `[Additional workspace roots (read/write): …]` line naming the extra directories it may touch.
 
 The conversation itself continues: switching packs does **not** start a new session. A notice confirms the working directory changed.
 
@@ -76,7 +76,7 @@ With no remembered workspace, a fresh conversation runs from your home directory
 
 pack 只是目录的名字，不授予任何额外目录：一次 Thunder 运行被限制在它的工作目录内，另外可读的目录由那次运行本身决定（GTD 任务引用的仓库），与 pack 无关。
 
-可以在**一条消息里艾特多个 pack**（`@front @back …`）：除当前绑定的那个之外，每个被艾特的 pack 都会作为本次运行的**额外根**授予——与工作目录同权（读写），所以一条消息就能同时修改、相互参考不在同一父目录下的多个仓库。这个授权是真的：会有一行 `[Additional workspace roots (read/write): …]` 告诉 agent 它能碰哪些额外目录，而 pack 名字本身会从文本里剥掉。
+可以在**一条消息里艾特多个 pack**（`@front @back …`）：除当前绑定的那个之外，每个被艾特的 pack 都会作为本次运行的**额外根**授予——与工作目录同权（读写），所以一条消息就能同时修改、相互参考不在同一父目录下的多个仓库。这个授权是真的、但对你不可见：屏幕上就是你打的那句话（`@front @back 改一下登录接口`），而 agent 收到的是同一句 + 一行 `[Additional workspace roots (read/write): …]`，列出它能碰的额外目录。
 
 对话本身是**延续**的：切换 pack 不会开新会话，只会弹一条提示告诉你工作目录变了。
 

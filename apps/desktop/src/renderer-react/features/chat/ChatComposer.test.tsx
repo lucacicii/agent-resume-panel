@@ -313,12 +313,11 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
       const [prompt, options] = onSend.mock.calls[0];
       // The root stays the bound workspace; the other pack joins as an extra root.
       expect(options.extraWorkspaceDirs).toEqual(["/work/front"]);
-      // Pack tokens are dropped, and the grant is stated plainly instead.
       expect(options.workspaceDir).toBe("/other/back");
-      expect(prompt).toContain("Additional workspace roots (read/write): /work/front");
-      expect(prompt).toContain("改一下登录接口");
-      expect(prompt).not.toContain("@front");
-      expect(prompt).not.toContain("@back");
+      // Shown text is the user's own words, tokens and all; the agent's copy and
+      // the roots line travel separately.
+      expect(prompt).toBe("@front @back 改一下登录接口");
+      expect(options.agentPrompt).not.toContain("Additional workspace roots");
     });
   });
 
@@ -540,14 +539,12 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith(
-        expect.stringContaining("[Referenced Note: Project Plan]"),
-        expect.anything()
-      );
-      expect(onSend).toHaveBeenCalledWith(
-        expect.stringContaining("Detailed project plan contents."),
-        expect.anything()
-      );
+      // What the user sees stays their own sentence; the compiled note block is
+      // carried alongside for the agent only.
+      const [shown, options] = onSend.mock.calls[0];
+      expect(shown).toBe("@Project Plan please review this plan");
+      expect(options.agentPrompt).toContain("[Referenced Note: Project Plan]");
+      expect(options.agentPrompt).toContain("Detailed project plan contents.");
     });
   });
   it("keeps the Cache badge always visible during streaming and renders reasoning tokens", () => {

@@ -59,6 +59,15 @@ export type LiveSegment =
 export type RenderedChatMessage = ThunderChatMessage & {
   segments?: LiveSegment[];
   /**
+   * What this user turn actually sent, when it differs from `content`.
+   *
+   * `content` is the user's own words — the row the feed paints — while the
+   * agent received the compiled blocks (@note / #file / skill instructions)
+   * under this. Kept in memory so "resend" repeats the same run; a reload drops
+   * it and resend falls back to the visible text.
+   */
+  agentPrompt?: string;
+  /**
    * The run's turns, when this row stands for a whole run — the row a reopened
    * session reads back, and the row a run leaves behind when it finishes. Empty
    * on the row a run is streaming into, whose turns live on the session stream
@@ -503,6 +512,38 @@ function freezeSegments(segments: LiveSegment[], content: string): LiveSegment[]
  *    of dots that hangs off it — and a run that reads back as a flat list of
  *    per-turn blocks is a different thing from the run the user just watched.
  */
+/**
+ * Strip the machine prefixes this app prepends for the agent's benefit from a
+ * user turn read back out of a conversation.
+ *
+ * The transcript is a record of what the user said; the blocks below are
+ * transport (workspace, granted roots, task context) and never something a
+ * person typed. A reopened session reads the daemon's copy, so cleaning here is
+ * what keeps that row identical to the one the composer showed when it was sent.
+ */
+export function stripPromptEnvelope(content: string): string {
+  let text = content;
+  // Leading machine lines, in the order they are assembled.
+  const leading = [
+    /^\[Additional workspace roots \(read\/write\):[^\]]*\]\n*/,
+    /^\[Active Workspace:[^\]]*\]\n*/,
+    /^\[Workspace [^\]]*\](?:\n(?!\n)[^\n]*)*\n*/,
+    /^\[GTD Task Context\][\s\S]*?\[End Task Context\]\n*/
+  ];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const pattern of leading) {
+      const next = text.replace(pattern, "");
+      if (next !== text) {
+        text = next;
+        changed = true;
+      }
+    }
+  }
+  return text.trim() ? text : content;
+}
+
 export function buildConversationRows(rawMessages: ThunderChatMessage[]): RenderedChatMessage[] {
   const result: RenderedChatMessage[] = [];
   const toolResultsByCallId = new Map<string, string>();
@@ -535,7 +576,12 @@ export function buildConversationRows(rawMessages: ThunderChatMessage[]): Render
       // on the far side of it can belong to the run being collected.
       flushRun(result, run);
       run = [];
-      result.push(msg);
+      const display = typeof msg.content === "string" ? stripPromptEnvelope(msg.content) : msg.content;
+      result.push({
+        ...msg,
+        content: display,
+        ...(display !== msg.content ? { agentPrompt: msg.content ?? undefined } : {})
+      });
       continue;
     }
 
@@ -1407,6 +1453,8 @@ export function useThunderChat() {
         thinking_level?: string;
         roleContext?: string;
         extraWorkspaceDirs?: string[];
+        /** Compiled context the agent receives, when it differs from the shown text. */
+        agentPrompt?: string;
         attachments?: ThunderImageAttachment[];
       }
     ) => {
@@ -1422,6 +1470,7 @@ export function useThunderChat() {
       // Prevent starting duplicate tasks in the same session while it is streaming
       if (activeStreamsRef.current.has(effectiveSessionId)) return;
 
+      const agentPrompt = (options?.agentPrompt ?? prompt).trim() || trimmed;
       const parts = options?.attachments?.length
         ? [
             { type: "text" as const, text: trimmed },
@@ -1435,10 +1484,11 @@ export function useThunderChat() {
           ]
         : undefined;
 
-      const userMsg: ThunderChatMessage = {
+      const userMsg: RenderedChatMessage = {
         role: "user",
         content: trimmed,
-        parts
+        parts,
+        ...(agentPrompt !== trimmed ? { agentPrompt } : {})
       };
 
       setMessages((prev) => [...prev, userMsg]);
@@ -1493,7 +1543,7 @@ export function useThunderChat() {
         sessionId: effectiveSessionId,
         model,
         workspaceDir: ws,
-        prompt: trimmed
+        prompt: agentPrompt
       });
 
       try {
@@ -1502,7 +1552,7 @@ export function useThunderChat() {
 
         const result = await desktopApi().thunderChatRunTask({
           taskId,
-          prompt: trimmed,
+          prompt: agentPrompt,
           roleContext: options?.roleContext,
           extraWorkspaceDirs: options?.extraWorkspaceDirs,
           sessionId: effectiveSessionId,
@@ -1564,7 +1614,7 @@ export function useThunderChat() {
       const targetMsg = messages[userIndex];
       if (targetMsg.role !== "user" || !targetMsg.content) return;
 
-      const prompt = targetMsg.content;
+      const prompt = targetMsg.agentPrompt ?? targetMsg.content;
 
       // Truncate in-memory messages to before this user message
       setMessages((prev) => prev.slice(0, userIndex));

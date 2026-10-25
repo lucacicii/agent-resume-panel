@@ -803,6 +803,13 @@ export class ThunderClient {
             effectivePrompt = `[Active Workspace: ${ws}]\n\n${options.prompt}`;
           }
 
+          // Roots the caller granted on top of the jail root. Stated here, in the
+          // transport, not in the composer: the user's message stays exactly what
+          // they typed on screen.
+          if (options.extraWorkspaceDirs && options.extraWorkspaceDirs.length > 0) {
+            effectivePrompt = `[Additional workspace roots (read/write): ${options.extraWorkspaceDirs.join(", ")}]\n\n${effectivePrompt}`;
+          }
+
           if (options.roleContext && options.roleContext.trim()) {
             effectivePrompt = `${options.roleContext.trim()}\n\n${effectivePrompt}`;
           }
