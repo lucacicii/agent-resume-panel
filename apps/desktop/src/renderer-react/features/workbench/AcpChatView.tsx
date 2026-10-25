@@ -1209,17 +1209,9 @@ export function AcpChatView({
           messages.map((message, index) => {
             const outbound = isOutboundRole(message.role);
             const prev = index > 0 ? messages[index - 1] : undefined;
-            const next = index < messages.length - 1 ? messages[index + 1] : undefined;
             const currentDay = dayKey(message.timestamp);
             const prevDay = prev ? dayKey(prev.timestamp) : "";
             const showDay = Boolean(currentDay) && currentDay !== prevDay;
-            const prevSameSide = Boolean(prev) && isOutboundRole(prev!.role) === outbound && dayKey(prev!.timestamp) === currentDay;
-            const nextSameSide = Boolean(next) && isOutboundRole(next!.role) === outbound && dayKey(next!.timestamp) === currentDay;
-            const showSender = !outbound && !prevSameSide;
-            const clusterClass = [
-              prevSameSide ? "is-cluster-continue" : "is-cluster-start",
-              nextSameSide ? "is-cluster-before" : "is-cluster-end"
-            ].join(" ");
             const timeLabel = formatMessageTime(message.timestamp);
             const canCopy = !outbound && !message.streaming && Boolean(message.text?.trim());
             return (
@@ -1229,56 +1221,59 @@ export function AcpChatView({
                     <span>{formatDaySeparator(message.timestamp)}</span>
                   </div>
                 ) : null}
-                <div
-                  className={`chat-message ${outbound ? "chat-message-out" : "chat-message-in"} ${clusterClass}`}
-                >
-                  <div
-                    className={`chat-bubble ${outbound ? "user" : "assistant"}${message.streaming ? " streaming" : ""}`}
-                  >
-                    {showSender ? (
-                      <div className="chat-sender">
+                {/* Same row anatomy as the board chat: avatar, container, bubble.
+                    ACP keeps only what it owns — plan cards, attachments, tool
+                    chips, the typing state — as blocks inside that container. */}
+                <div className={`tb-message-row${outbound ? " is-user" : " is-assistant"}`}>
+                  <div className="tb-message-avatar">
+                    {outbound ? (
+                      <span className="tb-avatar-user">You</span>
+                    ) : (
+                      <span className="tb-avatar-agent" title={providerLabel(provider, t)}>
                         <ProviderIcon provider={provider} size={ICON_SIZE.dense} aria-hidden="true" />
-                        {providerLabel(provider, t)}
-                      </div>
-                    ) : null}
-                    <div className="chat-body">
-                      {message.role === "plan" ? (
-                        <div className="wb-acp-plan-inline">
-                          <div className="wb-acp-plan-inline-head">
-                            <ThemeIcon name="file-text" size={ICON_SIZE.dense} aria-hidden="true" />
-                            <strong>{t("desktop.workbench.acpPlanTitle")}</strong>
-                          </div>
-                          <p className="wb-acp-plan-inline-snippet">
-                            {message.text.split("\n").find((line) => line.trim())?.slice(0, 160) ||
-                              t("desktop.workbench.acpPlanEmpty")}
-                          </p>
-                          <button
-                            type="button"
-                            className="ghost-btn wb-acp-plan-preview-btn"
-                            onClick={() =>
-                              openPlanPreview({
-                                content: message.text,
-                                updatedAt: message.timestamp || Date.now(),
-                                source: "message"
-                              })
-                            }
-                          >
-                            {t("desktop.workbench.acpPlanPreview")}
-                          </button>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="tb-message-container">
+                    {message.role === "plan" ? (
+                      <div className="tb-message-bubble wb-acp-plan-inline">
+                        <div className="wb-acp-plan-inline-head">
+                          <ThemeIcon name="file-text" size={ICON_SIZE.dense} aria-hidden="true" />
+                          <strong>{t("desktop.workbench.acpPlanTitle")}</strong>
                         </div>
-                      ) : outbound ? (
-                        <div className="chat-user-text">{message.text}</div>
-                      ) : message.text ? (
+                        <p className="wb-acp-plan-inline-snippet">
+                          {message.text.split("\n").find((line) => line.trim())?.slice(0, 160) ||
+                            t("desktop.workbench.acpPlanEmpty")}
+                        </p>
+                        <button
+                          type="button"
+                          className="ghost-btn wb-acp-plan-preview-btn"
+                          onClick={() =>
+                            openPlanPreview({
+                              content: message.text,
+                              updatedAt: message.timestamp || Date.now(),
+                              source: "message"
+                            })
+                          }
+                        >
+                          {t("desktop.workbench.acpPlanPreview")}
+                        </button>
+                      </div>
+                    ) : outbound ? (
+                      <div className="tb-message-bubble">{message.text}</div>
+                    ) : message.text ? (
+                      <div className="tb-message-bubble">
                         <StreamdownRenderer
-                          className="chat-body-text markdown-body"
+                          className="tb-markdown-view markdown-body"
                           content={message.text}
                           hardBreaks
                         />
-                      ) : null}
-                      {message.streaming ? (
-                        <JumpingDots label={t("desktop.workbench.acpThinking")} />
-                      ) : null}
-                    </div>
+                      </div>
+                    ) : null}
+
+                    {message.streaming ? <JumpingDots label={t("desktop.workbench.acpThinking")} /> : null}
+
                     {message.images?.length || message.files?.length ? (
                       <div className="wb-acp-message-attachments">
                         {message.files?.map((file) => (
@@ -1295,6 +1290,7 @@ export function AcpChatView({
                         ))}
                       </div>
                     ) : null}
+
                     {message.toolCalls?.length ? (
                       <div className="wb-acp-tools">
                         {message.toolCalls.map((tool) => (
@@ -1302,16 +1298,17 @@ export function AcpChatView({
                         ))}
                       </div>
                     ) : null}
+
                     {timeLabel || canCopy ? (
-                      <div className="chat-footer">
+                      <div className={`tb-message-user-toolbar${outbound ? "" : " is-assistant"}`}>
                         {canCopy ? (
                           <button
                             type="button"
-                            className="chat-copy-btn"
+                            className="tb-message-action-btn"
                             onClick={() => void copyText(message.text)}
+                            title={t("desktop.common.copy")}
                           >
                             <ThemeIcon name="copy" size={ICON_SIZE.inline} aria-hidden="true" />
-                            {t("desktop.common.copy")}
                           </button>
                         ) : null}
                         {timeLabel ? <span className="chat-footer-meta">{timeLabel}</span> : null}
@@ -1325,15 +1322,14 @@ export function AcpChatView({
         )}
         {showTypingIndicator ? (
           <div className="wb-acp-message-block">
-            <div className="chat-message chat-message-in is-cluster-start is-cluster-end">
-              <div className="chat-bubble assistant streaming">
-                <div className="chat-sender">
+            <div className="tb-message-row is-assistant">
+              <div className="tb-message-avatar">
+                <span className="tb-avatar-agent" title={providerLabel(provider, t)}>
                   <ProviderIcon provider={provider} size={ICON_SIZE.dense} aria-hidden="true" />
-                  {providerLabel(provider, t)}
-                </div>
-                <div className="chat-body">
-                  <JumpingDots label={t("desktop.workbench.acpThinking")} />
-                </div>
+                </span>
+              </div>
+              <div className="tb-message-container">
+                <JumpingDots label={t("desktop.workbench.acpThinking")} />
               </div>
             </div>
           </div>
@@ -1486,8 +1482,8 @@ export function AcpChatView({
       ) : null}
 
       <div className="chat-compose wb-acp-compose">
-        <div className="chat-compose-frame">
-          <div className="chat-compose-field">
+        <div className="tb-composer-box wb-acp-compose-box">
+          <div className="tb-composer-input-area chat-compose-field">
             <div className={`wb-acp-compose-input${slashTag ? " has-slash-tag" : ""}`}>
               {slashTag ? (
                 <span className="wb-acp-slash-tag" title={slashTag.inputHint || `/${slashTag.name}`}>
@@ -1650,7 +1646,7 @@ export function AcpChatView({
               </div>
             ) : null}
           </div>
-          <div className="chat-compose-toolbar">
+          <div className="tb-composer-toolbar">
             {fileUpload || imageUpload ? (
               <>
                 <button
@@ -1725,7 +1721,7 @@ export function AcpChatView({
                 onChange={(value) => void onConfigSelectChange(thinkingSelect.configId, value)}
               />
             ) : null}
-            <span className="chat-compose-toolbar-spacer" />
+            <span className="tb-composer-tools-spacer" />
             {isRunning ? (
               <button type="button" className="chat-send-btn" aria-label={t("desktop.common.cancel")} onClick={() => void cancel()}>
                 <ThemeIcon name="square" size={ICON_SIZE.default} />

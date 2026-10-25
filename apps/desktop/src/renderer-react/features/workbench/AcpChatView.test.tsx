@@ -367,7 +367,7 @@ describe("AcpChatView latest messages", () => {
 });
 
 describe("AcpChatView message layout", () => {
-  it("renders user and assistant rows with Telegram-style bubble classes", async () => {
+  it("renders the same message rows as the board chat", async () => {
     await renderChat();
     emit({
       type: "history",
@@ -384,17 +384,15 @@ describe("AcpChatView message layout", () => {
       expect(screen.getByText("Hi there")).toBeTruthy();
     });
 
-    const userBubble = screen.getByText("Hello agent").closest(".chat-bubble");
-    const assistantBubble = screen.getByText("Hi there").closest(".chat-bubble");
-    const secondAssistant = screen.getByText("Second line").closest(".chat-bubble");
-    expect(userBubble?.className).toContain("user");
-    expect(assistantBubble?.className).toContain("assistant");
-    expect(userBubble?.closest(".chat-message")?.className).toContain("chat-message-out");
-    expect(assistantBubble?.closest(".chat-message")?.className).toContain("chat-message-in");
-    expect(assistantBubble?.querySelector(".chat-sender")).toBeTruthy();
-    // Consecutive inbound messages only show sender on the first of the cluster.
-    expect(secondAssistant?.querySelector(".chat-sender")).toBeNull();
-    expect(assistantBubble?.querySelector(".chat-footer-meta")).toBeTruthy();
+    // Same anatomy as ChatMessageItem: row → avatar → container → bubble.
+    const userRow = screen.getByText("Hello agent").closest(".tb-message-row");
+    const assistantRow = screen.getByText("Hi there").closest(".tb-message-row");
+    expect(userRow?.className).toContain("is-user");
+    expect(assistantRow?.className).toContain("is-assistant");
+    expect(userRow?.querySelector(".tb-avatar-user")).toBeTruthy();
+    expect(assistantRow?.querySelector(".tb-avatar-agent")).toBeTruthy();
+    expect(screen.getByText("Hello agent").closest(".tb-message-bubble")).toBeTruthy();
+    expect(screen.getByText("Hi there").closest(".tb-markdown-view")).toBeTruthy();
     expect(document.querySelector(".wb-acp-day-separator")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: /copy/i }).length).toBeGreaterThan(0);
   });

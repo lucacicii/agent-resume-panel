@@ -24,6 +24,8 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 - **One autocomplete across every composer**: `/`, `@` and `#` mean the same thing in the chat composer, the workbench terminal composer and the ACP chat composer. `@` finds the same entities everywhere in the same order (workspace packs, catalog projects, tasks, notes, sessions); the raw-text surfaces — terminal and ACP — type the entity's absolute path instead of injecting content, because they have no prompt-compilation step and a CLI agent opens a path itself. `#` browses directories with the same keys everywhere (Tab accepts, → steps into a folder). Notes and tasks are reachable there too: since a terminal cannot be handed a pasted body safely, `@` types the note's absolute file path instead — resolved by a new read-only `notes:absolutePaths` call, so the panel-home layout stays in the main process. The suggestion sources and the mention ordering now live in `composerMentions`, the insertion behaviour in `useReferenceSuggestions`, and the terminal's copy of the token parsers is gone — `chatTokens` owns them
 
+- **The ACP chat looks like the board chat**: same message anatomy (`tb-message-row` → avatar → container → bubble → `tb-markdown-view`), same composer box (`tb-composer-box`, uncapped — ACP has no centred 800px message column to align with), same toolbar metrics — so switching between the Thunder chat and an ACP session no longer changes how the conversation is drawn. ACP keeps what only it has: plan cards, attachments, tool chips, day separators and the mode/permission bars. The old IM-style bubble rules (`.chat-bubble`, `.chat-message`, `.chat-sender`, `.chat-body`, `.chat-footer`, `.chat-copy-btn`) are gone — 20 dead rules, ~135 lines of CSS
+
 ### [0.2.36]
 
 #### Added
@@ -848,6 +850,8 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - **聊天里的 `@` 直接定位对话目录**：输入 `@anfeng`（`workbench.composerMentions` 里的工作区 pack，`arpm` CLI 读的是同一份列表）即把该对话的工作目录绑到 pack 的工作目录，并把只读参考目录带进提示词；没有同名 pack 时用 catalog 项目别名兜底。从 Finder 拖一个文件夹到输入框也能达到同样效果。切换时延续当前对话并弹提示说明上下文已调整；冷启动无记忆时从用户主目录开始。看板聊天与悬浮助手的 workspace / GTD 选择器已移除，工作台聊天保留
 
 - **所有 composer 共用一套补全**：`/`、`@`、`#` 在聊天、工作台终端、ACP 聊天三处含义一致。`@` 在各处按同样顺序找到同样的实体（工作区 pack、项目、任务、笔记、会话）；终端与 ACP 这类纯文本面插入实体的**绝对路径**而不是注入内容，因为它们没有提示词编译环节，而 CLI agent 自己就能打开路径。`#` 在各处用同样的键浏览目录（Tab 接受、→ 进入子目录）。笔记与任务在那两处也能引用：终端无法安全地接收粘贴的正文，所以 `@` 改为给出笔记文件的绝对路径——由新增的只读 `notes:absolutePaths` 解析，面板目录布局仍留在 main 进程里。候选来源与 `@` 排序收敛到 `composerMentions`，插入行为收敛到 `useReferenceSuggestions`，终端里那份重复的 token 解析已删除——由 `chatTokens` 统一提供
+
+- **ACP 聊天的外观与看板聊天统一**：同样的消息解剖（`tb-message-row` → 头像 → 容器 → 气泡 → `tb-markdown-view`）、同样的输入框（`tb-composer-box`，但不设 800px 上限——ACP 没有需要对齐的居中消息列）、同样的工具栏度量——在 Thunder 聊天与 ACP 会话之间切换，对话的绘制方式不再变。ACP 只保留自己独有的东西：plan 卡片、附件、工具 chip、日期分隔、模式/权限条。旧 IM 式气泡样式（`.chat-bubble`、`.chat-message`、`.chat-sender`、`.chat-body`、`.chat-footer`、`.chat-copy-btn`）已清除——20 条死规则、约 135 行 CSS
 
 ### [0.2.36]
 

@@ -4959,146 +4959,28 @@ code {
   color: var(--text);
 }
 
-.chat-empty-hint {
-  margin: 0;
-  font-size: var(--font-size-body);
-  line-height: 1.45;
-  color: var(--muted);
-}
-
-.chat-message {
-  display: flex;
-  width: 100%;
-}
-
-.chat-message-out {
-  justify-content: flex-end;
-}
-
-.chat-message-in {
-  justify-content: flex-start;
-}
-
-.chat-bubble {
-  max-width: 70%;
-  padding: var(--space-2) var(--space-3) var(--space-1-5);
-  font-size: 13.5px;
-  line-height: 1.55;
-  word-break: break-word;
-  border: 1px solid var(--color-separator);
-}
-
-.chat-bubble.user {
-  white-space: pre-wrap;
-  background: var(--chat-bubble-user);
-  color: var(--chat-bubble-user-text);
-  border-color: transparent;
-  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
-}
-
-.chat-bubble.assistant {
-  white-space: normal;
-  background: var(--chat-bubble-assistant);
-  color: var(--chat-bubble-assistant-text);
-  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-sm);
-}
-
-.chat-bubble.assistant.streaming {
-  border-color: color-mix(in srgb, var(--chat-send) 35%, var(--color-separator));
-  box-shadow: none;
-}
-
-.chat-sender {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--tg-sender);
-  margin-bottom: var(--space-1);
-}
-
-.chat-body {
-  margin-bottom: var(--space-0-5);
-  min-width: 0;
-}
-
-.chat-bubble .markdown-body {
-  color: inherit;
-  font-size: inherit;
-  overflow-wrap: anywhere;
-}
-
-/* Headings/paragraph spacing and line-height come from the shared
- * .markdown-body base so ACP chat matches notes/transcript/AI chat. */
-
-.chat-bubble .markdown-body a {
-  color: var(--tg-sender);
-}
-
-.chat-bubble .markdown-body .agent-citation-link {
-  border-radius: var(--radius-sm);
-  color: var(--color-accent);
-  font-weight: var(--font-weight-medium);
-  text-decoration: none;
-}
-
-.chat-bubble .markdown-body .agent-citation-link:hover {
-  color: var(--color-accent-hover);
-  text-decoration: underline;
-}
-
-.chat-bubble .markdown-body .agent-citation-link:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
-}
-
-.chat-bubble .markdown-body blockquote {
-  color: color-mix(in srgb, currentColor 72%, transparent);
-  border-left-color: color-mix(in srgb, var(--tg-sender) 65%, transparent);
-}
-
-.chat-bubble .markdown-body code {
-  background: color-mix(in srgb, currentColor 10%, transparent);
-}
-
-.chat-bubble .markdown-body pre,
-
-@keyframes chat-activity-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes chat-stream-blink {
-  50% {
-    opacity: 0;
-  }
-}
-
-.chat-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  margin-top: var(--space-0-5);
-}
-
+/* Message timestamp, shared by the chat row toolbars. */
 .chat-footer-meta {
   font-size: 11px;
   line-height: 1;
   color: color-mix(in srgb, currentColor 52%, transparent);
 }
 
-.chat-copy-btn {
-  appearance: none;
-  border: none;
-  background: transparent;
+.chat-empty-hint {
+  margin: 0;
+  font-size: var(--font-size-body);
+  line-height: 1.45;
+  color: var(--muted);
+}/* Headings/paragraph spacing and line-height come from the shared
+ * .markdown-body base so ACP chat matches notes/transcript/AI chat. */
+
+.chat-bubble .markdown-body a {
   color: var(--tg-sender);
-  font-size: 11px;
-  line-height: 1;
-  padding: 0;
-
-}
-
-.tool-trace-empty {
+}@keyframes chat-stream-blink {
+  50% {
+    opacity: 0;
+  }
+}.tool-trace-empty {
   margin: 0;
   padding: var(--space-3) 0;
 }
@@ -5111,13 +4993,7 @@ code {
   margin: var(--space-2) 0 0;
   color: var(--color-destructive);
   font-size: var(--font-size-caption);
-}
-
-.chat-copy-btn:hover {
-  text-decoration: underline;
-}
-
-.agent-tool-approval-bar {
+}.agent-tool-approval-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -5282,23 +5158,6 @@ code {
   backdrop-filter: var(--backdrop-blur);
   -webkit-backdrop-filter: var(--backdrop-blur);
   border-top: 0.5px solid var(--color-separator);
-}
-
-.chat-compose-frame {
-  display: flex;
-  width: 100%;
-  min-height: 96px;
-  flex-direction: column;
-  border: 0.5px solid var(--color-separator-opaque);
-  border-radius: var(--radius-xl);
-  background: var(--color-control-bg);
-  box-shadow: var(--shadow-subtle);
-  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
-}
-
-.chat-compose-frame:focus-within {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-focus-ring);
 }
 
 .chat-compose-field {
@@ -11398,7 +11257,6 @@ textarea.wb-editor-host {
   cursor: default;
   opacity: 0.7;
 }
-
 
 .wb-git-log-dialog {
   position: fixed;
@@ -21567,6 +21425,38 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   box-shadow: 0 4px 24px rgba(0, 122, 255, 0.14), 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
+/* Pushes the send/cancel pair to the right edge, as the chat composer does. */
+.tb-composer-tools-spacer {
+  flex: 1 1 auto;
+}
+
+/*
+ * The ACP composer shares the chat composer's box. `.chat-compose` is a flex
+ * row, so the box has to grow as a flex item before its own max-width can cap
+ * it — otherwise it shrinks to the width of its content instead of filling the
+ * pane the way the same box does inside the chat's block-level wrapper.
+ */
+.wb-acp-compose-box {
+  flex: 1 1 auto;
+  min-width: 0;
+  /*
+   * The chat composer caps at 800px because it shares that measure with
+   * `.tb-messages-container` — one centred column for the whole chat. The ACP
+   * log has no such column (it spans the pane), so keeping the cap here only
+   * makes the composer narrower than the conversation above it.
+   */
+  max-width: none;
+}
+
+/* Only the textarea differs from the chat composer's. */
+.wb-acp-compose-box .wb-acp-compose-input textarea {
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  width: 100%;
+}
+
 .tb-composer-input-area {
   padding: 12px 14px 4px 14px;
 }
@@ -22346,7 +22236,6 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   color: var(--color-label-secondary);
   line-height: 1.4;
 }
-
 
 /* --- Turn dots: the run's engine turns, hanging off the agent's reply ---
    The feed renders only the running turn, so finished turns are reachable
