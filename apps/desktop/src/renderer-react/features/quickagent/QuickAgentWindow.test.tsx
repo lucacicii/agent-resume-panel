@@ -199,6 +199,17 @@ describe("QuickAgentWindow", () => {
     );
   });
 
+  it("keeps the header to its own controls — no trace or changes pills", async () => {
+    const { container } = renderWindow();
+    await waitFor(() => expect(window.agentResume.quickAgentGetState).toHaveBeenCalled());
+    const header = container.querySelector(".tb-chat-header")!;
+    // The four window controls are there…
+    expect(header.querySelectorAll(".qa-header-btn").length).toBeGreaterThanOrEqual(3);
+    // …and the run's pills are not drawn in this window at all.
+    expect(header.textContent).not.toContain("Trace");
+    expect(header.querySelectorAll(".tb-header-action-btn:not(.qa-header-btn)").length).toBe(0);
+  });
+
   it("hides on Escape outside editable targets, but not from an input", async () => {
     const { getByRole } = renderWindow();
     await waitFor(() => expect(window.agentResume.quickAgentGetState).toHaveBeenCalled());

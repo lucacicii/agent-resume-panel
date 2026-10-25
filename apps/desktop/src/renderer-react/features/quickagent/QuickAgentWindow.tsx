@@ -291,7 +291,7 @@ export function QuickAgentWindow(): JSX.Element {
           title={t("desktop.quickAgent.handoff")}
           aria-label={t("desktop.quickAgent.handoff")}
         >
-          <ThemeIcon name="app-window" size={ICON_SIZE.dense} />
+          <ThemeIcon name="app-window" size={ICON_SIZE.default} />
         </button>
       ) : null}
       <button
@@ -302,7 +302,7 @@ export function QuickAgentWindow(): JSX.Element {
         aria-label={pinned ? t("desktop.quickAgent.unpin") : t("desktop.quickAgent.pin")}
         aria-pressed={pinned}
       >
-        <ThemeIcon name="pin" size={ICON_SIZE.dense} />
+        <ThemeIcon name="pin" size={ICON_SIZE.default} />
       </button>
       <button
         type="button"
@@ -311,7 +311,7 @@ export function QuickAgentWindow(): JSX.Element {
         title={t("desktop.quickAgent.newSession")}
         aria-label={t("desktop.quickAgent.newSession")}
       >
-        <ThemeIcon name="message-square-plus" size={ICON_SIZE.dense} />
+        <ThemeIcon name="message-square-plus" size={ICON_SIZE.default} />
       </button>
       <button
         type="button"
@@ -320,7 +320,7 @@ export function QuickAgentWindow(): JSX.Element {
         title={t("desktop.quickAgent.hide")}
         aria-label={t("desktop.quickAgent.hide")}
       >
-        <ThemeIcon name="close" size={ICON_SIZE.dense} />
+        <ThemeIcon name="close" size={ICON_SIZE.default} />
       </button>
     </>
   );
@@ -363,6 +363,7 @@ export function QuickAgentWindow(): JSX.Element {
         notice={chat.titleNotice}
         onDismissNotice={chat.dismissTitleNotice}
         showWorkspacePicker={false}
+        showRunActions={false}
         messages={chat.messages}
         isStreaming={chat.isStreaming}
         liveSegments={chat.liveSegments}

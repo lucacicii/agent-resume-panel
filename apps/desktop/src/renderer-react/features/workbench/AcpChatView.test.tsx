@@ -1,7 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-
-const user = userEvent.setup();
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { AcpChatView } from "./AcpChatView";
@@ -140,6 +138,7 @@ describe("AcpChatView session readiness", () => {
 
 describe("AcpChatView references", () => {
   it("offers @ references and types the absolute path", async () => {
+    const user = userEvent.setup();
     await renderChat();
     const input = screen.getByRole("textbox") as HTMLTextAreaElement;
     await user.type(input, "look at @anf");
@@ -150,6 +149,7 @@ describe("AcpChatView references", () => {
   });
 
   it("browses the project with # and inserts the absolute path", async () => {
+    const user = userEvent.setup();
     await renderChat();
     const input = screen.getByRole("textbox") as HTMLTextAreaElement;
     await user.type(input, "inspect #s");

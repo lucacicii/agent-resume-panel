@@ -35,6 +35,11 @@ interface ChatMainProps {
   onDismissNotice?: () => void;
   /** Board chat and Quick Agent take the workspace from `@pack` / drops, not a picker. */
   showWorkspacePicker?: boolean;
+  /**
+   * The run's trace and changes pills. Off in the Quick Agent, whose header is a
+   * row of its own controls: a lookup assistant has no run to inspect there.
+   */
+  showRunActions?: boolean;
   messages: RenderedChatMessage[];
   isStreaming: boolean;
   /** Pending steering / follow-up count, for the composer badge. */
@@ -113,6 +118,7 @@ export function ChatMain({
   notice,
   onDismissNotice,
   showWorkspacePicker = true,
+  showRunActions = true,
   messages,
   isStreaming,
   liveSegments,
@@ -564,6 +570,7 @@ export function ChatMain({
           </div>
           ) : null}
 
+          {showRunActions ? <>
           {/* Trace Popover Trigger */}
           <button
             type="button"
@@ -591,6 +598,7 @@ export function ChatMain({
               <span className="tb-header-badge">{changes.badgeCount}</span>
             )}
           </button>
+          </> : null}
         </div>
       </header>
 

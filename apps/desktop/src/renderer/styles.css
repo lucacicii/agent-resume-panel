@@ -15075,9 +15075,9 @@ html[data-window-mode="quick-agent"] #react-workbench {
 /*
  * The hiddenInset traffic lights (14,14) sit over the chat header, so it keeps
  * their clearance on the left and doubles as the window drag region; every
- * control on it opts out. Trace/Changes pills drop their text labels — at the
- * 560px default width the row cannot afford two labelled pills beside the
- * pin/new/hide buttons.
+ * control on it opts out. The row carries only the window's own controls
+ * (hand-off, pin, new, hide); the run's trace and changes pills are not drawn
+ * here, which is what keeps all six at one size and one gap.
  */
 html[data-window-mode="quick-agent"] .tb-chat-header {
   padding-left: 78px;
@@ -15087,10 +15087,6 @@ html[data-window-mode="quick-agent"] .tb-chat-header {
 html[data-window-mode="quick-agent"] .tb-chat-header-actions {
   grid-auto-columns: auto;
   -webkit-app-region: no-drag;
-}
-
-html[data-window-mode="quick-agent"] .tb-header-action-btn > span:not(.tb-header-badge):not(.tb-header-pulse) {
-  display: none;
 }
 
 .qa-slash-result {
@@ -15162,11 +15158,27 @@ html[data-window-mode="quick-agent"] .tb-header-action-btn > span:not(.tb-header
 .tb-chat-header-extra {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  /* Matches the action row's own gap so the six icon buttons read as one run. */
+  gap: var(--space-2);
 }
 
-.qa-header-btn {
-  width: 28px;
+/*
+ * One square for every icon button in the header row: the 16px glyph plus 12,
+ * which fits the 48px header with room for the traffic lights above it.
+ */
+html[data-window-mode="quick-agent"] {
+  --qa-header-btn-size: 28px;
+}
+
+/*
+ * Scoped to the window mode on purpose: `.tb-header-action-btn` (the labelled
+ * pill these borrow their frame from) is declared later in this file, so an
+ * unscoped single-class rule here loses the shared properties — height and the
+ * label padding — and the buttons render as squat rectangles.
+ */
+html[data-window-mode="quick-agent"] .qa-header-btn {
+  width: var(--qa-header-btn-size, 28px);
+  height: var(--qa-header-btn-size, 28px);
   padding: 0;
   flex: 0 0 auto;
 }
