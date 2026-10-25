@@ -773,6 +773,11 @@ const STANDALONE_NOTE_WINDOW_SIZE = { width: 560, height: 640 } as const;
 const RECENT_STANDALONE_NOTES_LIMIT = 15;
 let registeredStandaloneNoteShortcut = "";
 let registeredRecentStandaloneNoteShortcut = "";
+const QUICK_AGENT_WINDOW_SIZE = { width: 560, height: 720 } as const;
+const DEFAULT_QUICK_AGENT_SHORTCUT = "CommandOrControl+Shift+A";
+let quickAgentWindow: Electron.BrowserWindow | null = null;
+let quickAgentPinned = false;
+let registeredQuickAgentShortcut = "";
 let appQuitInFlight: Promise<void> | null = null;
 let allowAppQuit = false;
 let quitCleanupDone = false;
@@ -1232,6 +1237,79 @@ function createStandaloneNoteWindow(record: NoteRecord): StandaloneNoteWindowSta
   return state;
 }
 
+function setQuickAgentAlwaysOnTop(pinned: boolean): boolean {
+  quickAgentPinned = pinned;
+  if (!quickAgentWindow || quickAgentWindow.isDestroyed()) return pinned;
+  if (process.platform === "darwin") {
+    quickAgentWindow.setAlwaysOnTop(pinned, "floating");
+    quickAgentWindow.setVisibleOnAllWorkspaces(pinned, { visibleOnFullScreen: pinned });
+  } else {
+    quickAgentWindow.setAlwaysOnTop(pinned);
+  }
+  return quickAgentWindow.isAlwaysOnTop();
+}
+
+function createQuickAgentWindow(): Electron.BrowserWindow {
+  const icon = loadAppIcon();
+  const win = new BrowserWindow({
+    ...QUICK_AGENT_WINDOW_SIZE,
+    minWidth: 420,
+    minHeight: 480,
+    title: desktopT(undefined, "desktop.quickAgent.title"),
+    show: false,
+    // Electron's default background is white, and a window composites it while its
+    // webContents is torn down — leaving it unset flashes white on close.
+    backgroundColor: windowBackgroundColor(),
+    ...(icon ? { icon } : {}),
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,
+    webPreferences: {
+      preload: path.join(__dirname, "..", "preload", "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+  if (process.platform !== "darwin") win.setMenuBarVisibility(false);
+  quickAgentWindow = win;
+  // Closing hides: the conversation lives in the thunder daemon, and a hidden
+  // window reopens instantly with its React state intact.
+  win.on("close", (event) => {
+    if (allowAppQuit) return;
+    event.preventDefault();
+    win.hide();
+  });
+  win.once("ready-to-show", () => {
+    if (win.isDestroyed()) return;
+    setQuickAgentAlwaysOnTop(quickAgentPinned);
+    win.show();
+    win.focus();
+  });
+  win.on("closed", () => {
+    if (quickAgentWindow === win) quickAgentWindow = null;
+  });
+  void win.loadFile(path.join(__dirname, "..", "renderer", "index.html"), {
+    query: { mode: "quick-agent" }
+  }).catch((error) => {
+    void recordAppError({ source: "quick-agent", message: "Quick Agent window failed to load.", error });
+  });
+  return win;
+}
+
+function toggleQuickAgentWindow(): { open: boolean } {
+  if (!quickAgentWindow || quickAgentWindow.isDestroyed()) {
+    createQuickAgentWindow();
+    return { open: true };
+  }
+  if (quickAgentWindow.isVisible() && quickAgentWindow.isFocused()) {
+    quickAgentWindow.hide();
+    return { open: false };
+  }
+  quickAgentWindow.show();
+  quickAgentWindow.focus();
+  return { open: true };
+}
+
 async function openStandaloneNoteWindow(): Promise<void> {
   try {
     const created = await notesCreate({
@@ -1453,6 +1531,18 @@ function applyRecentStandaloneNoteShortcut(value: unknown): void {
   }
 }
 
+function initializeQuickAgentShortcut(): void {
+  try {
+    const registered = globalShortcut.register(DEFAULT_QUICK_AGENT_SHORTCUT, () => {
+      toggleQuickAgentWindow();
+    });
+    if (!registered) throw new Error(`Global shortcut is unavailable: ${DEFAULT_QUICK_AGENT_SHORTCUT}`);
+    registeredQuickAgentShortcut = DEFAULT_QUICK_AGENT_SHORTCUT;
+  } catch (error) {
+    void recordAppError({ source: "quick-agent", message: "Global quick agent shortcut could not be registered.", error });
+  }
+}
+
 function initializeStandaloneNoteShortcut(settings: PanelSettings): void {
   try {
     applyStandaloneNoteShortcut(configuredStandaloneNoteShortcut(settings));
@@ -1480,6 +1570,12 @@ function performQuitCleanup(): void {
     globalShortcut.unregister(registeredRecentStandaloneNoteShortcut);
     registeredRecentStandaloneNoteShortcut = "";
   }
+  if (registeredQuickAgentShortcut) {
+    globalShortcut.unregister(registeredQuickAgentShortcut);
+    registeredQuickAgentShortcut = "";
+  }
+  if (quickAgentWindow && !quickAgentWindow.isDestroyed()) quickAgentWindow.destroy();
+  quickAgentWindow = null;
   closeAllTaskWindows();
   disposeWorkbenchWatchers();
   disposeBrowserController();
@@ -1984,11 +2080,6 @@ async function installApplicationMenu(): Promise<void> {
           target.webContents.send("menu:find");
         }
       },
-      {
-        label: t("desktop.menu.findInFiles"),
-        accelerator: "CommandOrControl+Shift+F",
-        click: workbenchCommand("workbench:cmdShiftF")
-      },
       ...(isMac
         ? [
             { type: "separator" as const },
@@ -2082,9 +2173,13 @@ async function installApplicationMenu(): Promise<void> {
         click: workbenchCommand("workbench:cmdShiftP")
       },
       {
-        label: t("desktop.menu.reviewGitChanges"),
-        accelerator: "CommandOrControl+Shift+G",
-        click: workbenchCommand("workbench:cmdShiftG")
+        // No menu accelerator on purpose: the toggle is a globalShortcut so it
+        // also works while another app is focused; a menu accelerator here
+        // would double-fire when Agent Resume itself is focused.
+        label: t("desktop.menu.quickAgent"),
+        click: () => {
+          toggleQuickAgentWindow();
+        }
       },
       { type: "separator" },
       { role: "resetZoom", label: t("desktop.menu.actualSize") },
@@ -3893,6 +3988,36 @@ function registerIpc(): void {
     scheduleNotesIndex();
     return result;
   });
+  ipcMain.handle("quick-agent:toggle", () => toggleQuickAgentWindow());
+  ipcMain.handle("quick-agent:hide", () => {
+    if (quickAgentWindow && !quickAgentWindow.isDestroyed()) quickAgentWindow.hide();
+    return { ok: true as const };
+  });
+  ipcMain.handle("quick-agent:setPinned", (_event, args: { pinned?: unknown }) => ({
+    pinned: setQuickAgentAlwaysOnTop(args?.pinned === true)
+  }));
+  ipcMain.handle("quick-agent:handoff", async (_event, args: { sessionId?: unknown }) => {
+    const sessionId = typeof args?.sessionId === "string" ? args.sessionId.trim() : "";
+    if (!sessionId) return { ok: false as const };
+    // The workbench windows are where the "main agent" runs; the board window
+    // carries an embedded workbench as fallback.
+    const taskWindows = listTaskWindows();
+    const target = taskWindows.length
+      ? taskWindows[taskWindows.length - 1].window
+      : mainWindow && !mainWindow.isDestroyed()
+        ? mainWindow
+        : undefined;
+    if (!target) return { ok: false as const };
+    if (target.isMinimized()) target.restore();
+    target.show();
+    target.focus();
+    target.webContents.send("quick-agent:handoff", { sessionId });
+    return { ok: true as const };
+  });
+  ipcMain.handle("quick-agent:getState", () => ({
+    open: Boolean(quickAgentWindow && !quickAgentWindow.isDestroyed() && quickAgentWindow.isVisible()),
+    pinned: quickAgentPinned
+  }));
   ipcMain.handle("standalone-note:open", async (_event, args: { noteId?: unknown; x?: unknown; y?: unknown; requireOutsideMainWindow?: unknown }) => {
     const noteId = typeof args?.noteId === "string" ? args.noteId.trim() : "";
     if (!noteId) throw new Error("Standalone note id is required.");
@@ -4277,6 +4402,7 @@ app.whenReady().then(async () => {
       const settings = startupSettings ?? (await loadSettings());
       applyNativeThemeSource(settings.desktop?.theme);
       initializeStandaloneNoteShortcut(settings);
+      initializeQuickAgentShortcut();
       await installApplicationMenu();
       startDesktopNotesIndexer();
       startSessionSummaryAuto();

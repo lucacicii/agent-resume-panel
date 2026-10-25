@@ -1125,6 +1125,34 @@ export function useThunderChat() {
     }
   }, []);
 
+  /**
+   * A cold start with no remembered workspace runs from home.
+   *
+   * The board chat and Quick Agent carry no workspace picker, so without this a
+   * fresh conversation would have no directory at all — git and search would
+   * refuse to run until the user typed an `@` pack. Workbench panes bind their
+   * project before this lands, so they are unaffected.
+   */
+  useEffect(() => {
+    if (workspaceDir.trim()) return;
+    if (typeof desktopApi().homePath !== "function") return;
+    let cancelled = false;
+    void desktopApi()
+      .homePath()
+      .then((home) => {
+        if (cancelled || !home) return;
+        setWorkspaceDir((current) => (current.trim() ? current : home));
+        setWorkspaceSource("finder");
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // Deliberately keyed on "is there a workspace yet", not on its value: a
+    // directory the user picked later must not be overwritten by home.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleSelectModel = useCallback(
     (modelId: string) => {
       setSelectedModel(modelId);
@@ -1221,6 +1249,27 @@ export function useThunderChat() {
   );
 
   const dismissTitleNotice = useCallback(() => setTitleNotice(null), []);
+
+  /**
+   * A mention pointed the conversation at another directory.
+   *
+   * The run continues in the same conversation — no new session — so the only
+   * thing the user needs to know is that the working directory moved under it.
+   */
+  useEffect(() => {
+    const onWorkspaceChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; path?: string }>).detail;
+      const path = detail?.path?.trim();
+      if (!path) return;
+      const label = detail?.id?.trim();
+      setTitleNotice({
+        kind: "success",
+        text: `上下文已调整：工作区切换到${label ? ` ${label} ·` : ""} ${path}`
+      });
+    };
+    window.addEventListener("agent-resume:workspace-context-changed", onWorkspaceChanged);
+    return () => window.removeEventListener("agent-resume:workspace-context-changed", onWorkspaceChanged);
+  }, []);
 
   const finalizeSessionTurn = useCallback(
     (opts: {
@@ -1356,6 +1405,7 @@ export function useThunderChat() {
         model?: string;
         workspaceDir?: string;
         thinking_level?: string;
+        roleContext?: string;
         attachments?: ThunderImageAttachment[];
       }
     ) => {
@@ -1452,6 +1502,7 @@ export function useThunderChat() {
         const result = await desktopApi().thunderChatRunTask({
           taskId,
           prompt: trimmed,
+          roleContext: options?.roleContext,
           sessionId: effectiveSessionId,
           model,
           workspaceDir: ws,

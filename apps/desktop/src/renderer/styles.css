@@ -15181,6 +15181,128 @@ html[data-window-mode="browser"] #react-chrome {
   margin: 0;
 }
 
+/* --- Quick Agent: the global floating assistant window --- */
+html[data-window-mode="quick-agent"] #react-chrome {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+html[data-window-mode="quick-agent"] main,
+html[data-window-mode="quick-agent"] #react-settings,
+html[data-window-mode="quick-agent"] #react-agent,
+html[data-window-mode="quick-agent"] #react-workbench {
+  display: none;
+}
+
+.qa-window {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/*
+ * The hiddenInset traffic lights (14,14) sit over the chat header, so it keeps
+ * their clearance on the left and doubles as the window drag region; every
+ * control on it opts out. Trace/Changes pills drop their text labels — at the
+ * 560px default width the row cannot afford two labelled pills beside the
+ * pin/new/hide buttons.
+ */
+html[data-window-mode="quick-agent"] .tb-chat-header {
+  padding-left: 78px;
+  -webkit-app-region: drag;
+}
+
+html[data-window-mode="quick-agent"] .tb-chat-header-actions {
+  grid-auto-columns: auto;
+  -webkit-app-region: no-drag;
+}
+
+html[data-window-mode="quick-agent"] .tb-header-action-btn > span:not(.tb-header-badge):not(.tb-header-pulse) {
+  display: none;
+}
+
+.qa-slash-result {
+  flex: 0 0 auto;
+  max-height: 45%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  margin: var(--space-2) var(--space-2) 0;
+  padding: var(--space-2);
+  border: 0.5px solid var(--color-separator);
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-content-bg);
+}
+
+.qa-slash-result.is-error {
+  border-color: var(--color-danger, #e5484d);
+}
+
+.qa-slash-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-bottom: var(--space-1);
+  border-bottom: 0.5px solid var(--color-separator);
+}
+
+.qa-slash-result-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-label-secondary, var(--color-label-primary));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qa-slash-result-lines {
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--space-1);
+}
+
+.qa-slash-line {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-1) var(--space-1-5);
+  border: 0;
+  border-radius: var(--radius-sm, 5px);
+  background: transparent;
+  color: var(--color-label-primary);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+.qa-slash-line.is-file {
+  cursor: pointer;
+}
+
+.qa-slash-line.is-file:hover {
+  background: var(--color-secondary-bg);
+}
+
+.tb-chat-header-extra {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.qa-header-btn {
+  width: 28px;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
 .markdown-body img.md-preview-img {
   display: block;
   max-width: 100%;

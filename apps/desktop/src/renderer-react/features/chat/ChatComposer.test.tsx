@@ -8,6 +8,20 @@ describe("compileChatPrompt", () => {
   beforeEach(() => {
     (window as any).agentResume = {
       readSkill: vi.fn().mockResolvedValue("Instructions for browser-use skill"),
+      getSettings: vi.fn().mockResolvedValue({
+        workbench: {
+          composerMentions: [
+            {
+              id: "anfeng",
+              cwd: "/Users/lucas/wb/wlgk/anfeng",
+              roots: [
+                { path: "/Users/lucas/wb/wlgk/anfeng", role: "work" },
+                { path: "/Users/lucas/wb/wlgk/shared", role: "reference" }
+              ]
+            }
+          ]
+        }
+      }),
       notesRead: vi.fn().mockImplementation(async ({ noteId }: { noteId: string }) => {
         if (noteId === "note-1") {
           return {
@@ -108,6 +122,18 @@ describe("compileChatPrompt", () => {
     expect(result).toContain("Please review these resources");
   });
 
+  it("injects a workspace pack's work folder and read-only references (@anfeng)", async () => {
+    const result = await compileChatPrompt("look at the build", {
+      referencedMentions: [{ kind: "workspace", id: "anfeng", title: "anfeng", badge: "工作区", path: "/Users/lucas/wb/wlgk/anfeng" }]
+    });
+
+    expect(result).toContain("[Workspace anfeng]");
+    expect(result).toContain("Work cwd (write here only): /Users/lucas/wb/wlgk/anfeng");
+    expect(result).toContain("Reference (read only):");
+    expect(result).toContain("/Users/lucas/wb/wlgk/shared");
+    expect(result).toContain("look at the build");
+  });
+
   it("resolves referenced file (#) and reads its text content", async () => {
     const result = await compileChatPrompt("Check this file #src/index.ts", {
       workspaceDir: "/work/repo",
@@ -178,6 +204,28 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
         record: { noteId: "note-abc", title: "Project Plan" },
         content: "Detailed project plan contents."
       }),
+      getSettings: vi.fn().mockResolvedValue({
+        workbench: {
+          composerMentions: [
+            {
+              id: "anfeng",
+              cwd: "/Users/lucas/wb/wlgk/anfeng",
+              roots: [
+                { path: "/Users/lucas/wb/wlgk/anfeng", role: "work" },
+                { path: "/Users/lucas/wb/wlgk/shared", role: "reference" }
+              ]
+            }
+          ]
+        }
+      }),
+      listProjects: vi.fn().mockResolvedValue([
+        {
+          projectId: "proj-1",
+          alias: "web-ums",
+          localPath: "/Users/lucas/wb/wb-auth/web-ums",
+          pathMissing: false
+        }
+      ]),
       workbenchReadFileText: vi.fn().mockResolvedValue({
         content: "{\n  \"name\": \"app\"\n}",
         truncated: false,
@@ -188,6 +236,36 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
 
   afterEach(() => {
     cleanup();
+  });
+
+  describe("@ mentions point the conversation at a directory", () => {
+    it("lists workspace packs and binds the work folder on selection", async () => {
+      const onSelectFinderDir = vi.fn();
+      const { container } = render(
+        <ChatComposer {...defaultProps} onSelectFinderDir={onSelectFinderDir} />
+      );
+      const textarea = container.querySelector("textarea")!;
+      fireEvent.change(textarea, { target: { value: "@anf", selectionStart: 4 } });
+
+      const option = await screen.findByText("@anfeng");
+      fireEvent.click(option);
+
+      await waitFor(() => expect(onSelectFinderDir).toHaveBeenCalledWith("/Users/lucas/wb/wlgk/anfeng"));
+    });
+
+    it("falls back to catalog projects when no pack matches", async () => {
+      const onSelectFinderDir = vi.fn();
+      const { container } = render(
+        <ChatComposer {...defaultProps} onSelectFinderDir={onSelectFinderDir} />
+      );
+      const textarea = container.querySelector("textarea")!;
+      fireEvent.change(textarea, { target: { value: "@web", selectionStart: 4 } });
+
+      const option = await screen.findByText("@web-ums");
+      fireEvent.click(option);
+
+      await waitFor(() => expect(onSelectFinderDir).toHaveBeenCalledWith("/Users/lucas/wb/wb-auth/web-ums"));
+    });
   });
 
   describe("permission mode chip", () => {
@@ -352,11 +430,12 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
       expect(screen.getByText("@Project Plan")).toBeTruthy();
     });
 
-    // Press Enter to accept first mention
+    // Workspace packs sort first: they are the primitive that also relocates
+    // the conversation, so Enter takes the pack before a note or task.
     fireEvent.keyDown(textarea, { key: "Enter" });
 
     await waitFor(() => {
-      expect((textarea as HTMLTextAreaElement).value).toBe("@Refactor router ");
+      expect((textarea as HTMLTextAreaElement).value).toBe("@anfeng ");
     });
   });
 

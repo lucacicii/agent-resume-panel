@@ -11,6 +11,9 @@ import type {
   ThunderPermissionMode
 } from "@agent-resume/core";
 import { THUNDER_PERMISSION_MODES } from "@agent-resume/core/browser";
+import { buildMentionPrompt } from "@agent-resume/core/browser";
+import type { WorkbenchComposerMention } from "@agent-resume/core";
+import { normalizeComposerMentions } from "../../workspacePacks";
 import type { ChatRunMetrics } from "./useThunderChat";
 import {
   atTokenAtCursor,
@@ -27,12 +30,15 @@ export type ChatSlashSuggestion = {
 };
 
 export type ChatMentionSuggestion = {
-  kind: "note" | "task" | "session";
+  kind: "note" | "task" | "session" | "workspace" | "project";
+  /** Mention key: note id, task id, session id, workspace-pack id, project id. */
   id: string;
   title: string;
   subtitle?: string;
   badge: string;
   gtdStatus?: string;
+  /** Absolute directory a workspace/project mention binds the conversation to. */
+  path?: string;
 };
 
 export interface PendingChatImage {
@@ -208,6 +214,13 @@ export async function compileChatPrompt(
           contextBlocks.push(
             `[Referenced GTD Task: ${mention.title} (Status: ${status})]\n${body}\n[End Referenced Task]`
           );
+        } else if (mention.kind === "workspace" && typeof desktopApi().getSettings === "function") {
+          // A workspace pack carries its own work folder + read-only references;
+          // the block is the same text the arpm CLI hands an agent.
+          const settings = await desktopApi().getSettings();
+          const pack = normalizeComposerMentions(settings?.workbench?.composerMentions)
+            .find((item) => item.id.toLowerCase() === mention.id.toLowerCase());
+          if (pack) contextBlocks.push(buildMentionPrompt(pack));
         } else if (mention.kind === "session" && typeof desktopApi().thunderChatGetConversation === "function") {
           const conv = await desktopApi().thunderChatGetConversation({ sessionId: mention.id });
           if (conv && Array.isArray(conv.messages) && conv.messages.length > 0) {
@@ -315,6 +328,12 @@ interface ChatComposerProps {
   onSelectGtdTask?: (noteId: string, dir: string) => void;
   onSelectFinderDir?: (dir: string) => void;
   workspaceLocked?: boolean;
+  /**
+   * Whether the composer offers the workspace / GTD picker chip. Board chat and
+   * Quick Agent turn it off: there the workspace comes from `@pack` mentions or a
+   * folder dropped on the composer, never from a scope control.
+   */
+  showWorkspacePicker?: boolean;
   placeholder?: string;
   prefillPrompt?: { text: string; id: number } | null;
   lastRunMetrics?: ChatRunMetrics | null;
@@ -395,6 +414,7 @@ export function ChatComposer({
   onSelectGtdTask,
   onSelectFinderDir,
   workspaceLocked = false,
+  showWorkspacePicker = true,
   placeholder = "Ask Thunder agent anything, or type / for skills/mcp, @ for context, # for files...",
   prefillPrompt,
   lastRunMetrics,
@@ -412,6 +432,44 @@ export function ChatComposer({
   const [notes, setNotes] = useState<Array<{ id: string; title: string; folder?: string }>>([]);
   const [conversations, setConversations] = useState<Array<{ id: string; title?: string; message_count?: number }>>([]);
   const [referencedMentions, setReferencedMentions] = useState<ChatMentionSuggestion[]>([]);
+  /**
+   * Workspace packs (`@anfeng`) and catalog projects (`@wlgk`) — the two ways a
+   * mention can point the conversation at a directory, since the board chat and
+   * Quick Agent carry no workspace picker.
+   */
+  const [workspacePacks, setWorkspacePacks] = useState<WorkbenchComposerMention[]>([]);
+  const [mentionProjects, setMentionProjects] = useState<Array<{ id: string; label: string; path: string }>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const settings = await desktopApi().getSettings();
+        if (!cancelled) setWorkspacePacks(normalizeComposerMentions(settings?.workbench?.composerMentions));
+      } catch (err) {
+        console.warn("Failed to read workspace packs:", err);
+      }
+      try {
+        const projects = await desktopApi().listProjects();
+        if (!cancelled) {
+          setMentionProjects(
+            projects
+              .filter((project) => project.localPath && !project.pathMissing)
+              .map((project) => ({
+                id: project.projectId,
+                label: project.alias || project.localPath || "",
+                path: project.localPath || ""
+              }))
+          );
+        }
+      } catch (err) {
+        console.warn("Failed to read projects:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [referencedFiles, setReferencedFiles] = useState<string[]>([]);
 
   const [slashDismissed, setSlashDismissed] = useState(false);
@@ -493,8 +551,35 @@ export function ChatComposer({
     }
   }, []);
 
+  /**
+   * A folder dropped from Finder points the conversation at it.
+   *
+   * Images keep their own path (attachments), so the two drop targets never
+   * fight: a directory binds the workspace and stops there, anything else falls
+   * through to the attachment handler below.
+   */
+  const droppedDirectoryPath = (transfer: DataTransfer): string => {
+    const item = Array.from(transfer.items || []).find((entry) => entry.kind === "file");
+    const entry = item?.webkitGetAsEntry?.();
+    if (!entry?.isDirectory) return "";
+    const file = transfer.files?.[0] as (File & { path?: string }) | undefined;
+    return typeof file?.path === "string" ? file.path : "";
+  };
+
   const handleDrop = useCallback(
     async (e: React.DragEvent) => {
+      const directory = droppedDirectoryPath(e.dataTransfer);
+      if (directory) {
+        e.preventDefault();
+        if (onSelectFinderDir) onSelectFinderDir(directory);
+        else onSelectWorkspaceDir(directory);
+        window.dispatchEvent(
+          new CustomEvent("agent-resume:workspace-context-changed", {
+            detail: { id: directory.split("/").filter(Boolean).pop(), path: directory }
+          })
+        );
+        return;
+      }
       const files = Array.from(e.dataTransfer.files || []);
       const imageFiles = files.filter(
         (f) => f.type.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(f.name)
@@ -573,7 +658,7 @@ export function ChatComposer({
       }
       e.target.value = "";
     },
-    [pendingImages.length]
+    [onSelectFinderDir, onSelectWorkspaceDir, pendingImages.length]
   );
 
   const loadTasks = useCallback(async () => {
@@ -735,7 +820,38 @@ export function ChatComposer({
     const q = atToken.query.toLowerCase();
     const out: ChatMentionSuggestion[] = [];
 
-    // GTD Tasks first
+    // Workspace packs first: "@anfeng" both points the conversation at the pack's
+    // work folder and carries its read-only references into the prompt.
+    const packIds = new Set(workspacePacks.map((pack) => pack.id.toLowerCase()));
+    for (const pack of workspacePacks) {
+      if (!q || pack.id.toLowerCase().includes(q) || pack.cwd.toLowerCase().includes(q)) {
+        out.push({
+          kind: "workspace",
+          id: pack.id,
+          title: pack.id,
+          subtitle: pack.cwd,
+          badge: "工作区",
+          path: pack.cwd
+        });
+      }
+    }
+    // Catalog projects fill in for directories no pack covers.
+    for (const project of mentionProjects) {
+      const label = project.label || project.path;
+      if (packIds.has(label.toLowerCase())) continue;
+      if (!q || label.toLowerCase().includes(q) || project.path.toLowerCase().includes(q)) {
+        out.push({
+          kind: "project",
+          id: project.id,
+          title: label,
+          subtitle: project.path,
+          badge: "项目",
+          path: project.path
+        });
+      }
+    }
+
+    // GTD Tasks
     for (const t of sortGtdTasks(tasks)) {
       const title = t.title || t.noteId;
       const statusLabel = GTD_STATUS_LABELS[t.gtdStatus || "inbox"] || "待办";
@@ -779,7 +895,7 @@ export function ChatComposer({
     }
 
     return out.slice(0, 30);
-  }, [atToken, tasks, notes, conversations]);
+  }, [atToken, tasks, notes, conversations, workspacePacks, mentionProjects]);
 
   // Path suggestions (#): directories and files
   const directoryQueryPath = hashToken?.dirPath ?? "";
@@ -926,16 +1042,52 @@ export function ChatComposer({
     [cursor, slashToken, text]
   );
 
+  /**
+   * Point the conversation at a directory without a scope control.
+   *
+   * A workspace pack also carries read-only references, so it stays in
+   * `referencedMentions` and `compileChatPrompt` appends its block; a plain
+   * project only moves the workspace.
+   */
+  const bindMentionDirectory = useCallback(
+    (item: ChatMentionSuggestion) => {
+      const target = item.path;
+      if (!target) return;
+      if (onSelectFinderDir) {
+        onSelectFinderDir(target);
+      } else {
+        try {
+          localStorage.setItem("chat-selected-workspace", target);
+        } catch {
+          // ignore
+        }
+        onSelectWorkspaceDir(target);
+      }
+      // The conversation keeps going; only its working directory moved, and the
+      // user is told so rather than silently running in another repo.
+      window.dispatchEvent(
+        new CustomEvent("agent-resume:workspace-context-changed", {
+          detail: { id: item.title, path: target }
+        })
+      );
+    },
+    [onSelectFinderDir, onSelectWorkspaceDir]
+  );
+
   const acceptMentionSuggestion = useCallback(
     (item: ChatMentionSuggestion) => {
       if (!atToken) return;
+      if (item.kind === "workspace" || item.kind === "project") {
+        bindMentionDirectory(item);
+      }
       const inserted = `@${item.title} `;
       const next = `${text.slice(0, atToken.start)}${inserted}${text.slice(cursor)}`;
       const nextCursor = atToken.start + inserted.length;
       setText(next);
       setMentionDismissed(true);
       setActiveMention(0);
-      setReferencedMentions((prev) => [...prev, item]);
+      // Projects carry no reference block, so they are not kept as mentions.
+      if (item.kind !== "project") setReferencedMentions((prev) => [...prev, item]);
       requestAnimationFrame(() => {
         const el = textareaRef.current;
         if (el) {
@@ -945,7 +1097,7 @@ export function ChatComposer({
         setCursor(nextCursor);
       });
     },
-    [atToken, cursor, text]
+    [atToken, bindMentionDirectory, cursor, text]
   );
 
   const enterDirectory = useCallback(
@@ -1843,7 +1995,7 @@ export function ChatComposer({
             </div>
 
             {/* Workspace Selector Chip */}
-            <button
+            {showWorkspacePicker ? <button
               ref={workspaceButtonRef}
               type="button"
               className={`tb-composer-chip${workspaceLocked ? " tb-chip-locked" : " tb-chip-button"}`}
@@ -1860,7 +2012,7 @@ export function ChatComposer({
               {!workspaceLocked && (
                 <ThemeIcon name="chevron-down" size={ICON_SIZE.inline} aria-hidden="true" />
               )}
-            </button>
+            </button> : null}
           </div>
 
           <div className="tb-composer-tools-right">

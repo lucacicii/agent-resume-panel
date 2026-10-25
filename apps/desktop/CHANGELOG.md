@@ -8,6 +8,20 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [Unreleased]
+
+#### Added
+
+- **Quick Agent**: a global floating assistant window (**⌘⇧A / Ctrl+Shift+A**, also View ▸ Quick Agent) that hosts one Thunder conversation beside the board and workbench chats. Closing the window only hides it — the conversation lives in the thunder daemon, so it reopens instantly where you left it, and the window remembers its conversation across app restarts. The header doubles as the drag region for the inset traffic lights and carries **pin** (always-on-top, visible on all spaces), **new conversation**, and **hide** buttons; **Esc** hides the window unless the focused composer or search field owns the key. It reuses the board chat's hook and `ChatMain`, so model / thinking / approval mode, workspace binding, streaming, questions, trace, and changes all work exactly as in the board chat
+
+- **Quick Agent tuning for lookup tasks**: the conversation's first run carries a quick-lookup role preamble (fewest tool calls, 1-3 sentence answers, path:line citations, suggests workbench for anything bigger); fresh conversations default to a fast model tier (flash/haiku/mini/turbo) while keeping the manual picker; **slash commands answer without an LLM round trip** — `/git status`, `/git log [n]`, `/find <name>` render a local result panel whose file lines open in the system default app; and **Continue in Workbench** hands the very same Thunder conversation (full transcript) to the focused workbench window
+
+#### Removed
+
+- **The workbench no longer tries to be an IDE.** Global Find in Files (⌘⇧F Search sidebar, include/exclude globs, project picker, and replace), the Git side panel (status tree, staging, commit, branch menu, Git log graph with revert/merge/cherry-pick/reset, all-branch file history), and the in-workbench code viewer (editor tabs with dirty/save flow, Markdown preview, and the diff viewer) are gone — small lookups belong in the Quick Agent or a real editor. Opening a file (or a Quick Access directory) now hands it to the system default app / Finder. **The file-directory sidebar (Explorer) is gone too** — the workbench side rail now offers only Scripts and Browser. Chat's own commit flow (changes popover, diff view, commit & push) is untouched, as are task rollup dots and terminal branch status. Scripts keep their own panel
+
+- **`@` in chat points the conversation at a directory**: typing `@anfeng` — a workspace pack from `workbench.composerMentions`, the list the `arpm` CLI already reads — binds the conversation's working directory to the pack's work folder and carries its read-only reference folders into the prompt. Catalog projects fill in when no pack matches. A folder dragged from Finder onto the composer does the same without a pack. Switching keeps the conversation and says so in a notice; a cold start with no remembered directory runs from home. The workspace / GTD picker chip is gone from the board chat and Quick Agent — the workbench chat keeps it
+
 ### [0.2.36]
 
 #### Added
@@ -816,6 +830,20 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [Unreleased]
+
+#### 新增
+
+- **悬浮助手（Quick Agent）**：全局悬浮的快捷助手窗口（**⌘⇧A / Ctrl+Shift+A**，也可聚单栏「显示 ▸ 悬浮助手」唤起），与看板、工作台聊天共用同一套 Thunder 会话。关窗即隐藏——会话保存在 thunder daemon 里，重开即回到原对话，且跨应用重启记忆上次的会话。窗口头部兼作红绿灯区域的拖拽区，内置**置顶**（常驻所有空间最前）、**新对话**、**隐藏**按钮；**Esc** 隐藏窗口（焦点在输入框时除外）。复用看板聊天的 hook 与 `ChatMain`，模型/思考档位/审批模式、工作区绑定、流式输出、问答气泡、Trace 与改动面板与看板聊天完全一致
+
+- **悬浮助手查询调优**：新会话首轮注入快捷查询角色提示词（最少工具调用、1-3 句作答、引用带 path:line、大任务建议转工作台）；新会话默认选快模型档（flash/haiku/mini/turbo，可手动换）；**斜杠命令零 LLM 直连本地工具**——`/git status`、`/git log [n]`、`/find <文件名>` 结果显示在本地面板、文件行可点击用系统默认应用打开；**「转到工作台继续」**把当前 Thunder 会话（含完整上下文）移交到聚焦的工作台窗口
+
+#### 移除
+
+- **工作台不再复刻 IDE**。全局查找（⌘⇧F 搜索侧栏、包含/排除 glob、项目选择器与替换）、Git 侧栏（状态树、暂存、提交、分支菜单、Git 提交图及其回退/合并/cherry-pick/reset、全分支文件历史）、以及工作台内代码查看器（编辑器页签与脏保存流程、Markdown 预览、diff 查看器）全部移除——小查询交给悬浮助手或真正的编辑器。打开文件（以及 Quick Access 里选中的目录）改为交给系统默认应用/Finder。**文件目录侧栏（Explorer）一并移除**——工作台侧栏只剩「脚本」与「浏览器」两个入口。聊天内自己的提交链路（改动面板、diff、提交并推送）不受影响，任务状态灯与终端分支显示同样保留。脚本面板独立保留
+
+- **聊天里的 `@` 直接定位对话目录**：输入 `@anfeng`（`workbench.composerMentions` 里的工作区 pack，`arpm` CLI 读的是同一份列表）即把该对话的工作目录绑到 pack 的工作目录，并把只读参考目录带进提示词；没有同名 pack 时用 catalog 项目别名兜底。从 Finder 拖一个文件夹到输入框也能达到同样效果。切换时延续当前对话并弹提示说明上下文已调整；冷启动无记忆时从用户主目录开始。看板聊天与悬浮助手的 workspace / GTD 选择器已移除，工作台聊天保留
 
 ### [0.2.36]
 

@@ -4,8 +4,10 @@ import type {
   ModelUse,
   PanelSettings,
   ProviderModel,
-  WorkbenchComposerSlashPhrase
+  WorkbenchComposerSlashPhrase,
+  WorkbenchComposerMention
 } from "@agent-resume/core";
+import { normalizeComposerMentions } from "../../workspacePacks";
 import {
   resolveTerminalThemeId,
   type WorkbenchTerminalThemeId
@@ -133,6 +135,11 @@ export interface WorkbenchDraft {
   gitNestedScanIgnoreDirs: string;
   /** User-defined `/trigger` expansions for the terminal composer. */
   composerSlashPhrases: WorkbenchComposerSlashPhrase[];
+  /**
+   * Workspace packs typed as `@anfeng` in a chat composer: a work folder plus
+   * optional read-only references. Shared with the `arpm` CLI.
+   */
+  composerMentions: WorkbenchComposerMention[];
   /** ACP permission policy */
   acpAutoApprovePermissions: "ask" | "allowAll";
   /** Experimental Grok Build vendor ACP UI (model + reasoning effort). */
@@ -502,6 +509,7 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     gitNestedScanMaxDepth: numberInRange(workbench?.gitNestedScanMaxDepth, 6, 1, 10),
     gitNestedScanIgnoreDirs: Array.isArray(workbench?.gitNestedScanIgnoreDirs) ? workbench.gitNestedScanIgnoreDirs.join("\n") : "",
     composerSlashPhrases: normalizeComposerSlashPhrases(workbench?.composerSlashPhrases),
+    composerMentions: normalizeComposerMentions(workbench?.composerMentions),
     acpAutoApprovePermissions: settings.acp?.autoApprovePermissions === "allowAll" ? "allowAll" : "ask",
     acpExperimentalGrokVendorUi: settings.acp?.experimentalGrokVendorUi === true
   };
@@ -553,6 +561,7 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       gitNestedScanMaxDepth: numberInRange(draft.gitNestedScanMaxDepth, 6, 1, 10),
       gitNestedScanIgnoreDirs: draft.gitNestedScanIgnoreDirs.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean),
       composerSlashPhrases: normalizeComposerSlashPhrases(draft.composerSlashPhrases),
+      composerMentions: normalizeComposerMentions(draft.composerMentions),
     },
     acp: {
       ...settings.acp,

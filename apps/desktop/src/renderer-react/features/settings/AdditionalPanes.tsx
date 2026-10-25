@@ -49,6 +49,30 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
     if (options?.commit !== false) commit(next);
   };
   const slashPhrases = draft.composerSlashPhrases ?? [];
+  const workspacePacks = draft.composerMentions ?? [];
+  /** A pack is id + work folder + (optional) newline-separated read-only folders. */
+  const updatePack = (index: number, patch: Partial<{ id: string; cwd: string; references: string }>, commitNow: boolean) => {
+    const next = workspacePacks.map((pack, packIndex) => {
+      if (packIndex !== index) return pack;
+      const id = patch.id !== undefined ? patch.id.replace(/^@+/, "") : pack.id;
+      const cwd = patch.cwd !== undefined ? patch.cwd : pack.cwd;
+      const references = patch.references !== undefined
+        ? patch.references
+        : pack.roots.filter((root) => root.role === "reference").map((root) => root.path).join("\n");
+      return {
+        id,
+        cwd,
+        roots: [
+          { path: cwd, role: "work" as const },
+          ...references.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean)
+            .map((path) => ({ path, role: "reference" as const }))
+        ]
+      };
+    });
+    const nextDraft = { ...draft, composerMentions: next };
+    setDraft(nextDraft);
+    if (commitNow) commit(nextDraft);
+  };
   return <>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.newSessionGroup")}</h3><div className="settings-group-body">
       <SelectRow
@@ -205,6 +229,64 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
           className="tool-btn"
           onClick={() => update("composerSlashPhrases", [...slashPhrases, { trigger: "", phrase: "" }], { commit: false })}
         ><ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />{t("desktop.settings.composerSlashAdd")}</button>
+      </div>
+    </div></section>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.workspaceMentionsGroup")}</h3>
+      <p className="settings-footnote muted">{t("desktop.settings.workspaceMentionsHint")}</p>
+      <div className="settings-group-body">
+      {workspacePacks.length === 0 ? <p className="settings-footnote muted">{t("desktop.settings.workspaceMentionsEmpty")}</p> : null}
+      {workspacePacks.map((pack, index) => (
+        <div className="settings-item settings-slash-card" key={`pack-${index}`}>
+          <div className="settings-item-row settings-slash-header">
+            <span className="settings-item-prefix settings-slash-prefix" aria-hidden="true">@</span>
+            <input
+              className="settings-item-name settings-slash-trigger-input"
+              value={pack.id}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              aria-label={t("desktop.settings.workspaceMentionId")}
+              placeholder="anfeng"
+              onChange={(event) => updatePack(index, { id: event.target.value }, false)}
+              onBlur={() => commit(draft)}
+            />
+            <button
+              type="button"
+              className="tool-btn settings-item-icon"
+              aria-label={t("desktop.settings.workspaceMentionRemove")}
+              title={t("desktop.settings.workspaceMentionRemove")}
+              onClick={() => update("composerMentions", workspacePacks.filter((_, packIndex) => packIndex !== index))}
+            ><ThemeIcon name="trash" size={ICON_SIZE.dense} aria-hidden="true" /></button>
+          </div>
+          <div className="settings-slash-body-wrap">
+            <input
+              className="settings-item-body"
+              value={pack.cwd}
+              spellCheck={false}
+              aria-label={t("desktop.settings.workspaceMentionCwd")}
+              placeholder="~/wb/wlgk/anfeng"
+              onChange={(event) => updatePack(index, { cwd: event.target.value }, false)}
+              onBlur={() => commit(draft)}
+            />
+            <textarea
+              className="settings-item-body settings-slash-textarea"
+              rows={2}
+              spellCheck={false}
+              value={pack.roots.filter((root) => root.role === "reference").map((root) => root.path).join("\n")}
+              aria-label={t("desktop.settings.workspaceMentionReferences")}
+              placeholder={t("desktop.settings.workspaceMentionReferencesPlaceholder")}
+              onChange={(event) => updatePack(index, { references: event.target.value }, false)}
+              onBlur={() => commit(draft)}
+            />
+          </div>
+        </div>
+      ))}
+      <div className="settings-action-row" style={{ marginTop: "var(--space-1)" }}>
+        <button
+          type="button"
+          className="tool-btn"
+          onClick={() => update("composerMentions", [...workspacePacks, { id: "", cwd: "", roots: [] }], { commit: false })}
+        ><ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />{t("desktop.settings.workspaceMentionAdd")}</button>
       </div>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.embeddedEditorGroup")}</h3><div className="settings-group-body">

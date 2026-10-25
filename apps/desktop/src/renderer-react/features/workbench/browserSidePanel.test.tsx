@@ -84,8 +84,8 @@ function stubApi(): { calls: Call[]; emit: (event: BrowserIpcEvent) => void; get
     ensureTaskWorkbench: async () => null,
     setTaskWorkbenchLayout: async () => ({ ok: true }),
     workbenchListScripts: async () => ({ truncated: false, packages: [] }),
-    workbenchInspectFile: async (args: { filePath: string }) => {
-      calls.push({ method: "workbenchInspectFile", args });
+    workbenchOpenPath: async (args: { filePath: string }) => {
+      calls.push({ method: "workbenchOpenPath", args });
       return { kind: "text", content: "// src", encoding: "utf8", version: "v1", size: 6, mtimeMs: 1 };
     },
     terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
@@ -209,8 +209,8 @@ describe("WorkbenchPanel browser side panel wiring", () => {
       })
     );
     fireEvent.click(await screen.findByText("Open source in workbench"));
-    await waitFor(() => expect(api.get("workbenchInspectFile")).toHaveLength(1));
-    expect(api.get("workbenchInspectFile")[0].args).toEqual({ rootPath: "/work/app", filePath: "src/Card.vue" });
+    await waitFor(() => expect(api.get("workbenchOpenPath")).toHaveLength(1));
+    expect(api.get("workbenchOpenPath")[0].args).toEqual({ rootPath: "/work/app", filePath: "src/Card.vue" });
 
     // Sending runs the whole handler chain: prompt build -> WorkbenchPanel draft/fallback.
     // With no session in scope the panel drops the text and asks for a new session, so the
@@ -238,7 +238,7 @@ describe("WorkbenchPanel browser side panel wiring", () => {
     act(() => api.emit({ type: "state", session }));
     await waitFor(() => expect(api.get("browserSetProbeActive")).toHaveLength(1));
 
-    fireEvent.click(screen.getByRole("button", { name: "Explorer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Scripts" }));
     await waitFor(() =>
       expect(api.get("browserSetProbeActive").at(-1)?.args).toEqual({ browserId: "b1", tabId: "t1", active: false })
     );

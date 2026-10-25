@@ -9,6 +9,7 @@ import { SelectionSendHost } from "./selection/SelectionSendHost";
 import { useI18n } from "./i18n";
 import { SettingsPanel } from "./features/settings/SettingsPanel";
 import { StandaloneNoteWindow } from "./features/workbench/notes/StandaloneNoteWindow";
+import { QuickAgentWindow } from "./features/quickagent/QuickAgentWindow";
 import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWindow";
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
 import { taskFromRecord } from "./features/workbench/task";
@@ -52,7 +53,7 @@ function syncNotificationConfig(settings: PanelSettings): void {
   });
 }
 
-function getDesktopWindowMode(): "main" | "standalone-note" | "browser" | "task" | "settings" {
+function getDesktopWindowMode(): "main" | "standalone-note" | "browser" | "task" | "settings" | "quick-agent" {
   try {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get("mode");
@@ -60,6 +61,7 @@ function getDesktopWindowMode(): "main" | "standalone-note" | "browser" | "task"
     if (mode === "browser") return "browser";
     if (mode === "task") return "task";
     if (mode === "settings") return "settings";
+    if (mode === "quick-agent") return "quick-agent";
     return "main";
   } catch {
     return "main";
@@ -385,6 +387,17 @@ function BrowserDesktopRuntime(): React.JSX.Element {
   );
 }
 
+function QuickAgentDesktopRuntime(): React.JSX.Element {
+  return (
+    <I18nProvider>
+      <SettingsRuntimeBootstrap />
+      <WindowChromeRuntime />
+      <WindowTitleRuntime titleKey="desktop.quickAgent.title" />
+      <QuickAgentWindow />
+    </I18nProvider>
+  );
+}
+
 function TaskWindowMissingParams(): React.JSX.Element {
   const { t } = useI18n();
   return <div className="renderer-bridge-error" role="alert"><p>{t("desktop.gtd.windowMissing")}</p></div>;
@@ -489,9 +502,11 @@ if (host) {
             ? <BrowserDesktopRuntime />
             : windowMode === "settings"
               ? <SettingsDesktopRuntime />
-              : windowMode === "task"
-                ? <TaskDesktopRuntime />
-                : <MainDesktopRuntime />}
+              : windowMode === "quick-agent"
+                ? <QuickAgentDesktopRuntime />
+                : windowMode === "task"
+                  ? <TaskDesktopRuntime />
+                  : <MainDesktopRuntime />}
       </StrictMode>
     );
   }

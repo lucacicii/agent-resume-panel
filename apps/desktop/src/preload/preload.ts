@@ -191,6 +191,14 @@ export interface DesktopApi {
   standaloneNoteClose(): Promise<{ ok: boolean }>;
   standaloneNoteCloseReady(args: { ok: boolean }): Promise<{ ok: boolean }>;
   onStandaloneNoteCloseRequested(callback: () => void): () => void;
+  /** Show/hide the floating Quick Agent window (same surface as the global ⌘/Ctrl+⇧A). */
+  quickAgentToggle(): Promise<{ open: boolean }>;
+  quickAgentHide(): Promise<{ ok: boolean }>;
+  quickAgentSetPinned(args: { pinned: boolean }): Promise<{ pinned: boolean }>;
+  quickAgentGetState(): Promise<{ open: boolean; pinned: boolean }>;
+  /** Move a Quick Agent conversation into a workbench window (same thunder session). */
+  quickAgentHandoff(args: { sessionId: string; projectPath: string }): Promise<{ ok: boolean }>;
+  onQuickAgentHandoff(callback: (payload: { sessionId: string }) => void): () => void;
   /**
    * Open the window that hosts one task workbench, or focus it when it is
    * already open. One workbenchId maps to one window (and one workbench copy).
@@ -1015,44 +1023,6 @@ export interface DesktopApi {
     rootPath: string;
     targetPath: string;
   }): Promise<{ ok: boolean }>;
-  workbenchSearchText(args: {
-    rootPaths: string[];
-    query: string;
-    matchCase?: boolean;
-    wholeWord?: boolean;
-    useRegex?: boolean;
-    filesToInclude?: string;
-    filesToExclude?: string;
-    maxResults?: number;
-    maxFileSizeBytes?: number;
-  }): Promise<{
-    matches: Array<{
-      path: string;
-      relativePath: string;
-      line: number;
-      column: number;
-      endColumn: number;
-      preview: string;
-    }>;
-    truncated: boolean;
-    filesSearched: number;
-    engine: "rg" | "node";
-  }>;
-  workbenchSearchTextCancel(): Promise<{ ok: boolean }>;
-  workbenchReplaceText(args: {
-    rootPath: string;
-    query: string;
-    replaceWith: string;
-    matchCase?: boolean;
-    wholeWord?: boolean;
-    useRegex?: boolean;
-    files: string[];
-    only?: Array<{ path: string; ordinal: number }>;
-  }): Promise<{
-    replaced: Array<{ path: string; count: number }>;
-    skipped: Array<{ path: string; reason: string }>;
-    totalReplaced: number;
-  }>;
   terminalGitStatus(args: {
     cwd: string;
     nestedScan?: { maxDepth?: number; ignoreDirs?: string[]; maxRepos?: number };
@@ -1157,10 +1127,6 @@ export interface DesktopApi {
   onWorkbenchCmdP(callback: () => void): () => void;
   /** Command Palette (⌘⇧P / Ctrl+Shift+P). */
   onWorkbenchCmdShiftP(callback: () => void): () => void;
-  /** Find in Files (⌘⇧F / Ctrl+Shift+F). */
-  onWorkbenchCmdShiftF(callback: () => void): () => void;
-  /** Review Git changes (⌃⇧G / Ctrl+Shift+G). */
-  onWorkbenchCmdShiftG(callback: () => void): () => void;
   getReportEntry(reportId: string): Promise<ReportEntry | null>;
   /** Static catalog of chat tools and discovered skills/mcp tools. */
   listAgentTools(args?: { projectPath?: string }): Promise<AgentToolDescriptor[]>;
@@ -1574,6 +1540,7 @@ export interface DesktopApi {
   thunderChatRunTask(args: {
     taskId: string;
     prompt: string;
+    roleContext?: string;
     sessionId?: string;
     model?: string;
     workspaceDir?: string;
@@ -1680,6 +1647,16 @@ const api: DesktopApi = {
   standaloneNoteSetAlwaysOnTop: (args) => ipcRenderer.invoke("standalone-note:setAlwaysOnTop", args),
   standaloneNoteClose: () => ipcRenderer.invoke("standalone-note:close"),
   standaloneNoteCloseReady: (args) => ipcRenderer.invoke("standalone-note:closeReady", args),
+  quickAgentToggle: () => ipcRenderer.invoke("quick-agent:toggle"),
+  quickAgentHide: () => ipcRenderer.invoke("quick-agent:hide"),
+  quickAgentSetPinned: (args) => ipcRenderer.invoke("quick-agent:setPinned", args),
+  quickAgentGetState: () => ipcRenderer.invoke("quick-agent:getState"),
+  quickAgentHandoff: (args) => ipcRenderer.invoke("quick-agent:handoff", args),
+  onQuickAgentHandoff: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: { sessionId: string }) => callback(payload);
+    ipcRenderer.on("quick-agent:handoff", handler);
+    return () => ipcRenderer.removeListener("quick-agent:handoff", handler);
+  },
   onStandaloneNoteCloseRequested: (callback) => {
     const handler = () => callback();
     ipcRenderer.on("standalone-note:requestClose", handler);
@@ -1960,9 +1937,6 @@ const api: DesktopApi = {
   workbenchCreateFileText: (args) => ipcRenderer.invoke("workbench:createFileText", args),
   workbenchOpenPath: (args) => ipcRenderer.invoke("workbench:openPath", args),
   workbenchRevealPath: (args) => ipcRenderer.invoke("workbench:revealPath", args),
-  workbenchSearchText: (args) => ipcRenderer.invoke("workbench:searchText", args),
-  workbenchSearchTextCancel: () => ipcRenderer.invoke("workbench:searchTextCancel"),
-  workbenchReplaceText: (args) => ipcRenderer.invoke("workbench:replaceText", args),
   terminalGitStatus: (args) => ipcRenderer.invoke("terminal:gitStatus", args),
   terminalGitFetch: (args) => ipcRenderer.invoke("terminal:gitFetch", args),
   terminalGitStage: (args) => ipcRenderer.invoke("terminal:gitStage", args),
@@ -2042,16 +2016,6 @@ const api: DesktopApi = {
     const handler = () => callback();
     ipcRenderer.on("workbench:cmdShiftP", handler);
     return () => ipcRenderer.removeListener("workbench:cmdShiftP", handler);
-  },
-  onWorkbenchCmdShiftF: (callback) => {
-    const handler = () => callback();
-    ipcRenderer.on("workbench:cmdShiftF", handler);
-    return () => ipcRenderer.removeListener("workbench:cmdShiftF", handler);
-  },
-  onWorkbenchCmdShiftG: (callback) => {
-    const handler = () => callback();
-    ipcRenderer.on("workbench:cmdShiftG", handler);
-    return () => ipcRenderer.removeListener("workbench:cmdShiftG", handler);
   },
   getReportEntry: (reportId) => ipcRenderer.invoke("report:getEntry", reportId),
   listAgentTools: (args) => ipcRenderer.invoke("agent:listTools", args),

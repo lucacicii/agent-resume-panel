@@ -28,6 +28,13 @@ interface ChatMainProps {
   active?: boolean;
   sessionId?: string | null;
   sessionTitle?: string;
+  /** Controls prepended to the header's action row (Quick Agent window: pin / new / hide). */
+  headerExtra?: React.ReactNode;
+  /** Transient banner over the pane (rename results, workspace switches). */
+  notice?: { kind: "success" | "error"; text: string } | null;
+  onDismissNotice?: () => void;
+  /** Board chat and Quick Agent take the workspace from `@pack` / drops, not a picker. */
+  showWorkspacePicker?: boolean;
   messages: RenderedChatMessage[];
   isStreaming: boolean;
   /** Pending steering / follow-up count, for the composer badge. */
@@ -101,6 +108,10 @@ export function ChatMain({
   active = true,
   sessionId,
   sessionTitle,
+  headerExtra,
+  notice,
+  onDismissNotice,
+  showWorkspacePicker = true,
   messages,
   isStreaming,
   liveSegments,
@@ -449,8 +460,38 @@ export function ChatMain({
       that pile is gone, which is what closes the drawer with it. */
   const openTurnPile = openTurn ? turnsOfPile(openTurn.pile) : [];
 
+  // Success notices fade on their own; errors stay until dismissed.
+  const noticeKind = notice?.kind;
+  useEffect(() => {
+    if (noticeKind !== "success" || !onDismissNotice) return;
+    const timer = window.setTimeout(onDismissNotice, 5000);
+    return () => window.clearTimeout(timer);
+  }, [noticeKind, notice?.text, onDismissNotice]);
+
   return (
     <div className={hasDialog ? "tb-chat-main has-question" : "tb-chat-main"}>
+      {notice ? (
+        <div
+          className={`tb-chat-title-notice ${notice.kind}`}
+          role="status"
+          onClick={onDismissNotice}
+        >
+          <span className="tb-chat-title-notice-text">{notice.text}</span>
+          {onDismissNotice ? (
+            <button
+              type="button"
+              className="tb-chat-title-notice-close"
+              aria-label="Close"
+              onClick={(event) => {
+                event.stopPropagation();
+                onDismissNotice();
+              }}
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {/* Chat Header */}
       <header className="tb-chat-header">
         <div className="tb-chat-header-title-box">
@@ -461,6 +502,7 @@ export function ChatMain({
         </div>
 
         <div className="tb-chat-header-actions">
+          {headerExtra ? <div className="tb-chat-header-extra">{headerExtra}</div> : null}
 
           {/* Find in conversation (opened via Cmd/Ctrl+F) */}
           {searchOpen ? (
@@ -663,6 +705,7 @@ export function ChatMain({
         onSelectGtdTask={onSelectGtdTask}
         onSelectFinderDir={onSelectFinderDir}
         workspaceLocked={isWorkspaceLocked}
+        showWorkspacePicker={showWorkspacePicker}
         prefillPrompt={prefillPrompt}
         lastRunMetrics={lastRunMetrics}
         streamingMetrics={streamingMetrics}

@@ -202,6 +202,7 @@ export function registerThunderIpc(): void {
       args: {
         taskId: string;
         prompt: string;
+        roleContext?: string;
         sessionId?: string;
         model?: string;
         workspaceDir?: string;
@@ -279,6 +280,7 @@ export function registerThunderIpc(): void {
         return await client.runTask({
           taskId: args.taskId,
           prompt: args.prompt,
+          roleContext: args.roleContext,
           sessionId: effectiveSessionId,
           model: args.model,
           workspaceDir: effectiveWorkspaceDir,

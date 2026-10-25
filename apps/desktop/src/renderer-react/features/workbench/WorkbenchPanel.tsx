@@ -74,25 +74,6 @@ import {
   sessionNoteMatchesTarget,
   type FloatingSessionNoteTarget
 } from "./FloatingSessionNote";
-import { DiffWorkerPool } from "./diffWorkerPool";
-import {
-  WorkbenchDiffView,
-  type WorkbenchDiffHunkTarget,
-  type WorkbenchDiffLineTarget,
-  type WorkbenchDiffPane
-} from "./WorkbenchDiffView";
-export {
-  advanceDiffSearchMatchIndex,
-  collectDiffSearchMatches,
-  findDiffSearchMatchIndex
-} from "./WorkbenchDiffView";
-import {
-  WorkbenchFileExplorer,
-  type WorkbenchFileExplorerHandle
-} from "./WorkbenchFileExplorer";
-import { useWorkbenchSearch } from "./search/useWorkbenchSearch";
-import { rankSearchRootOptions, type SearchRootOption } from "./search/rootPicker";
-import { WorkbenchSearchSidePane } from "./search/WorkbenchSearchSidePane";
 import { useWorkbenchQuickAccess } from "./quick-access/useWorkbenchQuickAccess";
 import { SessionTranscriptPane } from "./SessionTranscriptPane";
 import {
@@ -120,14 +101,6 @@ import {
   formatGitCommitDate,
   gitCommitBranchNames
 } from "./git/workbenchGitModel";
-import { GitChangesPanel } from "./git/GitChangesPanel";
-import { useWorkbenchGit } from "./git/useWorkbenchGit";
-import {
-  GitGraphPortals,
-  GitCommitBranches,
-  GitActionIcons,
-  BranchGraphNavigation
-} from "./git/GitGraphView";
 import { PaneTabThumb } from "./PaneTabThumb";
 import { useTabPreview } from "./tabPreview/useTabPreview";
 import type { TabPreviewTarget } from "./tabPreview/types";
@@ -199,6 +172,12 @@ function reconcileEditorInspection(editor: EditorPane, inspected: FileInspection
     diskState: undefined
   };
 }
+
+type WorkbenchDiffPane = {
+  path: string;
+  repoRoot: string;
+  repoPath: string;
+};
 
 type DiffPane = WorkbenchDiffPane & {
   projectPath: string;
@@ -275,7 +254,7 @@ type BrowserPane = {
   workbenchId?: string;
   surfaceKind: "workbench" | "window";
 };
-type SideView = "files" | "git" | "search" | "scripts" | "browser" | null;
+type SideView = "scripts" | "browser" | null;
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
 const GTD_STATUSES = DESKTOP_GTD_STATUSES;
 /** Shared empty list so a project-less task keeps a stable array identity. */
@@ -283,17 +262,6 @@ const EMPTY_PROJECT_PATHS: string[] = [];
 /** Stable empty identity for the review banner's commit scope. */
 const EMPTY_COMMIT_PATHS: string[] = [];
 
-/**
- * Tooltip body for the review banner's commit button: the paths that will be
- * committed, capped so a large dirty tree cannot produce an unbounded tooltip.
- */
-function formatCommitScopeTooltip(paths: readonly string[]): string {
-  if (!paths.length) return "—";
-  const MAX = 12;
-  const shown = paths.slice(0, MAX);
-  const rest = paths.length - shown.length;
-  return [shown.join("\n"), rest > 0 ? `+${rest}` : ""].filter(Boolean).join("\n");
-}
 const WORKBENCH_SESSION_ROW_HEIGHT = 64;
 type CatalogProject = {
   projectId: string;
@@ -676,18 +644,6 @@ function editorPreviewTarget(pane: EditorPane): TabPreviewTarget {
   };
 }
 
-function diffPreviewTarget(pane: DiffPane): TabPreviewTarget {
-  return {
-    kind: "diff",
-    key: pane.key,
-    title: basename(pane.path),
-    meta: basename(pane.projectPath),
-    accent: "code",
-    oldText: pane.oldText,
-    newText: pane.newText
-  };
-}
-
 function notePreviewTarget(pane: NotePane, title: string): TabPreviewTarget {
   return {
     kind: "note",
@@ -851,19 +807,18 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [terminalCreating, setTerminalCreating] = useState(false);
   /** Last `cd` target per shell pane, for the project switcher's highlight. */
   const [terminalCdTargets, setTerminalCdTargets] = useState<Record<string, string>>({});
-  const [editors, setEditors] = useState<EditorPane[]>([]);
-  const [imagePreview, setImagePreview, imagePreviewClosing] = useOverlayState<string>();
-  const [diffs, setDiffs] = useState<DiffPane[]>([]);
-  const [diffSessionAlongside, setDiffSessionAlongside] = useState<boolean>(() => storageString(DIFF_SESSION_ALONGSIDE_KEY) === "true");
+
   const [acpChats, setAcpChats] = useState<AcpChatPane[]>([]);
   const [thunderChats, setThunderChats] = useState<ThunderChatPane[]>([]);
-  const [thunderConversations, setThunderConversations] = useState<ThunderConversationSummary[]>([]);
-  const [unboundThunderTui, setUnboundThunderTui] = useState<UnboundThunderTuiPane[]>([]);
   const [browsers, setBrowsers] = useState<BrowserPane[]>([]);
   const [notePanes, setNotePanes] = useState<NotePane[]>([]);
   const [activePanes, setActivePanes] = useState<Record<string, string>>({});
+  const [imagePreview, setImagePreview, imagePreviewClosing] = useOverlayState<string>();
+  const [thunderConversations, setThunderConversations] = useState<ThunderConversationSummary[]>([]);
+  const thunderConversationsRef = useRef<ThunderConversationSummary[]>(thunderConversations);
+  useEffect(() => { thunderConversationsRef.current = thunderConversations; }, [thunderConversations]);
+  const [unboundThunderTui, setUnboundThunderTui] = useState<UnboundThunderTuiPane[]>([]);
   const [side, setSide] = useState<SideView>(null);
-  const [editorContextMenu, setEditorContextMenu, editorContextMenuClosing] = useOverlayState<{ x: number; y: number; hasSelection: boolean; selectedText: string }>();
   const {
     selectionResult,
     selectionResultClosing,
@@ -871,24 +826,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     copySelectionResult,
     clearSelectionResult
   } = useSelectionActionResult();
-  const [pendingExplorerReveal, setPendingExplorerReveal] = useState<{ rootPath: string; path: string } | null>(null);
-  const searchProjectOptionRefs = useRef(new Map<string, HTMLButtonElement>());
-  const editorRef = useRef<CodeEditorHandle | null>(null);
-  const [editorFindOpen, setEditorFindOpen] = useState(false);
-  const [editorFindQuery, setEditorFindQuery] = useState("");
-  const [editorFindResult, setEditorFindResult] = useState<CodeEditorSearchResult | null>(null);
-  const editorFindInputRef = useRef<HTMLInputElement | null>(null);
-  const editorFindQueryRef = useRef("");
-  const previousEditorKeyRef = useRef("");
-  const pendingRevealRef = useRef<SearchReveal | null>(null);
-  const [gitLog, setGitLog] = useState<GitLog | null>(null);
-  const [gitShow, setGitShow] = useState<GitShow | null>(null);
-  const [gitHistoryContext, setGitHistoryContext] = useState<GitHistoryContext | null>(null);
-  const [gitLogLoading, setGitLogLoading] = useState(false);
-  const [gitLogError, setGitLogError] = useState("");
   const [discardingGitPaths, setDiscardingGitPaths] = useState<Set<string>>(() => new Set());
-  const editorContextMenuRef = useRef<HTMLDivElement>(null);
-
   const [settings, setSettings] = useState<PanelSettings | null>(null);
   const setStatus = useCallback((s: { text: string; kind?: "error" | "ok" | "warning" }) => {
     if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
@@ -896,8 +834,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [contextMenu, setContextMenu, contextMenuClosing] = useOverlayState<WorkbenchContextMenu>();
   const [floatingNoteTarget, setFloatingNoteTarget] = useState<FloatingSessionNoteTarget | null>(null);
   const [gitLogDialog, setGitLogDialog, gitLogDialogClosing] = useOverlayState<GitLogDialog>();
-  const gitLogDialogBusyRef = useRef(false);
-  const gitLogDialogInputRef = useRef<HTMLInputElement | null>(null);
   const [projectPickDialog, setProjectPickDialog, projectPickDialogClosing] = useOverlayState<ProjectPickDialog>();
   const [draggedSessionKey, setDraggedSessionKey] = useState<string | null>(null);
   const terminalRefs = useRef(new Map<number, Terminal>());
@@ -911,18 +847,11 @@ export function WorkbenchPanel(): ReactPortal | null {
   /** A workbench explicitly requested by a deep-link (GTD chip), honored over the stored one. */
   const pendingWorkbenchIdRef = useRef<string | null>(null);
   const draggedSessionRef = useRef<AgentSession | null>(null);
-  const gitRefreshTimers = useRef(new Map<string, number>());
-  const gitLogRequestRef = useRef(0);
   const terminalsRef = useRef<TerminalPane[]>([]);
   const refreshTerminalGitRef = useRef<(key: string) => Promise<void>>(async () => {});
-  const editorsRef = useRef<EditorPane[]>([]);
-  /** Latest editor save, so the window-close flush never captures a stale one. */
-  const saveEditorRef = useRef<(key: string) => Promise<boolean>>(async () => true);
-  const diffsRef = useRef<DiffPane[]>([]);
   const notePanesRef = useRef<NotePane[]>([]);
   /** Workbenches whose persisted layout was already adopted in this panel instance. */
   const restoredWorkbenchesRef = useRef<Set<string>>(new Set());
-  const fileExplorerRef = useRef<WorkbenchFileExplorerHandle | null>(null);
   const selectedProjectRef = useRef<string | null>(selectedProject);
   const catalogProjectsRef = useRef<CatalogProject[]>(catalogProjects);
   const activeRef = useRef(active);
@@ -965,16 +894,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (acp?.projectPath) return acp.projectPath;
     const thunder = thunderChats.find((p) => paneScopeKey(p) === activeScopeKey && p.key === activePane);
     if (thunder?.projectPath) return thunder.projectPath;
-    const editor = editors.find((p) => paneScopeKey(p) === activeScopeKey && p.key === activePane);
-    if (editor?.projectPath) return editor.projectPath;
-    if (editor?.path) {
-      const idx = editor.path.lastIndexOf("/");
-      return idx > 0 ? editor.path.slice(0, idx) : null;
-    }
-    const diff = diffs.find((p) => paneScopeKey(p) === activeScopeKey && p.key === activePane);
-    if (diff?.projectPath) return diff.projectPath;
     return null;
-  }, [activePane, activeScopeKey, terminals, acpChats, thunderChats, editors, diffs]);
+  }, [activePane, activeScopeKey, terminals, acpChats, thunderChats]);
 
   const sideRepoRoot = taskScope
     ? (sessionTarget
@@ -1009,16 +930,6 @@ export function WorkbenchPanel(): ReactPortal | null {
    * separately from the shared default, which is what lets one of them be pinned
    * to a worktree while the others follow the workbench.
    */
-  const gitRoots = sideRepoRoots;
-  const filesRoots = sideRepoRoots;
-  const formatExplorerRootLabel = useCallback((root: string) => basename(root), []);
-  /**
-   * What the search reads. The search pane carries its own checkout selector, so
-   * its scope is the one that decides: a pinned Search has to search the checkout
-   * the pane says it is on, or the control would be relabelling the pane without
-   * changing a thing.
-   */
-  const searchRoots = sideRepoRoots;
   /**
    * Roots the explorer and git panels span. A focused project (a chip click)
    * narrows to that one; a shared task workspace shows every referenced
@@ -1030,198 +941,17 @@ export function WorkbenchPanel(): ReactPortal | null {
   const sideRootsKey = sideRoots.map(projectPathKey).join("\0");
   const sideRootsRef = useRef<string[]>(sideRoots);
   sideRootsRef.current = sideRoots;
-  const searchRootsRef = useRef<string[]>(searchRoots);
-  searchRootsRef.current = searchRoots;
-  const gitRootsRef = useRef<string[]>(gitRoots);
-  gitRootsRef.current = gitRoots;
-  /** For the callbacks that read their inputs from refs to stay stable. */
-  /**
-   * A pane failed to read one of its roots, which may be nothing more than the
-   * checkout it had been given having been removed from under it: an agent that
-   * merged its branch and cleaned up, or Finder. That is not a failure to pop a
-   * notification up for — the panel puts the panes back on the repository's main
-   * checkout and says nothing, which is what the reader would have asked for. A
-   * read that failed with the checkout still there is reported as it always was.
-   */
-  const reportReadFailure = useCallback((message: string) => {
-    setStatus({ text: message, kind: "error" });
-  }, [setStatus]);
-  /** Git's own voice, held stable for the hook and routed through the checkouts. */
-  const notifyGitStatus = useCallback(
-    (status: { text: string; kind?: "error" | "ok" | "warning" }) => {
-      if (status.kind === "error") reportReadFailure(status.text);
-      else setStatus(status);
-    },
-    [reportReadFailure, setStatus]
-  );
   /** The root an absolute path belongs to (longest match), or "" when outside every root. */
   const projectForPath = useCallback(
     (targetPath: string): string => rootOwningPath(sideRootsRef.current, targetPath),
     []
   );
-  /**
-   * The same question asked of the roots the search runs over, which are the ones
-   * a match, a replacement and an editor inside them have to be attributed to.
-   * Held stable through its ref like the one above: the search's debounce hangs
-   * off this callback's identity.
-   */
-  const searchProjectForPath = useCallback(
-    (targetPath: string): string => rootOwningPath(searchRootsRef.current, targetPath),
-    []
-  );
 
-  const {
-    git,
-    gitRef,
-    gitRoot,
-    gitExpandedDirs,
-    gitRefreshing,
-    gitSyncing,
-    commitMessage,
-    commitBusy,
-    commitSuggestion,
-    gitRepositories,
-    canCommit,
-    projectTracking,
-    refreshGit,
-    toggleGitDirectory,
-    toggleGitStage,
-    selectGitRoot,
-    setCommitMessage,
-    suggestCommit,
-    commit,
-    syncGitBranch,
-    checkoutGitPanelBranch,
-    notifyGitSuccess,
-    notifyGitFailure
-  } = useWorkbenchGit({
-    active,
-    selectedProjects: gitRoots,
-    selectedProjectsRef: gitRootsRef,
-    side,
-    nestedScanMaxDepth: settings?.workbench?.gitNestedScanMaxDepth,
-    nestedScanIgnoreDirs: settings?.workbench?.gitNestedScanIgnoreDirs,
-    onGitMutated: () => {
-      terminalsRef.current.forEach((pane) => void refreshTerminalGitRef.current(pane.key));
-    },
-    // Git speaks about the checkouts it was given, so a failure while one of them
-    // has just been removed is the same story as a pane's read failing.
-    notifyStatus: notifyGitStatus
-  });
 
   useEffect(() => { terminalsRef.current = terminals; }, [terminals]);
-  useEffect(() => { editorsRef.current = editors; }, [editors]);
-  useEffect(() => { diffsRef.current = diffs; }, [diffs]);
   useEffect(() => { notePanesRef.current = notePanes; }, [notePanes]);
   useEffect(() => { selectedProjectRef.current = selectedProject; }, [selectedProject]);
 
-  /**
-   * Paths the review banner's Commit & Push will commit: everything dirty in the
-   * repo it targets, staged or not. Derived from `git` on every render rather
-   * than from `stagedCommitPaths`, which lags a staging round trip.
-   */
-  const bannerCommitPaths = useMemo(() => {
-    if (!gitRoot || !git) return EMPTY_COMMIT_PATHS;
-    const paths = new Set<string>();
-    for (const change of [...git.staged, ...git.unstaged]) {
-      if (change.repoRoot === gitRoot) paths.add(change.repoPath);
-    }
-    return [...paths];
-  }, [git, gitRoot]);
-
-  const handleCommitAndPushFromBanner = useCallback(async () => {
-    if (commitBusy || !gitRoot) return;
-    // Nothing dirty in the target repo → there is nothing this button can do,
-    // so open the panel instead of failing silently.
-    if (!bannerCommitPaths.length) {
-      setSide("git");
-      return;
-    }
-    let msg = commitMessage.trim();
-    if (!msg) {
-      // Generate from the paths we are about to commit: `suggestCommit` reads the
-      // staged set, which is empty when the user never staged anything.
-      try {
-        const result = await desktopApi().terminalGitSuggestCommit({ repoRoot: gitRoot, paths: bannerCommitPaths });
-        msg = result.message.trim();
-        setCommitMessage(result.message);
-      } catch {
-        /* fall through to the panel */
-      }
-    }
-    if (!msg) {
-      setSide("git");
-      return;
-    }
-    // `terminalGitCommit` stages the paths it is given, so no separate staging
-    // round trip is needed here.
-    await commit(true, msg, bannerCommitPaths);
-  }, [bannerCommitPaths, commit, commitBusy, commitMessage, gitRoot]);
-
-  const refreshOpenGitDiffs = useCallback(async (changedPaths: ReadonlySet<string> | null) => {
-    if (!selectedProject) return;
-    const projectDiffs = diffsRef.current.filter(
-      (pane) => pane.projectPath === selectedProject && pane.source !== "commit"
-    );
-    if (!projectDiffs.length) return;
-    const targets = changedPaths === null
-      ? projectDiffs
-      : projectDiffs.filter((pane) => changedPaths.has(normalizeWorkbenchPath(gitChangeFilePath(pane))));
-    if (!targets.length) return;
-    await Promise.all(targets.map(async (pane) => {
-      try {
-        const refreshed = await desktopApi().terminalGitDiffSides({
-          cwd: pane.repoRoot,
-          path: pane.repoPath,
-          staged: pane.source === "staged"
-        });
-        if (pane.source !== "untracked" && !refreshed.hunks.length) {
-          setDiffs((current) => current.filter((item) => item.key !== pane.key));
-          setActivePanes((current) => {
-            const projectKey = paneProjectKey(selectedProject);
-            return current[projectKey] === pane.key ? { ...current, [projectKey]: "" } : current;
-          });
-        } else if (refreshed.oldText !== pane.oldText || refreshed.newText !== pane.newText) {
-          setDiffs((current) => current.map((item) => item.key === pane.key ? { ...item, ...refreshed } : item));
-        }
-      } catch {
-        // Transient failure: keep the last rendered diff; the next change event re-attempts.
-      }
-    }));
-  }, [selectedProject]);
-
-  const gitRefreshDebounceRef = useRef(0);
-  const gitDiffRefreshPendingRef = useRef<{ paths: Set<string>; fullRescan: boolean }>({
-    paths: new Set(),
-    fullRescan: false
-  });
-  useEffect(() => {
-    const api = desktopApi();
-    if (typeof api.onWorkbenchFileSystemChanged !== "function") return;
-    const unsubscribe = api.onWorkbenchFileSystemChanged((event) => {
-      if (event.type !== "change") return;
-      if (!activeRef.current || !watchedRootsRef.current.some((root) => projectPathKey(root) === projectPathKey(event.rootPath))) return;
-      const pending = gitDiffRefreshPendingRef.current;
-      if (event.fullRescan || !event.paths.length) {
-        pending.fullRescan = true;
-      } else {
-        for (const changedPath of event.paths) pending.paths.add(normalizeWorkbenchPath(changedPath));
-      }
-      if (gitRefreshDebounceRef.current) window.clearTimeout(gitRefreshDebounceRef.current);
-      gitRefreshDebounceRef.current = window.setTimeout(() => {
-        gitRefreshDebounceRef.current = 0;
-        const { paths, fullRescan } = gitDiffRefreshPendingRef.current;
-        gitDiffRefreshPendingRef.current = { paths: new Set(), fullRescan: false };
-        void refreshGit(false);
-        void refreshOpenGitDiffs(fullRescan ? null : paths);
-      }, GIT_REFRESH_DEBOUNCE_MS);
-    });
-    return () => {
-      if (gitRefreshDebounceRef.current) window.clearTimeout(gitRefreshDebounceRef.current);
-      gitRefreshDebounceRef.current = 0;
-      unsubscribe();
-    };
-  }, [refreshGit, refreshOpenGitDiffs]);
   useEffect(() => { catalogProjectsRef.current = catalogProjects; }, [catalogProjects]);
   useEffect(() => { activeRef.current = active; }, [active]);
   useEffect(() => { activePanesRef.current = activePanes; }, [activePanes]);
@@ -1234,18 +964,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     autoRenameTimersRef.current.clear();
   }, []);
 
-  useEffect(() => {
-    if (!pendingExplorerReveal || side !== "files") return;
-    if (projectPathKey(selectedProject || "") !== projectPathKey(pendingExplorerReveal.rootPath)) return;
-    const frame = window.requestAnimationFrame(() => {
-      const explorer = fileExplorerRef.current;
-      if (!explorer) return;
-      void explorer.revealPath(pendingExplorerReveal.path).finally(() => {
-        setPendingExplorerReveal((current) => current === pendingExplorerReveal ? null : current);
-      });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [pendingExplorerReveal, selectedProject, side]);
   useEffect(() => { pendingSessionsRef.current = pendingSessions; }, [pendingSessions]);
   useEffect(() => { sessionTargetRef.current = sessionTarget; }, [sessionTarget]);
   useEffect(() => { taskScopeRef.current = taskScope ? { noteId: taskScope.noteId, primaryProject: taskScope.primaryProject } : null; }, [taskScope]);
@@ -1756,21 +1474,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     };
   }, [reloadWorkbench]);
 
-  useEffect(() => {
-    if (!editorContextMenu) return;
-    const dismiss = (event: MouseEvent) => {
-      if (!(event.target instanceof Element) || !event.target.closest(".wb-context-menu")) setEditorContextMenu(null);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setEditorContextMenu(null);
-    };
-    window.addEventListener("mousedown", dismiss);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [editorContextMenu]);
 
   useEffect(() => () => {
     gitRefreshTimers.current.forEach((timer) => window.clearTimeout(timer));
@@ -1806,30 +1509,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [active, contextMenu, selectedSessionKeys.size]);
-
-  useEffect(() => {
-    if (!gitLogDialog) return;
-    const dismiss = (event: MouseEvent) => {
-      if (!(event.target instanceof Element) || !event.target.closest(".wb-git-log-dialog")) closeGitLogDialog();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeGitLogDialog();
-      }
-    };
-    window.addEventListener("mousedown", dismiss);
-    window.addEventListener("keydown", onKeyDown);
-    window.requestAnimationFrame(() => {
-      gitLogDialogInputRef.current?.focus();
-      gitLogDialogInputRef.current?.select();
-    });
-    return () => {
-      window.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gitLogDialog?.kind, gitLogDialog?.commit?.hash]);
 
   const allProjects = useMemo((): WorkbenchProject[] => {
     if (catalogProjects.length) {
@@ -2140,8 +1819,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const currentTerminals = terminals.filter((pane) => paneScopeKey(pane) === activeScopeKey);
   const currentSessionTerminals = currentTerminals.filter((pane) => pane.group === "session");
   const currentShellTerminals = currentTerminals.filter((pane) => pane.group === "terminal");
-  const currentEditors = editors.filter((pane) => paneScopeKey(pane) === activeScopeKey);
-  const currentDiffs = diffs.filter((pane) => paneScopeKey(pane) === activeScopeKey);
   const currentAcpChats = acpChats.filter((pane) => paneScopeKey(pane) === activeScopeKey);
   const currentThunderChats = thunderChats.filter((pane) => paneScopeKey(pane) === activeScopeKey);
   const currentBrowsers = browsers.filter((pane) => paneScopeKey(pane) === activeScopeKey);
@@ -2162,9 +1839,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   );
   const currentNotePanes = notePanes.filter((pane) => paneScopeKey(pane) === activeScopeKey);
   const activeTerminal = currentTerminals.find((pane) => pane.key === activePane);
-  const currentEditor = currentEditors.find((pane) => pane.key === activePane);
-  const currentDiff = currentDiffs.find((pane) => pane.key === activePane);
-  const currentFilePath = workbenchActiveFilePath(selectedProject, currentEditor?.path, currentDiff);
   const currentAcpChat = currentAcpChats.find((pane) => pane.key === activePane);
   const currentThunderChat = currentThunderChats.find((pane) => pane.key === activePane);
   const currentNotePane = currentNotePanes.find((pane) => pane.key === activePane);
@@ -2191,80 +1865,12 @@ export function WorkbenchPanel(): ReactPortal | null {
       return next;
     });
   }, []);
-  /** Prefer the active terminal's git info; fall back to any project terminal or status tracking. */
-  const branchStatusTerminal = activeTerminal
-    || currentTerminals.find((pane) => Boolean(pane.branch) || pane.gitMode === "nested")
-    || null;
-  const branchStatusNested = Boolean(
-    branchStatusTerminal?.gitMode === "nested" && (branchStatusTerminal.nestedRepos?.length || 0) > 0
-  );
-  const branchStatusLabel = branchStatusNested
-    ? t("desktop.workbench.nestedRepoCount", branchStatusTerminal?.nestedRepos?.length || 0)
-    : (branchStatusTerminal?.branch || projectTracking?.branch || null);
-  const branchStatusPane: TerminalPane | null = branchStatusTerminal || (
-    selectedProject && branchStatusLabel
-      ? {
-        key: `project-git:${selectedProject}`,
-        title: "",
-        group: "terminal",
-        cwd: gitRoot || selectedProject,
-        projectPath: selectedProject,
-        branch: projectTracking?.branch ?? null,
-        repoRoot: gitRoot || projectTracking?.repoRoot || selectedProject,
-        gitMode: git?.nestedRepos?.length ? "nested" : "direct",
-        nestedRepos: (git?.nestedRepos || []).map((repo) => ({
-          root: repo.root,
-          displayPath: repo.displayPath,
-          branch: git?.tracking?.find((item) => item.repoRoot === repo.root)?.branch ?? null
-        }))
-      }
-      : null
-  );
+  ;
 
-  editorFindQueryRef.current = editorFindQuery;
 
-  const clearEditorFindSearch = useCallback(() => {
-    editorRef.current?.clearSearch();
-    setEditorFindResult(null);
-  }, []);
 
-  const runEditorFind = useCallback((
-    direction: "forward" | "backward",
-    query = editorFindQueryRef.current,
-    reset = false
-  ) => {
-    const value = query.trim();
-    if (!value) {
-      clearEditorFindSearch();
-      return { current: 0, total: 0 };
-    }
-    const result = reset
-      ? (editorRef.current?.setSearchQuery(value) ?? { current: 0, total: 0 })
-      : (editorRef.current?.navigateSearch(direction) ?? { current: 0, total: 0 });
-    setEditorFindResult(result);
-    window.requestAnimationFrame(() => editorFindInputRef.current?.focus());
-    return result;
-  }, [clearEditorFindSearch]);
 
-  const openEditorFind = useCallback(() => {
-    if (!currentEditor) return;
-    const selectedText = editorRef.current?.getSelectedText().trim() || "";
-    if (selectedText) {
-      setEditorFindQuery(selectedText);
-      editorFindQueryRef.current = selectedText;
-      runEditorFind("forward", selectedText, true);
-    } else if (editorFindQueryRef.current.trim()) {
-      runEditorFind("forward", editorFindQueryRef.current, true);
-    }
-    setEditorFindOpen(true);
-  }, [currentEditor, runEditorFind]);
 
-  const closeEditorFind = useCallback(() => {
-    setEditorFindOpen(false);
-    setEditorFindQuery("");
-    editorFindQueryRef.current = "";
-    clearEditorFindSearch();
-  }, [clearEditorFindSearch]);
 
   /** Map a workbench pane key to the catalog session row it represents, so
    *  activating a tab keeps the session-list highlight in sync (the reverse
@@ -2280,8 +1886,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     return terminalPane?.group === "session" ? `pending:${paneKey}` : "";
   }, []);
 
+
   const setActivePane = useCallback((paneKey: string, projectPath = selectedProject) => {
-    if (paneKey !== activePane && activePane.startsWith("editor:")) closeEditorFind();
     if (paneKey !== activePane) focusPaneAfterPtyRef.current = "";
     const projectKey = workbenchScope(activeWorkbenchIdRef.current) ?? paneProjectKey(projectPath);
     if (paneKey) {
@@ -2290,21 +1896,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     setActivePanes((current) => current[projectKey] === paneKey ? current : { ...current, [projectKey]: paneKey });
     setActiveSessionKey(workbenchPaneSessionKey(paneKey));
-  }, [activePane, closeEditorFind, selectedProject, workbenchPaneSessionKey]);
-
-  const registerComposerFocus = useCallback((key: string, focus: (options?: { caret?: "end" }) => void) => {
-    composerFocusRefs.current.set(key, focus);
-    if (focusPaneAfterPtyRef.current === key) {
-      const pane = terminalsRef.current.find((entry) => entry.key === key);
-      if (pane?.ptyId != null) {
-        focusPaneAfterPtyRef.current = "";
-        window.requestAnimationFrame(() => focus());
-      }
-    }
-    return () => {
-      composerFocusRefs.current.delete(key);
-    };
-  }, []);
+  }, [activePane, selectedProject, workbenchPaneSessionKey]);
 
   const focusWorkbenchPane = useCallback((paneKey: string) => {
     if (!paneKey) return;
@@ -2342,11 +1934,22 @@ export function WorkbenchPanel(): ReactPortal | null {
         document.querySelector<HTMLTextAreaElement>(".wb-thunder-chat:not([hidden]) .tb-composer-textarea")?.focus();
         return;
       }
-      if (paneKey.startsWith("editor:")) {
-        editorRef.current?.focus();
-      }
     });
   }, []);
+  const registerComposerFocus = useCallback((key: string, focus: (options?: { caret?: "end" }) => void) => {
+    composerFocusRefs.current.set(key, focus);
+    if (focusPaneAfterPtyRef.current === key) {
+      const pane = terminalsRef.current.find((entry) => entry.key === key);
+      if (pane?.ptyId != null) {
+        focusPaneAfterPtyRef.current = "";
+        window.requestAnimationFrame(() => focus());
+      }
+    }
+    return () => {
+      composerFocusRefs.current.delete(key);
+    };
+  }, []);
+
 
   const setComposerDraft = useCallback((paneKey: string, value: string) => {
     setComposerDrafts((current) => current[paneKey] === value ? current : { ...current, [paneKey]: value });
@@ -2372,12 +1975,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       setSelectionAnchorKey((current) => current ? "" : current);
     }
     if (!options?.keepSide && projectChanged) setSide(null);
-    setGitLog(null);
-    setGitShow(null);
-    setGitHistoryContext(null);
-    setGitLogLoading(false);
-    setGitLogError("");
-    gitLogRequestRef.current += 1;
   };
 
   const focusPendingSession = useCallback((pending: PendingWorkbenchSession) => {
@@ -2446,6 +2043,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, []);
   useEffect(() => { refreshTerminalGitRef.current = refreshTerminalGit; }, [refreshTerminalGit]);
 
+  const gitRefreshTimers = useRef(new Map<string, number>());
   const onTerminalInput = useCallback((key: string) => {
     const existing = gitRefreshTimers.current.get(key);
     if (existing) window.clearTimeout(existing);
@@ -2610,28 +2208,19 @@ export function WorkbenchPanel(): ReactPortal | null {
       options?.remainingAcp ?? acpChats.filter((item) => paneScopeKey(item) === scopeKey && item.key !== closedKey);
     const remainingThunder =
       options?.remainingThunder ?? thunderChats.filter((item) => paneScopeKey(item) === scopeKey && item.key !== closedKey);
-    const projectEditors = options?.remainingEditors
-      ?? editors.filter((item) => paneScopeKey(item) === scopeKey && item.key !== closedKey);
-    const projectDiffs = options?.remainingDiffs
-      ?? diffs.filter((item) => paneScopeKey(item) === scopeKey && item.key !== closedKey);
     const closedGroup: WorkbenchPaneGroup | null =
       terminals.find((item) => item.key === closedKey)?.group
       ?? (acpChats.some((item) => item.key === closedKey) ? "session" : null)
-      ?? (thunderChats.some((item) => item.key === closedKey) ? "session" : null)
-      ?? (editors.some((item) => item.key === closedKey) || diffs.some((item) => item.key === closedKey) ? "code" : null);
+      ?? (thunderChats.some((item) => item.key === closedKey) ? "session" : null);
     const groupsByKey = new Map<string, WorkbenchPaneGroup>([
       ...remainingTerminals.map((item) => [item.key, item.group] as const),
       ...remainingAcp.map((item) => [item.key, "session"] as const),
       ...remainingThunder.map((item) => [item.key, "session"] as const),
-      ...projectEditors.map((item) => [item.key, "code"] as const),
-      ...projectDiffs.map((item) => [item.key, "code"] as const),
     ]);
     const liveKeys = new Set([
       ...remainingTerminals.map((item) => item.key),
       ...remainingAcp.map((item) => item.key),
       ...remainingThunder.map((item) => item.key),
-      ...projectEditors.map((item) => item.key),
-      ...projectDiffs.map((item) => item.key),
     ]);
     const nextPane =
       history.find((item) => liveKeys.has(item) && groupsByKey.get(item) === closedGroup) ||
@@ -2639,8 +2228,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       remainingTerminals[remainingTerminals.length - 1]?.key ||
       remainingAcp[remainingAcp.length - 1]?.key ||
       remainingThunder[remainingThunder.length - 1]?.key ||
-      projectEditors[0]?.key ||
-      projectDiffs[0]?.key ||
       "";
     if (nextPane) {
       paneHistoryRef.current[scopeKey] = [nextPane, ...history.filter((item) => item !== nextPane)].slice(0, 32);
@@ -2649,7 +2236,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     setActivePanes((current) => (current[scopeKey] === closedKey ? { ...current, [scopeKey]: nextPane } : current));
     // Closing the active pane switches which session row should be highlighted.
     if (wasActive) setActiveSessionKey(workbenchPaneSessionKey(nextPane));
-  }, [acpChats, diffs, editors, terminals, thunderChats, workbenchPaneSessionKey]);
+  }, [acpChats, terminals, thunderChats, workbenchPaneSessionKey]);
 
   const closeTerminal = useCallback((key: string) => {
     const pane = terminalsRef.current.find((item) => item.key === key);
@@ -2706,34 +2293,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, [thunderChats, nextPaneAfterClose]);
 
-  const closeEditor = useCallback((key: string) => {
-    const pane = editors.find((item) => item.key === key);
-    if (!pane) return;
-    const close = () => {
-      if (activePane === key) closeEditorFind();
-      const remainingEditors = editors.filter((item) => item.key !== key);
-      setEditors(remainingEditors);
-      nextPaneAfterClose(paneScopeKey(pane), key, { remainingEditors });
-    };
-    if (!pane.dirty) {
-      close();
-      return;
-    }
-    // Native discard prompt: it resolves before the pane is torn down.
-    void (async () => {
-      if (await confirmDestructive(t("desktop.workbench.fileDiscardConfirm", basename(pane.path)), t("desktop.common.discard"))) {
-        close();
-      }
-    })();
-  }, [activePane, closeEditorFind, editors, nextPaneAfterClose, t]);
 
-  const closeDiff = useCallback((key: string) => {
-    const pane = diffs.find((item) => item.key === key);
-    if (!pane) return;
-    const remainingDiffs = diffs.filter((item) => item.key !== key);
-    setDiffs(remainingDiffs);
-    nextPaneAfterClose(paneScopeKey(pane), key, { remainingDiffs });
-  }, [diffs, nextPaneAfterClose]);
 
   const addAcpChat = useCallback((record: {
     id: string;
@@ -3207,15 +2767,13 @@ export function WorkbenchPanel(): ReactPortal | null {
       closeAcpChat(activePane);
     } else if (activePane.startsWith("thunder:")) {
       closeThunderChat(activePane);
-    } else if (activePane.startsWith("editor:")) {
-      closeEditor(activePane);
     } else if (activePane.startsWith("note:")) {
       closeNotePane(activePane);
     } else {
-      closeDiff(activePane);
+      closeTerminal(activePane);
     }
     return true;
-  }, [activePane, closeAcpChat, closeDiff, closeEditor, closeNotePane, closeTerminal, closeThunderChat]);
+  }, [activePane, closeAcpChat, closeNotePane, closeTerminal, closeThunderChat]);
 
   const openBlankTerminal = useCallback(async (targetProject?: string) => {
     if (terminalCreating) return;
@@ -3513,87 +3071,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (document.documentElement.dataset.windowMode === "task") void desktopApi().taskWindowClose();
   }), [active, closeActivePane]);
 
-  /**
-   * Closing a workbench window flushes its unsaved editor buffers first; if one
-   * cannot be saved, the window stays open rather than dropping the edit. The
-   * worktrees this task left behind are reported on the same pass — once, in one
-   * dialog, and only as a reminder: the close goes ahead unless the user asks to
-   * look at them first, and nothing is ever deleted on the way out.
-   */
-  useEffect(() => {
-    if (document.documentElement.dataset.windowMode !== "task") return;
-    const stop = desktopApi().onTaskWindowCloseRequested?.(() => {
-      void (async () => {
-        const dirty = editorsRef.current.filter((pane) => pane.dirty).map((pane) => pane.key);
-        for (const key of dirty) {
-          try { await saveEditorRef.current(key); } catch { /* reported by the editor status */ }
-        }
-        const stillDirty = editorsRef.current.some((pane) => pane.dirty);
-        // `ok: false` is main's "do not close yet", which is what a user who
-        // chose to look at the worktrees has asked for.
-        const mayClose = !stillDirty;
-        await desktopApi().taskWindowCloseReady?.({ ok: !stillDirty && mayClose }).catch(() => undefined);
-      })();
-    });
-    return () => stop?.();
-  }, []);
-
-  /** ⌘⇧F / Ctrl+Shift+F — open Find in Files (Search side panel). */
-  useEffect(() => {
-    const openSearchPanel = () => {
-      if (!active) return;
-      setSearchProjectMode(false);
-      setSearchProjectQuery("");
-      setSide("search");
-      window.requestAnimationFrame(() => {
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
-      });
-    };
-    const unsub =
-      typeof desktopApi().onWorkbenchCmdShiftF === "function"
-        ? desktopApi().onWorkbenchCmdShiftF(openSearchPanel)
-        : () => undefined;
-    // Renderer fallback when main bridge is unavailable (tests / older preload).
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!active) return;
-      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return;
-      if (event.key.toLowerCase() !== "f") return;
-      event.preventDefault();
-      openSearchPanel();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      unsub();
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [active]);
-
-  /** ⌃⇧G / Ctrl+Shift+G — open the Git side panel to review the session's changes. */
-  useEffect(() => {
-    const openGitPanel = () => {
-      if (!active) return;
-      setSide("git");
-    };
-    const unsub =
-      typeof desktopApi().onWorkbenchCmdShiftG === "function"
-        ? desktopApi().onWorkbenchCmdShiftG(openGitPanel)
-        : () => undefined;
-    // Renderer fallback when main bridge is unavailable (tests / older preload).
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!active) return;
-      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return;
-      if (event.key.toLowerCase() !== "g") return;
-      event.preventDefault();
-      openGitPanel();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      unsub();
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [active]);
-
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!active || !(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "w") return;
@@ -3605,53 +3082,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [active, closeActivePane]);
 
-  useEffect(() => {
-    if (!editorFindOpen) return;
-    window.requestAnimationFrame(() => {
-      editorFindInputRef.current?.focus();
-      editorFindInputRef.current?.select();
-    });
-  }, [editorFindOpen]);
 
-  useEffect(() => {
-    const editorKey = currentEditor?.key || "";
-    if (previousEditorKeyRef.current && previousEditorKeyRef.current !== editorKey) closeEditorFind();
-    previousEditorKeyRef.current = editorKey;
-  }, [closeEditorFind, currentEditor?.key]);
 
-  useEffect(() => {
-    if (!active || !currentEditor) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      const isFind = (event.metaKey || event.ctrlKey)
-        && !event.shiftKey
-        && !event.altKey
-        && event.key.toLowerCase() === "f";
-      if (isFind) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        openEditorFind();
-        return;
-      }
-      if (!editorFindOpen) return;
-      const input = editorFindInputRef.current;
-      if (input && event.key === "Enter" && !event.isComposing && event.target === input) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        runEditorFind(event.shiftKey ? "backward" : "forward", input.value);
-        return;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        closeEditorFind();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [active, closeEditorFind, currentEditor, editorFindOpen, openEditorFind, runEditorFind]);
 
   /** Sessions already auto-imported into composer_sends this app run (append-only dedupe happens in core too). */
   const composerImportKeysRef = useRef(new Set<string>());
@@ -3853,6 +3285,24 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [openResumeFromAgent]);
 
   /** Kanban / Sessions / Agent resume: open the session, or focus it if already open. */
+  // The Quick Agent hands a conversation over: open it here as a Thunder chat
+  // pane — same session id, full transcript, ready to continue.
+  useEffect(() => {
+    const api = desktopApi();
+    if (typeof api.onQuickAgentHandoff !== "function") return;
+    return api.onQuickAgentHandoff(({ sessionId }) => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+      const existing = thunderConversations.find((item) => item.id === sessionId);
+      if (existing) {
+        openThunderConversation(existing);
+        return;
+      }
+      void reloadThunderConversations().then(() => {
+        const refreshed = thunderConversationsRef.current.find((item) => item.id === sessionId);
+        if (refreshed) openThunderConversation(refreshed);
+      });
+    });
+  }, [openThunderConversation, reloadThunderConversations, thunderConversations]);
   useEffect(() => {
     const onOpenSession = (event: Event) => {
       const detail = (event as CustomEvent<AgentSession>).detail;
@@ -4046,9 +3496,14 @@ export function WorkbenchPanel(): ReactPortal | null {
     setTuiSplitHeight(storedWidth(workbenchScopedKey(TUI_SPLIT_HEIGHT_KEY, activeWorkbenchId), 180, 80, 600));
     const mode = storageString(workbenchScopedKey(SESSION_VIEW_MODE_KEY, activeWorkbenchId));
     if (mode === "terminal" || mode === "hybrid") setSessionViewMode(mode);
-    setDiffSessionAlongside(storageString(workbenchScopedKey(DIFF_SESSION_ALONGSIDE_KEY, activeWorkbenchId)) === "true");
   }, [activeWorkbenchId]);
 
+  const discardWorkbenchPanes = useCallback((workbenchId: string) => {
+    setTerminals((current) => current.filter((item) => item.workbenchId !== workbenchId));
+    setAcpChats((current) => current.filter((item) => item.workbenchId !== workbenchId));
+    setThunderChats((current) => current.filter((item) => item.workbenchId !== workbenchId));
+    setBrowsers((current) => current.filter((item) => item.workbenchId !== workbenchId));
+  }, []);
   const activateWorkbench = useCallback((workbench: Workbench) => {
     setActiveWorkbenchId(workbench.workbenchId);
     activeWorkbenchIdRef.current = workbench.workbenchId;
@@ -4089,15 +3544,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [renamingWorkbenchId, workbenchRenameDraft]);
 
   /** Close and destroy every pane owned by a deleted workbench (PTYs, browsers, editors). */
-  const discardWorkbenchPanes = useCallback((workbenchId: string) => {
-    for (const pane of terminalsRef.current.filter((item) => item.workbenchId === workbenchId)) closeTerminal(pane.key);
-    for (const pane of acpChatsRef.current.filter((item) => item.workbenchId === workbenchId)) closeAcpChat(pane.key);
-    for (const pane of thunderChatsRef.current.filter((item) => item.workbenchId === workbenchId)) closeThunderChat(pane.key);
-    for (const pane of browsersRef.current.filter((item) => item.workbenchId === workbenchId)) void closeBrowser(pane.key);
-    for (const pane of editorsRef.current.filter((item) => item.workbenchId === workbenchId)) closeEditor(pane.key);
-    for (const pane of diffsRef.current.filter((item) => item.workbenchId === workbenchId)) closeDiff(pane.key);
-    for (const pane of notePanesRef.current.filter((item) => item.workbenchId === workbenchId)) closeNotePane(pane.key);
-  }, [closeAcpChat, closeBrowser, closeDiff, closeEditor, closeNotePane, closeTerminal, closeThunderChat]);
 
   const removeWorkbench = useCallback(async (workbench: Workbench) => {
     const taskNoteId = taskScopeRef.current?.noteId;
@@ -4392,19 +3838,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     };
   }, [focusWorkbenchSessionFromRail]);
 
-  useEffect(() => {
-    const onOpenDiff = (event: Event) => {
-      const detail = (event as CustomEvent<{ projectPath?: string; filePath?: string }>).detail;
-      const projectPath = detail?.projectPath?.trim();
-      const filePath = detail?.filePath?.trim();
-      if (!projectPath || !filePath) return;
-      selectProject(projectPath, { keepSessionKey: true });
-      void openDiffForPathRef.current(projectPath, filePath);
-    };
-    window.addEventListener("agent-resume:workbench-open-diff", onOpenDiff);
-    return () => window.removeEventListener("agent-resume:workbench-open-diff", onOpenDiff);
-  }, []);
-
   const taskMenu = (event: React.MouseEvent, item: Pick<WorkbenchTask, "noteId" | "title" | "sessions">) => {
     event.preventDefault();
     const menu: WorkbenchContextMenu = {
@@ -4610,194 +4043,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   };
 
-  const runContextAction = async (action: string) => {
-    const menu = contextMenu;
-    setContextMenu(null);
-    if (!menu) return;
-    if (menu.kind === "task" && menu.noteId) {
-      if (action === "followChildren") {
-        try {
-          await desktopApi().notesSetGtdStatus({ noteId: menu.noteId, status: null });
-          window.dispatchEvent(new Event("agent-resume:notes-mutated"));
-        } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
-        return;
-      }
-      if (action === "deleteTask") {
-        // Only a task that has never been linked to a session may be deleted.
-        if (menu.taskHasSessions) return;
-        if (typeof desktopApi().notesDelete !== "function") return;
-        const label = menu.taskTitle || menu.noteId;
-        if (!(await confirmDestructive(t("desktop.workbench.deleteTaskConfirm", label), t("desktop.common.delete")))) return;
-        try {
-          await desktopApi().notesDelete({ noteId: menu.noteId });
-          if (taskScopeRef.current?.noteId === menu.noteId) {
-            // The task's workbenches are gone for good: close their panes.
-            for (const workbench of workbenchesRef.current) discardWorkbenchPanes(workbench.workbenchId);
-            taskScopeRef.current = null;
-            setTaskScope(null);
-            setSessionTarget(null);
-          }
-          await loadTasks();
-          window.dispatchEvent(new Event("agent-resume:notes-mutated"));
-        } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
-      }
-      return;
-    }
-    if (menu.kind === "session-tab") {
-      if (action === "floatingNote" && menu.floatingNoteTarget) openFloatingNote(menu.floatingNoteTarget);
-      return;
-    }
-    if (menu.kind === "editor-tab") {
-      if (action === "toggleEditorPreview" && menu.editorKey) {
-        setEditors((current) => current.map((item) => item.key === menu.editorKey
-          ? { ...item, view: item.view === "preview" ? "edit" : "preview" }
-          : item));
-      }
-      return;
-    }
-    if (menu.kind === "note" && menu.noteId) {
-      const noteId = menu.noteId;
-      if (action.startsWith("gtd:")) {
-        const status = action === "gtd:clear"
-          ? null
-          : GTD_STATUSES.includes(action.slice(4) as DesktopGtdStatus)
-            ? action.slice(4) as DesktopGtdStatus
-            : null;
-        if (action !== "gtd:clear" && !status) return;
-        try {
-          await desktopApi().notesSetGtdStatus({ noteId, status });
-          setNoteItems((current) => current.map((item) => item.noteId === noteId ? { ...item, gtdStatus: status ?? undefined } : item));
-          window.dispatchEvent(new Event("agent-resume:notes-mutated"));
-          setStatus({ text: "" });
-        } catch (error) {
-          const message = t("desktop.workbench.gtdStatusSaveFailed", statusError(error));
-          setStatus({ text: message, kind: "error" });
-          notifyDesktop({ text: message, kind: "error" });
-        }
-        return;
-      }
-      return;
-    }
-    if (menu.kind === "thunder" && menu.thunderConversation) {
-      const conversation = menu.thunderConversation;
-      const workspace = conversation.workspace || "";
-      const ownerKey = `thunder:${conversation.id}`;
-      if (action === "openThunderChat") {
-        openThunderConversation(conversation);
-        return;
-      }
-      if (action === "thunderTui") {
-        void launchThunderTui(conversation);
-        return;
-      }
-      if (action === "floatingNote") {
-        openFloatingNote(thunderSessionNoteTarget(conversation, aliases[workspace] || basename(workspace)));
-        return;
-      }
-      if (action === "note") {
-        await openMountedNote({ scope: "session", projectPath: workspace, provider: "thunder", sessionId: conversation.id });
-        return;
-      }
-      if (action === "autoRename") {
-        void autoRenameThunderConversation(conversation);
-        return;
-      }
-      if (action === "moveTask") {
-        openMoveSessionToTaskDialog({
-          sessionKey: ownerKey,
-          sessionTitle: conversation.title || conversation.id,
-          projectPath: workspace
-        });
-        return;
-      }
-      if (action === "deleteThunderConversation") {
-        await deleteThunderConversation(conversation);
-        return;
-      }
-      if (action.startsWith("gtd:")) {
-        const status = action === "gtd:clear"
-          ? null
-          : GTD_STATUSES.includes(action.slice(4) as DesktopGtdStatus)
-            ? action.slice(4) as DesktopGtdStatus
-            : null;
-        if (action !== "gtd:clear" && !status) return;
-        try {
-          await desktopApi().setSessionGtdStatus({ provider: "thunder", id: conversation.id, status });
-          setGtdStatuses((current) => {
-            const next = { ...current };
-            if (status) next[ownerKey] = status;
-            else delete next[ownerKey];
-            return next;
-          });
-          setStatus({ text: "" });
-          window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
-        } catch (error) {
-          const message = t("desktop.workbench.gtdStatusSaveFailed", statusError(error));
-          setStatus({ text: message, kind: "error" });
-          notifyDesktop({ text: message, kind: "error" });
-        }
-        return;
-      }
-      return;
-    }
-    const session = menu.session;
-    if (!session) return;
-    if (action === "moveTask") {
-      openMoveSessionToTaskDialog({
-        sessionKey: sessionKey(session),
-        sessionTitle: session.title || session.id,
-        projectPath: session.projectPath || ""
-      });
-      return;
-    }
-    if (action.startsWith("gtd:")) {
-      const status = action === "gtd:clear"
-        ? null
-        : GTD_STATUSES.includes(action.slice(4) as DesktopGtdStatus)
-          ? action.slice(4) as DesktopGtdStatus
-          : null;
-      if (action !== "gtd:clear" && !status) return;
-      try {
-        await desktopApi().setSessionGtdStatus({ provider: session.provider, id: session.id, status });
-        setGtdStatuses((current) => {
-          const next = { ...current };
-          const key = sessionKey(session);
-          if (status) next[key] = status;
-          else delete next[key];
-          return next;
-        });
-        setStatus({ text: "" });
-        window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
-      } catch (error) {
-        const message = t("desktop.workbench.gtdStatusSaveFailed", statusError(error));
-        setStatus({ text: message, kind: "error" });
-        notifyDesktop({ text: message, kind: "error" });
-      }
-      return;
-    }
-    if (action === "floatingNote") openFloatingNote(sessionNoteTarget(session, aliases[session.projectPath] || basename(session.projectPath)));
-    if (action === "note") await openMountedNote({ scope: "session", projectPath: session.projectPath, provider: session.provider, sessionId: session.id });
-    if (action === "codex") {
-      try { await desktopApi().workbenchOpenCodexApp({ provider: session.provider, id: session.id }); }
-      catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
-    }
-    if (action === "preview") window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", { detail: session }));
-    if (action === "autoRename") {
-      cancelSessionAutoRename(sessionKey(session));
-      await performAutoRenameSession(session.provider, session.id);
-    }
-    if (action === "remove") {
-      const selectedCatalog = visibleSessions.filter((item) => selectedSessionKeys.has(sessionKey(item)));
-      const targets = selectedCatalog.length > 1 && selectedSessionKeys.has(sessionKey(session))
-        ? selectedCatalog
-        : [session];
-      const confirmed = targets.length > 1
-        ? await confirmDestructive(t("desktop.workbench.removeMultipleConfirm", targets.length), t("desktop.common.remove"))
-        : await confirmDestructive(t("desktop.workbench.removeConfirm", session.title || session.id), t("desktop.common.remove"));
-      if (!confirmed) return;
-      await removeSelectedSessionsFromPanel(targets);
-    }
-  };
 
   const removeSelectedSessionsFromPanel = async (targets: AgentSession[]) => {
     if (!targets.length) return;
@@ -4828,31 +4073,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
   };
 
-  const syncEditorFromDisk = useCallback(async (editor: EditorPane) => {
-    if (editor.saving) return;
-    try {
-      const inspected = await desktopApi().workbenchInspectFile({
-        rootPath: editor.projectPath,
-        filePath: editor.path
-      });
-      const latestEditor = editorsRef.current.find((item) => item.key === editor.key);
-      if (!latestEditor || reconcileEditorInspection(latestEditor, inspected) === latestEditor) return;
-      setEditors((current) => {
-        let changed = false;
-        const next = current.map((item) => {
-          if (item.key !== editor.key) return item;
-          const updated = reconcileEditorInspection(item, inspected);
-          if (updated !== item) changed = true;
-          return updated;
-        });
-        if (!changed) return current;
-        editorsRef.current = next;
-        return next;
-      });
-    } catch (error) {
-      setStatus({ text: statusError(error), kind: "error" });
-    }
-  }, []);
 
   /**
    * Bring the open editors back in line with the files on disk after something
@@ -4860,29 +4080,6 @@ export function WorkbenchPanel(): ReactPortal | null {
    * checkout carries that checkout, and it is still under the root it was found
    * in when a replacement reaches it through a root one level up.
    */
-  const reconcileProjectEditors = useCallback((rootPath: string) => {
-    const key = projectPathKey(rootPath);
-    const existing = editorReconcilesRef.current.get(key);
-    if (existing) {
-      existing.queued = true;
-      return existing.promise;
-    }
-
-    const state = { promise: Promise.resolve(), queued: false };
-    const reconcile = async () => {
-      do {
-        state.queued = false;
-        await Promise.all(editorsRef.current
-          .filter((editor) => isWorkbenchPathWithin(editor.path, rootPath))
-          .map((editor) => syncEditorFromDisk(editor)));
-      } while (state.queued);
-    };
-    state.promise = reconcile().finally(() => {
-      if (editorReconcilesRef.current.get(key) === state) editorReconcilesRef.current.delete(key);
-    });
-    editorReconcilesRef.current.set(key, state);
-    return state.promise;
-  }, [syncEditorFromDisk]);
 
   /**
    * Right-click anywhere in the scripts pane. A concrete script row sends that
@@ -5046,137 +4243,28 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   });
 
-  const editorSettings = settings?.workbench?.editor;
-  const editorAppearance: CodeMirrorAppearance = settings?.workbench?.editorTheme === "light" || settings?.workbench?.editorTheme === "dark"
-    ? settings.workbench.editorTheme
-    : "follow-app";
   const terminalThemeId = resolveTerminalThemeId(settings?.workbench?.terminalTheme);
   const desktopAppearance = useMemo(() => appearanceStateFromSettings(settings || {}), [settings]);
   const terminalEngine: TerminalEngineType = "xterm";
   const terminalRendererMode: TerminalRendererMode =
     settings?.workbench?.terminalRenderer === "canvas" ? "canvas" : "webgl";
-  const saveEditor = async (key: string, force = false) => {
-    const editor = editorsRef.current.find((item) => item.key === key);
-    if (!editor || !editor.dirty) return true;
-    if (!force && editor.diskState) return false;
-    const savingEditors = editorsRef.current.map((item) => item.key === key ? { ...item, saving: true } : item);
-    editorsRef.current = savingEditors;
-    setEditors(savingEditors);
-    try {
-      const result = await desktopApi().workbenchSaveFileText({
-        rootPath: editor.projectPath,
-        filePath: editor.path,
-        content: editor.content,
-        encoding: editor.encoding,
-        expectedVersion: editor.version,
-        force
-      });
-      if (!result.ok) {
-        setEditors((current) => {
-          const next = current.map((item) => item.key === key
-            ? { ...item, saving: false, diskState: result.reason === "missing" ? "deleted" as const : "changed" as const }
-            : item);
-          editorsRef.current = next;
-          return next;
-        });
-        return false;
-      }
-      setEditors((current) => {
-        const next = current.map((item) => item.key === key
-          ? { ...item, version: result.version, size: result.size, mtimeMs: result.mtimeMs, dirty: false, saving: false, diskState: undefined }
-          : item);
-        editorsRef.current = next;
-        return next;
-      });
-      return true;
-    } catch (error) {
-      setEditors((current) => {
-        const next = current.map((item) => item.key === key ? { ...item, saving: false } : item);
-        editorsRef.current = next;
-        return next;
-      });
-      setStatus({ text: t("desktop.workbench.fileSaveFailed", statusError(error)), kind: "error" });
-      return false;
-    }
-  };
-  saveEditorRef.current = saveEditor;
 
   const saveTimers = useRef(new Map<string, number>());
   useEffect(() => () => saveTimers.current.forEach((timer) => window.clearTimeout(timer)), []);
-  const updateEditorContent = (key: string, content: string) => {
-    setEditors((current) => current.map((item) => item.key === key ? { ...item, content, dirty: true } : item));
-    const existing = saveTimers.current.get(key);
-    if (existing) window.clearTimeout(existing);
-    const delay = editorSettings?.autoSaveDelayMs ?? 600;
-    saveTimers.current.set(key, window.setTimeout(() => {
-      saveTimers.current.delete(key);
-      void saveEditor(key);
-    }, delay));
-  };
 
-  const applyEditorReveal = useCallback((reveal: SearchReveal, expectedPath: string) => {
-    pendingRevealRef.current = reveal;
-    // Same already-active file won't change currentEditor/activePane, so the reveal
-    // effect may not re-run — always schedule an explicit reveal for open files.
-    // Double rAF: first paint after setActivePane, then CodeMirror is ready.
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        const pending = pendingRevealRef.current;
-        if (!pending) return;
-        const editor = editorsRef.current.find((item) => item.key === `editor:${expectedPath}` || item.path === expectedPath);
-        const active = editorRef.current;
-        if (!active || !editor) return;
-        const pendingNorm = pending.path.replaceAll("\\", "/");
-        const editorNorm = editor.path.replaceAll("\\", "/");
-        if (
-          pendingNorm !== editorNorm
-          && !pendingNorm.endsWith(`/${editorNorm}`)
-          && !editorNorm.endsWith(`/${pendingNorm}`)
-          && pendingNorm !== expectedPath.replaceAll("\\", "/")
-        ) {
-          return;
-        }
-        active.revealRange({
-          line: pending.line,
-          column: pending.column,
-          endColumn: pending.endColumn
-        });
-        pendingRevealRef.current = null;
-      });
-    });
-  }, []);
 
   const openFile = async (
     path: string,
-    reveal?: SearchReveal,
-    targetProject = selectedProject,
-    view: "edit" | "preview" = "edit"
+    _reveal?: unknown,
+    targetProject = selectedProject
   ) => {
-    if (!targetProject) return;
+    const rootPath = targetProject || projectForPath(path);
+    if (!rootPath) return;
     try {
-      const key = `editor:${path}`;
-      const existing = editorsRef.current.find((item) => item.key === key)
-        || editorsRef.current.find((item) => item.path === path);
-      if (existing) {
-        await syncEditorFromDisk(existing);
-        if (view === "preview" && existing.view !== "preview") {
-          setEditors((current) => current.map((item) => item.key === existing.key ? { ...item, view: "preview" } : item));
-        }
-        setActivePane(existing.key, targetProject);
-        if (reveal) applyEditorReveal({ ...reveal, path: existing.path }, existing.path);
-        return;
-      }
-      const inspected = await desktopApi().workbenchInspectFile({ rootPath: targetProject, filePath: path });
-      if (inspected.kind === "missing") throw new Error(t("desktop.workbench.fileDeletedOnDisk"));
-      if (inspected.kind === "external") { await desktopApi().workbenchOpenPath({ rootPath: targetProject, filePath: path }); return; }
-      setEditors((current) => {
-        const next = [...current, { ...inspected, key, path, projectPath: targetProject, content: inspected.content, dirty: false, view, workbenchId: activeWorkbenchIdRef.current ?? undefined }];
-        editorsRef.current = next;
-        return next;
-      });
-      if (reveal) pendingRevealRef.current = { ...reveal, path };
-      setActivePane(key, targetProject);
-    } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+      await desktopApi().workbenchOpenPath({ rootPath, filePath: path });
+    } catch (error) {
+      setStatus({ text: t("desktop.workbench.fileOpenExternalFailed", statusError(error)), kind: "error" });
+    }
   };
 
   const {
@@ -5203,14 +4291,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       setProjectPickDialog(null);
     }
   });
-  const openQuickAccessFile = useCallback(async (file: QuickAccessFile) => {
-    const rootPath = projectForPath(file.path) || quickAccessRoot;
-    if (!rootPath) return;
-    closeQuickAccess();
-    selectProject(rootPath);
-    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
-    await openFile(file.path, undefined, rootPath);
-  }, [closeQuickAccess, projectForPath, quickAccessRoot, syncEditorFromDisk]);
 
   const openQuickAccessDirectory = useCallback((directory: QuickAccessFile) => {
     const rootPath = projectForPath(directory.path) || quickAccessRoot;
@@ -5218,248 +4298,15 @@ export function WorkbenchPanel(): ReactPortal | null {
     closeQuickAccess();
     selectProject(rootPath);
     window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
-    setPendingExplorerReveal({ rootPath, path: directory.path });
-    setSide("files");
-  }, [closeQuickAccess, projectForPath, quickAccessRoot]);
+    void openFile(directory.path, undefined, rootPath);
+  }, [closeQuickAccess, openFile, projectForPath, quickAccessRoot]);
 
-  const reloadEditorFromDisk = useCallback(async (key: string) => {
-    const editor = editorsRef.current.find((item) => item.key === key);
-    if (!editor) return;
-    try {
-      const inspected = await desktopApi().workbenchInspectFile({
-        rootPath: editor.projectPath,
-        filePath: editor.path
-      });
-      if (inspected.kind !== "text") {
-        setEditors((current) => {
-          const next = current.map((item) => item.key === key
-            ? { ...item, diskState: inspected.kind === "missing" ? "deleted" as const : "external" as const }
-            : item);
-          editorsRef.current = next;
-          return next;
-        });
-        return;
-      }
-      setEditors((current) => {
-        const next = current.map((item) => item.key === key
-          ? { ...item, ...inspected, content: inspected.content, dirty: false, saving: false, diskState: undefined }
-          : item);
-        editorsRef.current = next;
-        return next;
-      });
-    } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
-  }, []);
 
-  const recreateEditorFile = useCallback(async (key: string) => {
-    const editor = editorsRef.current.find((item) => item.key === key);
-    if (!editor) return;
-    try {
-      const result = await desktopApi().workbenchCreateFileText({
-        rootPath: editor.projectPath,
-        filePath: editor.path,
-        content: editor.content,
-        encoding: editor.encoding
-      });
-      if (!result.ok) {
-        await reloadEditorFromDisk(key);
-        return;
-      }
-      setEditors((current) => {
-        const next = current.map((item) => item.key === key
-          ? { ...item, version: result.version, size: result.size, mtimeMs: result.mtimeMs, dirty: false, saving: false, diskState: undefined }
-          : item);
-        editorsRef.current = next;
-        return next;
-      });
-      void fileExplorerRef.current?.refresh();
-    } catch (error) { setStatus({ text: t("desktop.workbench.fileSaveFailed", statusError(error)), kind: "error" }); }
-  }, [reloadEditorFromDisk, t]);
 
-  useEffect(() => {
-    const api = desktopApi();
-    if (typeof api.workbenchSetFileWatch !== "function") return;
-    const roots = sideRootsRef.current;
-    if (!active || !roots.length) {
-      watchedRootsRef.current = [];
-      void api.workbenchSetFileWatch({ rootPaths: null }).catch(() => undefined);
-      return;
-    }
-    watchedRootsRef.current = [];
-    const requestedKey = roots.map(projectPathKey).join("\0");
-    void api.workbenchSetFileWatch({ rootPaths: roots })
-      .then((result) => {
-        if (sideRootsRef.current.map(projectPathKey).join("\0") !== requestedKey) return;
-        watchedRootsRef.current = result.rootPaths || [];
-        void fileExplorerRef.current?.refresh();
-        return Promise.all(result.rootPaths.map((root) => reconcileProjectEditors(root)));
-      })
-      .catch((error) => setStatus({ text: statusError(error), kind: "error" }));
-    return () => {
-      watchedRootsRef.current = [];
-      void api.workbenchSetFileWatch({ rootPaths: null }).catch(() => undefined);
-    };
-  }, [active, reconcileProjectEditors, sideRootsKey]);
 
-  useEffect(() => {
-    const api = desktopApi();
-    if (typeof api.onWorkbenchFileSystemChanged !== "function") return;
-    const unsubscribe = api.onWorkbenchFileSystemChanged((event) => {
-      invalidateQuickAccessCache(event.rootPath);
-      if (event.type === "error") {
-        if (watchedRootsRef.current.some((root) => projectPathKey(root) === projectPathKey(event.rootPath))) {
-          setStatus({ text: event.message, kind: "error" });
-        }
-        return;
-      }
-      if (!activeRef.current || !watchedRootsRef.current.some((root) => projectPathKey(root) === projectPathKey(event.rootPath))) return;
-      void fileExplorerRef.current?.refresh();
-      void reconcileProjectEditors(event.rootPath);
-    });
-    return unsubscribe;
-  }, [invalidateQuickAccessCache, reconcileProjectEditors]);
 
-  useEffect(() => {
-    const onFocus = () => {
-      if (!activeRef.current || !selectedProjectRef.current) return;
-      void fileExplorerRef.current?.refresh();
-      void reconcileProjectEditors(selectedProjectRef.current);
-    };
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [reconcileProjectEditors]);
 
-  const {
-    searchQuery,
-    setSearchQuery,
-    searchMatchCase,
-    setSearchMatchCase,
-    searchWholeWord,
-    setSearchWholeWord,
-    searchUseRegex,
-    setSearchUseRegex,
-    searchTruncated,
-    searchLoading,
-    searchError,
-    searchExpanded,
-    setSearchExpanded,
-    searchSelectedKey,
-    setSearchSelectedKey,
-    searchProjectMode,
-    setSearchProjectMode,
-    searchProjectQuery,
-    setSearchProjectQuery,
-    searchProjectSelectionId,
-    setSearchProjectSelectionId,
-    searchFilesInclude,
-    setSearchFilesInclude,
-    searchFilesExclude,
-    setSearchFilesExclude,
-    searchDetailsOpen,
-    searchReplaceOpen,
-    searchReplaceText,
-    setSearchReplaceText,
-    searchReplacing,
-    searchInputRef,
-    searchReplaceInputRef,
-    searchIncludeInputRef,
-    searchExcludeInputRef,
-    searchTimerRef,
-    searchGroups,
-    searchFileCount,
-    searchMatchCount,
-    searchReplaceVisible,
-    runProjectSearch,
-    performSearchReplace,
-    findInExplorerFolder,
-    toggleSearchDetails,
-    toggleSearchReplace,
-    resetSearchProjectMode
-  } = useWorkbenchSearch({
-    projects: searchRoots,
-    projectForPath: searchProjectForPath,
-    side,
-    // A dirty file is one an editor is holding unsaved changes for. Asked by the
-    // path rather than by the project, so an editor opened in the very checkout the
-    // replacement is about to write to still blocks it.
-    getDirtyEditorPaths: (projectPath) => editorsRef.current
-      .filter((editor) => editor.dirty && isWorkbenchPathWithin(editor.path, projectPath))
-      .map((editor) => editor.path),
-    onStatus: setStatus,
-    onReconcileEditors: (projectPath) => { void reconcileProjectEditors(projectPath); },
-    onOpenSearchSide: () => setSide("search"),
-  });
 
-  useEffect(() => {
-    if (!currentEditor) return;
-    const pending = pendingRevealRef.current;
-    if (!pending) return;
-    const pendingNorm = pending.path.replaceAll("\\", "/");
-    const editorNorm = currentEditor.path.replaceAll("\\", "/");
-    const pathMatches =
-      pendingNorm === editorNorm
-      || pendingNorm.endsWith(`/${editorNorm}`)
-      || editorNorm.endsWith(`/${pendingNorm}`);
-    if (!pathMatches) return;
-    const handle = editorRef.current;
-    if (!handle) return;
-    // Wait a frame so CodeMirror mounts with the new document.
-    const timer = window.requestAnimationFrame(() => {
-      if (!pendingRevealRef.current) return;
-      handle.revealRange({
-        line: pending.line,
-        column: pending.column,
-        endColumn: pending.endColumn
-      });
-      pendingRevealRef.current = null;
-    });
-    return () => window.cancelAnimationFrame(timer);
-  }, [currentEditor, activePane]);
-
-  const openDiff = async (change: GitChange, staged: boolean, projectPath = selectedProjectRef.current) => {
-    if (!projectPath) return;
-    const key = `diff:${change.repoRoot}:${change.repoPath}:${staged}`;
-    if (diffsRef.current.some((item) => item.key === key)) {
-      setActivePane(key, projectPath);
-      return;
-    }
-    try {
-      const result = await desktopApi().terminalGitDiffSides({ cwd: change.repoRoot, path: change.repoPath, staged });
-      const source = staged ? "staged" : change.status === "?" ? "untracked" : "working-tree";
-      setDiffs((current) => [...current, {
-        key,
-        projectPath,
-        workbenchId: activeWorkbenchIdRef.current ?? undefined,
-        repoRoot: change.repoRoot,
-        repoPath: change.repoPath,
-        path: change.path,
-        source,
-        ...result
-      }]);
-      setActivePane(key, projectPath);
-    } catch (error) { notifyGitFailure("desktop.workbench.sidePanelDiffFailed", error); }
-  };
-
-  const askAgentAboutDiff = useCallback((diff: DiffPane) => {
-    const sessionPane = terminalsRef.current.find((t) => paneScopeKey(t) === activeScopeKey && t.group === "session")
-      || terminalsRef.current.find((t) => t.group === "session");
-    const acpPane = acpChatsRef.current.find((c) => paneScopeKey(c) === activeScopeKey);
-    const targetKey = sessionPane?.key || acpPane?.key;
-    const targetProjectPath = sessionPane?.projectPath || acpPane?.projectPath || diff.projectPath;
-    const feedbackPrefix = t("desktop.workbench.diffFeedbackPrefix", basename(diff.path));
-
-    if (targetKey) {
-      setActivePane(targetKey, targetProjectPath);
-      setComposerDrafts((current) => ({
-        ...current,
-        [targetKey]: current[targetKey] ? `${current[targetKey]}\n${feedbackPrefix}` : feedbackPrefix
-      }));
-      window.requestAnimationFrame(() => {
-        composerFocusRefs.current.get(targetKey)?.({ caret: "end" });
-      });
-    } else {
-      void requestNewSession(targetProjectPath);
-    }
-  }, [activeScopeKey, requestNewSession, setActivePane, t]);
 
   /** Hands a browser pick, annotation or console error to this scope's session. */
   const sendProbePromptToSession = useCallback((text: string) => {
@@ -5483,616 +4330,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       composerFocusRefs.current.get(targetKey)?.({ caret: "end" });
     });
   }, [activeScopeKey, panelProject, requestNewSession, setActivePane]);
-
-  const matchCachedGitChange = (filePath: string): { change: GitChange; staged: boolean } | null => {
-    const target = normalizeWorkbenchPath(filePath);
-    const cached = gitRef.current;
-    if (!cached) return null;
-    const matchIn = (entries: GitChange[]) => entries.find((change) => {
-      const abs = normalizeWorkbenchPath(gitChangeFilePath(change));
-      const display = normalizeWorkbenchPath(change.path);
-      return abs === target || display === target || target.endsWith(`/${display}`);
-    });
-    const unstaged = matchIn(cached.unstaged);
-    if (unstaged) return { change: unstaged, staged: false };
-    const staged = matchIn(cached.staged);
-    if (staged) return { change: staged, staged: true };
-    return null;
-  };
-
-  const openDiffForPath = async (projectPath: string, filePath: string) => {
-    const absPath = normalizeWorkbenchPath(filePath);
-    const root = normalizeWorkbenchPath(projectPath);
-    const relative = absPath === root
-      ? ""
-      : absPath.startsWith(`${root}/`)
-        ? absPath.slice(root.length + 1)
-        : absPath;
-    if (!relative) {
-      await openFile(absPath, undefined, projectPath);
-      return;
-    }
-    const cached = matchCachedGitChange(absPath);
-    if (cached) {
-      await openDiff(cached.change, cached.staged, projectPath);
-      return;
-    }
-    const addDiffPane = (
-      result: Awaited<ReturnType<DesktopApi["terminalGitDiffSides"]>>,
-      staged: boolean
-    ) => {
-      const repoRoot = projectPath;
-      const key = `diff:${repoRoot}:${relative}:${staged}`;
-      if (diffsRef.current.some((item) => item.key === key)) {
-        setActivePane(key, projectPath);
-        return;
-      }
-      setDiffs((current) => [...current, {
-        key,
-        projectPath,
-        workbenchId: activeWorkbenchIdRef.current ?? undefined,
-        repoRoot,
-        repoPath: relative,
-        path: relative,
-        source: staged ? "staged" : "working-tree",
-        ...result
-      }]);
-      setActivePane(key, projectPath);
-    };
-    try {
-      const working = await desktopApi().terminalGitDiffSides({ cwd: projectPath, path: relative, staged: false });
-      if (working.hunks.length) {
-        addDiffPane(working, false);
-        return;
-      }
-    } catch {
-      // Fall through to staged / editor.
-    }
-    try {
-      const stagedDiff = await desktopApi().terminalGitDiffSides({ cwd: projectPath, path: relative, staged: true });
-      if (stagedDiff.hunks.length) {
-        addDiffPane(stagedDiff, true);
-        return;
-      }
-    } catch {
-      // Fall through to editor.
-    }
-    notifyDesktop({ text: t("desktop.workbench.noGitDiffFallback"), kind: "info" });
-    await openFile(absPath, undefined, projectPath);
-  };
-  openDiffForPathRef.current = openDiffForPath;
-
-  const discardGitChanges = async (changes: GitChange[], targetPath: string, isDirectory: boolean) => {
-    const uniqueChanges = uniqueGitChanges(changes);
-    const keys = uniqueChanges.map(gitChangeKey);
-    if (!uniqueChanges.length || keys.some((key) => discardingGitPaths.has(key))) return;
-    const confirmMessage = isDirectory
-      ? t("desktop.workbench.gitDiscardDirectoryConfirm", targetPath, uniqueChanges.length)
-      : t(
-          uniqueChanges[0]!.status === "?"
-            ? "desktop.workbench.gitDiscardUntrackedConfirm"
-            : "desktop.workbench.gitDiscardConfirm",
-          targetPath
-        );
-    if (!(await confirmDestructive(confirmMessage, t("desktop.common.discard")))) return;
-    setDiscardingGitPaths((current) => {
-      const next = new Set(current);
-      keys.forEach((key) => next.add(key));
-      return next;
-    });
-    const succeeded: GitChange[] = [];
-    const failures: unknown[] = [];
-    try {
-      for (const change of uniqueChanges) {
-        try {
-          await desktopApi().terminalGitDiscardChange({ repoRoot: change.repoRoot, path: change.repoPath });
-          succeeded.push(change);
-        } catch (error) {
-          failures.push(error);
-        }
-      }
-      if (succeeded.length) {
-        const succeededPaneKeys = new Set(succeeded.map((change) => `${change.repoRoot}\0${change.path}`));
-        setDiffs((current) => current.filter((pane) => !succeededPaneKeys.has(`${pane.repoRoot}\0${pane.path}`)));
-        setActivePanes((current) => {
-          const projectKey = paneProjectKey(selectedProject);
-          const active = current[projectKey];
-          const activeWasDiscarded = succeeded.some((change) => active?.startsWith(`diff:${change.repoRoot}:${change.repoPath}:`));
-          return activeWasDiscarded ? { ...current, [projectKey]: "" } : current;
-        });
-      }
-      await refreshGit();
-      currentTerminals.forEach((pane) => void refreshTerminalGit(pane.key));
-      if (!failures.length) {
-        notifyGitSuccess("desktop.workbench.gitDiscardSucceeded", targetPath);
-      } else if (isDirectory) {
-        const message = t(
-          "desktop.workbench.gitDiscardDirectoryPartial",
-          succeeded.length,
-          uniqueChanges.length,
-          targetPath,
-          gitOperationError(failures[0])
-        );
-        setStatus({ text: message, kind: "error" });
-        notifyDesktop({ text: message, kind: "error" });
-      } else {
-        notifyGitFailure("desktop.workbench.gitDiscardFailed", failures[0]);
-      }
-    } finally {
-      setDiscardingGitPaths((current) => {
-        const next = new Set(current);
-        keys.forEach((key) => next.delete(key));
-        return next;
-      });
-    }
-  };
-
-  const discardGitChange = async (change: GitChange) => {
-    await discardGitChanges([change], change.path, false);
-  };
-
-  const discardGitDirectory = async (changes: GitChange[], directoryPath: string) => {
-    await discardGitChanges(changes, directoryPath, true);
-  };
-
-  const refreshGitDiffAfterDiscard = async (pane: DiffPane) => {
-    const refreshed = await desktopApi().terminalGitDiffSides({
-      cwd: pane.repoRoot,
-      path: pane.repoPath,
-      staged: pane.source === "staged"
-    });
-    if (!refreshed.hunks.length) {
-      setDiffs((current) => current.filter((item) => item.key !== pane.key));
-      if (activePane === pane.key) setActivePane("");
-    } else {
-      setDiffs((current) => current.map((item) => item.key === pane.key ? { ...item, ...refreshed } : item));
-    }
-    await refreshGit();
-    currentTerminals.forEach((terminal) => void refreshTerminalGit(terminal.key));
-  };
-
-  const discardGitHunk = async (pane: DiffPane, target: WorkbenchDiffHunkTarget) => {
-    if (pane.source !== "working-tree" && pane.source !== "staged") return;
-    const confirmMessage = pane.source === "staged"
-      ? t("desktop.workbench.gitDiscardHunkStagedConfirm", pane.path)
-      : t("desktop.workbench.gitDiscardHunkConfirm", pane.path);
-    if (!(await confirmDestructive(confirmMessage, t("desktop.common.discard")))) return;
-    try {
-      await desktopApi().terminalGitDiscardHunk({
-        repoRoot: pane.repoRoot,
-        path: pane.repoPath,
-        staged: pane.source === "staged",
-        target
-      });
-      await refreshGitDiffAfterDiscard(pane);
-    } catch (error) {
-      notifyGitFailure("desktop.workbench.gitDiscardFailed", error);
-    }
-  };
-
-  const discardGitLine = async (pane: DiffPane, target: WorkbenchDiffLineTarget) => {
-    if (pane.source !== "working-tree" && pane.source !== "staged") return;
-    const confirmMessage = pane.source === "staged"
-      ? t("desktop.workbench.gitDiscardLineStagedConfirm", pane.path)
-      : t("desktop.workbench.gitDiscardLineConfirm", pane.path);
-    if (!(await confirmDestructive(confirmMessage, t("desktop.common.discard")))) return;
-    try {
-      await desktopApi().terminalGitDiscardLine({
-        repoRoot: pane.repoRoot,
-        path: pane.repoPath,
-        staged: pane.source === "staged",
-        target
-      });
-      await refreshGitDiffAfterDiscard(pane);
-    } catch (error) {
-      notifyGitFailure("desktop.workbench.gitDiscardFailed", error);
-    }
-  };
-
-  const stageGitHunk = async (pane: DiffPane, target: WorkbenchDiffHunkTarget) => {
-    if (pane.source !== "working-tree") return;
-    try {
-      await desktopApi().terminalGitStageHunk({
-        repoRoot: pane.repoRoot,
-        path: pane.repoPath,
-        target
-      });
-      await refreshGitDiffAfterDiscard(pane);
-    } catch (error) {
-      notifyGitFailure("desktop.workbench.gitStageHunkFailed", error);
-    }
-  };
-
-  const unstageGitHunk = async (pane: DiffPane, target: WorkbenchDiffHunkTarget) => {
-    if (pane.source !== "staged") return;
-    try {
-      await desktopApi().terminalGitUnstageHunk({
-        repoRoot: pane.repoRoot,
-        path: pane.repoPath,
-        target
-      });
-      await refreshGitDiffAfterDiscard(pane);
-    } catch (error) {
-      notifyGitFailure("desktop.workbench.gitUnstageHunkFailed", error);
-    }
-  };
-
-  const stageGitLine = async (pane: DiffPane, target: WorkbenchDiffLineTarget) => {
-    if (pane.source !== "working-tree") return;
-    try {
-      await desktopApi().terminalGitStageLine({
-        repoRoot: pane.repoRoot,
-        path: pane.repoPath,
-        target
-      });
-      await refreshGitDiffAfterDiscard(pane);
-    } catch (error) {
-      notifyGitFailure("desktop.workbench.gitStageLineFailed", error);
-    }
-  };
-
-  const unstageGitLine = async (pane: DiffPane, target: WorkbenchDiffLineTarget) => {
-    if (pane.source !== "staged") return;
-    try {
-      await desktopApi().terminalGitUnstageLine({
-        repoRoot: pane.repoRoot,
-        path: pane.repoPath,
-        target
-      });
-      await refreshGitDiffAfterDiscard(pane);
-    } catch (error) {
-      notifyGitFailure("desktop.workbench.gitUnstageLineFailed", error);
-    }
-  };
-
-  const openGitShowFileDiff = async (hash: string, path: string) => {
-    const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
-    if (!repoRoot) return;
-    try {
-      const result = await desktopApi().terminalGitShowFileDiffSides({ repoRoot, hash, path });
-      if (!selectedProject) return;
-      const key = `logdiff:${repoRoot}:${hash}:${path}`;
-      setDiffs((current) => current.some((item) => item.key === key) ? current : [...current, {
-        key,
-        projectPath: selectedProject,
-        workbenchId: activeWorkbenchIdRef.current ?? undefined,
-        repoRoot,
-        repoPath: path,
-        path,
-        source: "commit",
-        ...result
-      }]);
-      setActivePane(key);
-    } catch (error) { notifyGitFailure("desktop.workbench.sidePanelDiffFailed", error); }
-  };
-
-  const loadGitLog = async () => {
-    if (!gitRoot) return;
-    const requestId = gitLogRequestRef.current + 1;
-    gitLogRequestRef.current = requestId;
-    setGitHistoryContext({ kind: "repository", repoRoot: gitRoot });
-    setGitLogLoading(true);
-    setGitLogError("");
-    try {
-      setGitShow(null);
-      const result = await desktopApi().terminalGitLog({ repoRoot: gitRoot, limit: 150 });
-      if (gitLogRequestRef.current !== requestId) return;
-      setGitLog(result);
-    } catch (error) {
-      if (gitLogRequestRef.current !== requestId) return;
-      setGitLog(null);
-      setGitLogError(gitOperationError(error));
-      notifyGitFailure("desktop.workbench.gitLogLoadFailed", error);
-    } finally {
-      if (gitLogRequestRef.current === requestId) setGitLogLoading(false);
-    }
-  };
-
-  const loadGitFileHistory = async (filePath: string) => {
-    const projectRoot = projectForPath(filePath) || selectedProject;
-    if (!projectRoot) return;
-    const requestId = gitLogRequestRef.current + 1;
-    gitLogRequestRef.current = requestId;
-    setSide("git");
-    setGitHistoryContext({ kind: "file", projectRoot, filePath, repoRoot: "", repoPath: "" });
-    setGitLog(null);
-    setGitShow(null);
-    setGitLogLoading(true);
-    setGitLogError("");
-    try {
-      const result = await desktopApi().workbenchGitFileLog({ rootPath: projectRoot, filePath, limit: 150 });
-      if (gitLogRequestRef.current !== requestId || selectedProjectRef.current !== projectRoot) return;
-      setGitHistoryContext({
-        kind: "file",
-        projectRoot,
-        filePath,
-        repoRoot: result.repoRoot,
-        repoPath: result.repoPath
-      });
-      setGitLog({ commits: result.commits, layout: result.layout });
-    } catch (error) {
-      if (gitLogRequestRef.current !== requestId || selectedProjectRef.current !== projectRoot) return;
-      setGitLogError(gitOperationError(error));
-      notifyGitFailure("desktop.workbench.gitFileHistoryLoadFailed", error);
-    } finally {
-      if (gitLogRequestRef.current === requestId) setGitLogLoading(false);
-    }
-  };
-
-  const showCommit = async (commit: GitLogCommit) => {
-    const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
-    if (!repoRoot) return;
-    try {
-      setGitShow(await desktopApi().terminalGitShow({ repoRoot, hash: commit.hash }));
-    } catch (error) {
-      notifyGitFailure("desktop.workbench.gitShowLoadFailed", error);
-      return;
-    }
-    // File history opens the commit's diff in the workbench middle area; the
-    // repository-wide log only shows commit details and never auto-opens diffs.
-    if (gitHistoryContext?.kind === "file") {
-      const pathAtCommit = commit.pathAtCommit || gitHistoryContext.repoPath;
-      if (pathAtCommit) await openGitShowFileDiff(commit.hash, pathAtCommit);
-    }
-  };
-
-  /**
-   * Commit menu. Native: system highlight and edge flipping, keyboard driven,
-   * and the destructive Revert entry sits last after a separator.
-   */
-  const openGitLogContextMenu = async (event: { clientX: number; clientY: number; target: EventTarget | null }, commit: GitLogCommit) => {
-    const branchName = event.target instanceof Element
-      ? event.target.closest<HTMLElement>("[data-branch-name]")?.dataset.branchName
-        || gitCommitBranchNames(commit)[0]
-        || null
-      : gitCommitBranchNames(commit)[0] || null;
-    const choice = await showContextMenuAt(contextMenuPoint(event), [
-      { id: "copy-hash", label: t("desktop.workbench.gitCopyCommitHash") },
-      ...(branchName ? [{ id: "copy-branch", label: t("desktop.workbench.gitCopyBranchName") }] : []),
-      { type: "separator" },
-      { id: "cherry-pick", label: t("desktop.workbench.gitCherryPick") },
-      { id: "new-branch", label: t("desktop.workbench.gitNewBranchFromCommit") },
-      { id: "checkout", label: t("desktop.workbench.gitCheckoutCommit") },
-      { id: "reset", label: t("desktop.workbench.gitReset") },
-      { type: "separator" },
-      { id: "merge", label: t("desktop.workbench.gitMerge") },
-      { id: "revert", label: t("desktop.workbench.gitRevert") }
-    ]);
-    if (choice === "copy-hash") desktopApi().clipboardWriteText?.(commit.hash);
-    else if (choice === "copy-branch" && branchName) desktopApi().clipboardWriteText?.(branchName);
-    else if (choice === "cherry-pick") void cherryPickGitLogCommit(commit);
-    else if (choice === "new-branch") setGitLogDialog({ kind: "branch", commit });
-    else if (choice === "checkout") void checkoutGitLogCommit(commit);
-    else if (choice === "reset") setGitLogDialog({ kind: "reset", commit });
-    else if (choice === "merge") void mergeGitLogCommit(commit);
-    else if (choice === "revert") void revertGitLogCommit(commit);
-  };
-
-  const copyGitLogValue = (value: string) => {
-    desktopApi().clipboardWriteText?.(value);
-  };
-
-  const revertGitLogCommit = async (commit: GitLogCommit) => {
-    const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
-    if (!repoRoot) return;
-    const label = commit.subject || commit.shortHash;
-    if (!(await confirmDestructive(t("desktop.workbench.gitRevertConfirm", label), t("desktop.workbench.gitRevert")))) return;
-    try {
-      await desktopApi().terminalGitRevert({ repoRoot, hash: commit.hash });
-      notifyGitSuccess("desktop.workbench.gitRevertSucceeded", commit.shortHash);
-      await refreshGit();
-      if (gitHistoryContext?.kind === "file") {
-        await loadGitFileHistory(gitHistoryContext.filePath);
-      } else {
-        await loadGitLog();
-      }
-    } catch (error) {
-      notifyGitFailure("desktop.workbench.gitRevertFailed", error);
-    }
-  };
-
-  const mergeGitLogCommit = async (commit: GitLogCommit) => {
-    const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
-    if (!repoRoot) return;
-    const label = commit.subject || commit.shortHash;
-    if (!(await confirmDestructive(t("desktop.workbench.gitMergeConfirm", label), t("desktop.workbench.gitMerge")))) return;
-    try {
-      await desktopApi().terminalGitMerge({ repoRoot, hash: commit.hash });
-      notifyGitSuccess("desktop.workbench.gitMergeSucceeded");
-      await refreshGit();
-      if (gitHistoryContext?.kind === "file") {
-        await loadGitFileHistory(gitHistoryContext.filePath);
-      } else {
-        await loadGitLog();
-      }
-    } catch (error) {
-      notifyGitFailure("desktop.workbench.gitMergeFailed", error);
-    }
-  };
-
-  const cherryPickGitLogCommit = async (commit: GitLogCommit) => {
-    const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
-    if (!repoRoot) return;
-    const label = commit.subject || commit.shortHash;
-    if (!(await confirmDestructive(t("desktop.workbench.gitCherryPickConfirm", label), t("desktop.workbench.gitCherryPick")))) return;
-    try {
-      await desktopApi().terminalGitCherryPick({ repoRoot, hash: commit.hash });
-      notifyGitSuccess("desktop.workbench.gitCherryPickSucceeded", commit.shortHash);
-      await refreshGit();
-      if (gitHistoryContext?.kind === "file") {
-        await loadGitFileHistory(gitHistoryContext.filePath);
-      } else {
-        await loadGitLog();
-      }
-    } catch (error) {
-      notifyGitFailure("desktop.workbench.gitCherryPickFailed", error);
-    }
-  };
-
-  const checkoutGitLogCommit = async (commit: GitLogCommit) => {
-    const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
-    if (!repoRoot) return;
-    const label = commit.subject || commit.shortHash;
-    if (!(await confirmDestructive(t("desktop.workbench.gitCheckoutCommitConfirm", label), t("desktop.workbench.gitCheckoutCommit")))) return;
-    try {
-      await desktopApi().terminalGitCheckoutCommit({ repoRoot, hash: commit.hash });
-      notifyGitSuccess("desktop.workbench.gitCheckoutCommitSucceeded", commit.shortHash);
-      await refreshGit();
-      if (gitHistoryContext?.kind === "file") {
-        await loadGitFileHistory(gitHistoryContext.filePath);
-      } else {
-        await loadGitLog();
-      }
-    } catch (error) {
-      notifyGitFailure("desktop.workbench.gitCheckoutCommitFailed", error);
-    }
-  };
-
-  const resetGitLogCommit = async (commit: GitLogCommit, mode: "soft" | "mixed" | "hard") => {
-    const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
-    if (!repoRoot || gitLogDialogBusyRef.current) return;
-    const label = commit.subject || commit.shortHash;
-    if (!(await confirmDestructive(t("desktop.workbench.gitResetConfirm", label, t(`desktop.workbench.gitResetMode${mode === "soft" ? "Soft" : mode === "mixed" ? "Mixed" : "Hard"}`)), t("desktop.workbench.gitReset")))) return;
-    gitLogDialogBusyRef.current = true;
-    setGitLogDialog(null);
-    try {
-      await desktopApi().terminalGitReset({ repoRoot, hash: commit.hash, mode });
-      notifyGitSuccess("desktop.workbench.gitResetSucceeded", commit.shortHash);
-      await refreshGit();
-      if (gitHistoryContext?.kind === "file") {
-        await loadGitFileHistory(gitHistoryContext.filePath);
-      } else {
-        await loadGitLog();
-      }
-    } catch (error) {
-      notifyGitFailure("desktop.workbench.gitResetFailed", error);
-    } finally {
-      gitLogDialogBusyRef.current = false;
-    }
-  };
-
-  const createBranchFromGitLogCommit = async (commit: GitLogCommit, rawName: string) => {
-    const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
-    if (!repoRoot || gitLogDialogBusyRef.current) return;
-    const branch = rawName.trim();
-    if (!branch) return;
-    gitLogDialogBusyRef.current = true;
-    setGitLogDialog(null);
-    try {
-      await desktopApi().terminalGitBranchFromCommit({ repoRoot, hash: commit.hash, branch });
-      notifyGitSuccess("desktop.workbench.gitBranchFromCommitSucceeded", branch);
-      await refreshGit();
-      if (gitHistoryContext?.kind === "file") {
-        await loadGitFileHistory(gitHistoryContext.filePath);
-      } else {
-        await loadGitLog();
-      }
-    } catch (error) {
-      notifyGitFailure("desktop.workbench.gitBranchFromCommitFailed", error);
-    } finally {
-      gitLogDialogBusyRef.current = false;
-    }
-  };
-
-  const closeGitLogDialog = () => {
-    if (gitLogDialogBusyRef.current) return;
-    setGitLogDialog(null);
-  };
-
-  const closeGitHistory = () => {
-    const returnToExplorer = gitHistoryContext?.kind === "file";
-    gitLogRequestRef.current += 1;
-    setGitHistoryContext(null);
-    setGitLog(null);
-    setGitShow(null);
-    setGitLogLoading(false);
-    setGitLogError("");
-    if (returnToExplorer) setSide("files");
-  };
-
-  const retryGitHistory = () => {
-    if (gitHistoryContext?.kind === "file") {
-      void loadGitFileHistory(gitHistoryContext.filePath);
-    } else {
-      void loadGitLog();
-    }
-  };
-
-  const checkoutBranch = async (pane: TerminalPane, branch: string, repoRoot?: string | null) => {
-    try {
-      await desktopApi().terminalGitCheckout({ cwd: pane.cwd, branch, repoRoot: repoRoot || pane.repoRoot || undefined });
-      await refreshTerminalGit(pane.key);
-      await refreshGit();
-      notifyGitSuccess("desktop.workbench.checkoutBranchSucceeded", branch);
-    } catch (error) { notifyGitFailure("desktop.workbench.checkoutBranchFailed", error); }
-  };
-
-  /**
-   * Branch picker as a native `NSMenu`: one checkbox item per branch, or a
-   * submenu per repo when the pane spans nested repos. Item ids map back to the
-   * checkout target so labels never have to be parsed.
-   */
-  const openBranchMenu = async (pane: TerminalPane, anchor: HTMLButtonElement) => {
-    // Use the same repository set as the Git panel so a multi-project workspace
-    // lists every repo (with a header), not just the active pane's repo.
-    const repositories = gitRepositories.length
-      ? gitRepositories
-      : [{ root: pane.repoRoot || pane.cwd, label: pane.repoRoot || pane.cwd }];
-    const listed = await Promise.all(repositories.map(async (repository) => {
-      try {
-        return { repository, result: await desktopApi().terminalGitBranches({ cwd: repository.root }) };
-      } catch {
-        return { repository, result: null };
-      }
-    }));
-    const items: NativeContextMenuItem[] = [];
-    const targetById = new Map<string, { branch: string; repoRoot: string }>();
-    const multi = repositories.length > 1;
-    listed.forEach(({ repository, result }, repoIndex) => {
-      const branches = result?.branches || [];
-      if (multi) {
-        if (items.length) items.push({ type: "separator" });
-        items.push({ label: repository.label, enabled: false });
-      }
-      if (!branches.length) {
-        if (!multi) items.push({ label: t("desktop.workbench.noGitBranches"), enabled: false });
-        return;
-      }
-      branches.forEach((branch, branchIndex) => {
-        const id = `r${repoIndex}_${branchIndex}`;
-        targetById.set(id, { branch, repoRoot: repository.root });
-        items.push({
-          id,
-          label: branch,
-          type: "checkbox",
-          checked: branch === (result?.current ?? (repository.root === pane.repoRoot ? pane.branch : null))
-        });
-      });
-    });
-    const rect = anchor.getBoundingClientRect();
-    const chosen = await showContextMenuAt({ x: rect.left, y: rect.bottom + 6 }, items);
-    const target = chosen ? targetById.get(chosen) : undefined;
-    if (target) await checkoutBranch(pane, target.branch, target.repoRoot);
-  };
-
-  useEffect(() => {
-    const data = desktopApi().onTerminalData(({ id, data: value }) => {
-      const terminal = terminalRefs.current.get(id);
-      if (!terminal) return;
-      trackTerminalMouseModes(id, value, terminalMouseTrackingRef.current);
-      trackTuiRedraw(value, terminal);
-      terminal.write(value);
-    });
-    const exited = desktopApi().onTerminalExit(({ id }) => {
-      terminalRefs.current.get(id)?.write(`\r\n${t("desktop.workbench.terminalClosed")}\r\n`);
-      const pane = terminalsRef.current.find((item) => item.ptyId === id);
-      if (pane) scheduleSessionPaneAutoRename(pane);
-    });
-    const respawned = desktopApi().onTerminalRespawned(({ id }) => terminalRefs.current.get(id)?.write(`\r\n${t("desktop.workbench.shellRestored")}\r\n`));
-    return () => { data(); exited(); respawned(); };
-  }, [scheduleSessionPaneAutoRename, t]);
-
-  const changes = git ? [{ title: t("desktop.workbench.sidePanelStaged"), staged: true, entries: git.staged }, { title: t("desktop.workbench.sidePanelChanges"), staged: false, entries: git.unstaged }] : [];
   const setWidth = (kind: "list" | "side", delta: number) => {
     const current = kind === "list" ? listWidth : sideWidth;
     const limits = kind === "list" ? [240, 720] : [240, 840];
@@ -6100,7 +4337,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (kind === "list") { setListWidth(next); writeWorkbenchValue(LIST_WIDTH_KEY, activeWorkbenchIdRef.current, String(next)); }
     else { setSideWidth(next); writeWorkbenchValue(SIDE_WIDTH_KEY, activeWorkbenchIdRef.current, String(next)); }
   };
-
   const contextMenuWidth = contextMenu?.kind === "session" || contextMenu?.kind === "session-tab" || contextMenu?.kind === "thunder" ? 210 : 240;
   const contextMenuHeight = (() => {
     if (!contextMenu) return 320;
@@ -6130,41 +4366,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     { x: contextMenu?.x ?? 0, y: contextMenu?.y ?? 0 }
   );
   useMenuKeyboard(Boolean(contextMenu) && !contextMenuClosing, contextMenuRef, closeContextMenu);
-
-  const editorDiskAlert = currentEditor?.diskState ? <div
-    className={`wb-editor-disk-alert is-${currentEditor.diskState}`}
-    role="alert"
-  >
-    <span>{t(currentEditor.diskState === "changed"
-      ? "desktop.workbench.fileConflict"
-      : currentEditor.diskState === "deleted"
-        ? "desktop.workbench.fileDeletedOnDisk"
-        : "desktop.workbench.fileUnavailableOnDisk")}</span>
-    <div className="wb-editor-disk-actions">
-      {currentEditor.diskState === "changed" ? <>
-        <button type="button" onClick={() => {
-          void (async () => {
-            if (!currentEditor.dirty || (await confirmDestructive(t("desktop.workbench.fileReloadConfirm"), t("desktop.common.discard")))) {
-              void reloadEditorFromDisk(currentEditor.key);
-            }
-          })();
-        }}>{t("desktop.workbench.fileReload")}</button>
-        <button type="button" disabled={editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key, true)}>{t("desktop.workbench.fileOverwrite")}</button>
-      </> : currentEditor.diskState === "deleted" ?
-        <button type="button" disabled={editorSettings?.editable === false} onClick={() => {
-          void (async () => {
-            if (await confirmDestructive(t("desktop.workbench.fileRecreateConfirm", basename(currentEditor.path)), t("desktop.workbench.fileRecreate"))) {
-              void recreateEditorFile(currentEditor.key);
-            }
-          })();
-        }}>{t("desktop.workbench.fileRecreate")}</button>
-        : <button type="button" onClick={() => void desktopApi().workbenchOpenPath({
-          rootPath: currentEditor.projectPath,
-          filePath: currentEditor.path
-        })}>{t("desktop.workbench.fileOpenDefault")}</button>}
-    </div>
-  </div> : null;
-
   const quickAccessRecentPaths = (() => {
     const seen = new Set<string>();
     const paths: string[] = [];
@@ -6183,133 +4384,204 @@ export function WorkbenchPanel(): ReactPortal | null {
    * The local folders a task references — its shared workspace — enriched from
    * the catalog so labels, pinned state and path-missing hints still apply. The
    * Search root picker stays inside the task's own folders.
-   */
-  const workspaceRootOptions = useMemo<SearchRootOption[]>(() => {
-    if (!taskScope) return [];
-    const knownByPath = new Map(allProjects.map((project) => [projectPathKey(project.path), project]));
-    return sideRootProjects.map((path) => {
-      const known = knownByPath.get(projectPathKey(path));
-      const missing = known?.pathMissing === true;
-      return {
-        id: known?.id || path,
-        path,
-        label: aliases[path] || known?.label || basename(path),
-        detail: missing ? t("desktop.workbench.pathMissingLabel", known?.portableKey || path) : path,
-        pinned: known?.pinned,
-        disabledReason: missing ? t("desktop.workbench.pathMissingHint") : undefined
-      };
-    });
-  }, [aliases, allProjects, sideRootProjects, t, taskScope]);
-
-  /**
-   * The `#` menu in a session running in the shared workspace offers the task's
-   * referenced repositories (their folders live outside the workspace cwd).
-   */
-  const searchRootOptions = useMemo<SearchRootOption[]>(() => {
-    if (taskScope) return workspaceRootOptions;
-    return allProjects.map((project) => ({
-      id: project.id,
-      path: project.path,
-      label: project.label,
-      detail: project.pathMissing
-        ? t("desktop.workbench.pathMissingLabel", project.portableKey)
-        : project.path,
-      pinned: project.pinned,
-      disabledReason: project.pathMissing ? t("desktop.workbench.pathMissingHint") : undefined
-    }));
-  }, [allProjects, t, taskScope, workspaceRootOptions]);
-  const searchProjectResults = useMemo(
-    () => rankSearchRootOptions(searchRootOptions, searchProjectQuery),
-    [searchRootOptions, searchProjectQuery]
-  );
-  const searchProjectResultIds = searchProjectResults.map((project) => project.id);
-  const searchProjectResultSignature = searchProjectResultIds.join("\0");
-  /**
-   * What the picker marks as current. Its options are the task's repositories
-   * themselves, so the comparison is against those and not against a checkout one
-   * of the panes may have moved to.
-   */
-  const searchProjectCurrentPath = taskScope
-    ? (sideRepoRoots.length === 1 ? sideRepoRoots[0] : "")
-    : (selectedProjectMeta?.path || selectedProject || "");
-  const searchProjectCurrentId = !searchProjectQuery.trim()
-    ? searchProjectResults.find((project) => projectPathKey(project.path) === projectPathKey(searchProjectCurrentPath))?.id || ""
-    : "";
-  const searchProjectSelectedIndex = searchProjectSelectionId
-    ? searchProjectResultIds.indexOf(searchProjectSelectionId)
-    : -1;
-  const searchProjectActiveIndex = searchProjectSelectedIndex >= 0
-    ? searchProjectSelectedIndex
-    : searchProjectResults.length ? 0 : -1;
-  const searchProjectActive = searchProjectActiveIndex >= 0
-    ? searchProjectResults[searchProjectActiveIndex]
-    : undefined;
-  const searchProjectOptionId = (projectId: string) => `wb-search-project-${encodeURIComponent(projectId)}`;
-
-  useEffect(() => {
-    if (!searchProjectMode) return;
-    setSearchProjectSelectionId((current) => {
-      if (current && searchProjectResultIds.includes(current)) return current;
-      return searchProjectCurrentId || searchProjectResultIds[0] || "";
-    });
-  }, [searchProjectCurrentId, searchProjectMode, searchProjectResultSignature]);
-
-  useEffect(() => {
-    if (!searchProjectMode || !searchProjectActive) return;
-    searchProjectOptionRefs.current.get(searchProjectActive.id)?.scrollIntoView?.({ block: "nearest" });
-  }, [searchProjectActive?.id, searchProjectMode]);
-
-  const enterSearchProjectMode = () => {
-    setSearchProjectQuery("");
-    setSearchProjectSelectionId("");
-    setSearchProjectMode(true);
+   */  const runContextAction = async (action: string) => {
+    const menu = contextMenu;
+    setContextMenu(null);
+    if (!menu) return;
+    if (menu.kind === "task" && menu.noteId) {
+      if (action === "followChildren") {
+        try {
+          await desktopApi().notesSetGtdStatus({ noteId: menu.noteId, status: null });
+          window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+        } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+        return;
+      }
+      if (action === "deleteTask") {
+        // Only a task that has never been linked to a session may be deleted.
+        if (menu.taskHasSessions) return;
+        if (typeof desktopApi().notesDelete !== "function") return;
+        const label = menu.taskTitle || menu.noteId;
+        if (!(await confirmDestructive(t("desktop.workbench.deleteTaskConfirm", label), t("desktop.common.delete")))) return;
+        try {
+          await desktopApi().notesDelete({ noteId: menu.noteId });
+          if (taskScopeRef.current?.noteId === menu.noteId) {
+            // The task's workbenches are gone for good: close their panes.
+            for (const workbench of workbenchesRef.current) discardWorkbenchPanes(workbench.workbenchId);
+            taskScopeRef.current = null;
+            setTaskScope(null);
+            setSessionTarget(null);
+          }
+          await loadTasks();
+          window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+        } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+      }
+      return;
+    }
+    if (menu.kind === "session-tab") {
+      if (action === "floatingNote" && menu.floatingNoteTarget) openFloatingNote(menu.floatingNoteTarget);
+      return;
+    }
+    if (menu.kind === "editor-tab") {
+      return;
+    }
+    if (menu.kind === "note" && menu.noteId) {
+      const noteId = menu.noteId;
+      if (action.startsWith("gtd:")) {
+        const status = action === "gtd:clear"
+          ? null
+          : GTD_STATUSES.includes(action.slice(4) as DesktopGtdStatus)
+            ? action.slice(4) as DesktopGtdStatus
+            : null;
+        if (action !== "gtd:clear" && !status) return;
+        try {
+          await desktopApi().notesSetGtdStatus({ noteId, status });
+          setNoteItems((current) => current.map((item) => item.noteId === noteId ? { ...item, gtdStatus: status ?? undefined } : item));
+          window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+          setStatus({ text: "" });
+        } catch (error) {
+          const message = t("desktop.workbench.gtdStatusSaveFailed", statusError(error));
+          setStatus({ text: message, kind: "error" });
+          notifyDesktop({ text: message, kind: "error" });
+        }
+        return;
+      }
+      return;
+    }
+    if (menu.kind === "thunder" && menu.thunderConversation) {
+      const conversation = menu.thunderConversation;
+      const workspace = conversation.workspace || "";
+      const ownerKey = `thunder:${conversation.id}`;
+      if (action === "openThunderChat") {
+        openThunderConversation(conversation);
+        return;
+      }
+      if (action === "thunderTui") {
+        void launchThunderTui(conversation);
+        return;
+      }
+      if (action === "floatingNote") {
+        openFloatingNote(thunderSessionNoteTarget(conversation, aliases[workspace] || basename(workspace)));
+        return;
+      }
+      if (action === "note") {
+        await openMountedNote({ scope: "session", projectPath: workspace, provider: "thunder", sessionId: conversation.id });
+        return;
+      }
+      if (action === "autoRename") {
+        void autoRenameThunderConversation(conversation);
+        return;
+      }
+      if (action === "moveTask") {
+        openMoveSessionToTaskDialog({
+          sessionKey: ownerKey,
+          sessionTitle: conversation.title || conversation.id,
+          projectPath: workspace
+        });
+        return;
+      }
+      if (action === "deleteThunderConversation") {
+        await deleteThunderConversation(conversation);
+        return;
+      }
+      if (action.startsWith("gtd:")) {
+        const status = action === "gtd:clear"
+          ? null
+          : GTD_STATUSES.includes(action.slice(4) as DesktopGtdStatus)
+            ? action.slice(4) as DesktopGtdStatus
+            : null;
+        if (action !== "gtd:clear" && !status) return;
+        try {
+          await desktopApi().setSessionGtdStatus({ provider: "thunder", id: conversation.id, status });
+          setGtdStatuses((current) => {
+            const next = { ...current };
+            if (status) next[ownerKey] = status;
+            else delete next[ownerKey];
+            return next;
+          });
+          setStatus({ text: "" });
+          window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
+        } catch (error) {
+          const message = t("desktop.workbench.gtdStatusSaveFailed", statusError(error));
+          setStatus({ text: message, kind: "error" });
+          notifyDesktop({ text: message, kind: "error" });
+        }
+        return;
+      }
+      return;
+    }
+    const session = menu.session;
+    if (!session) return;
+    if (action === "moveTask") {
+      openMoveSessionToTaskDialog({
+        sessionKey: sessionKey(session),
+        sessionTitle: session.title || session.id,
+        projectPath: session.projectPath || ""
+      });
+      return;
+    }
+    if (action.startsWith("gtd:")) {
+      const status = action === "gtd:clear"
+        ? null
+        : GTD_STATUSES.includes(action.slice(4) as DesktopGtdStatus)
+          ? action.slice(4) as DesktopGtdStatus
+          : null;
+      if (action !== "gtd:clear" && !status) return;
+      try {
+        await desktopApi().setSessionGtdStatus({ provider: session.provider, id: session.id, status });
+        setGtdStatuses((current) => {
+          const next = { ...current };
+          const key = sessionKey(session);
+          if (status) next[key] = status;
+          else delete next[key];
+          return next;
+        });
+        setStatus({ text: "" });
+        window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
+      } catch (error) {
+        const message = t("desktop.workbench.gtdStatusSaveFailed", statusError(error));
+        setStatus({ text: message, kind: "error" });
+        notifyDesktop({ text: message, kind: "error" });
+      }
+      return;
+    }
+    if (action === "floatingNote") openFloatingNote(sessionNoteTarget(session, aliases[session.projectPath] || basename(session.projectPath)));
+    if (action === "note") await openMountedNote({ scope: "session", projectPath: session.projectPath, provider: session.provider, sessionId: session.id });
+    if (action === "codex") {
+      try { await desktopApi().workbenchOpenCodexApp({ provider: session.provider, id: session.id }); }
+      catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+    }
+    if (action === "preview") window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", { detail: session }));
+    if (action === "autoRename") {
+      cancelSessionAutoRename(sessionKey(session));
+      await performAutoRenameSession(session.provider, session.id);
+    }
+    if (action === "remove") {
+      const selectedCatalog = visibleSessions.filter((item) => selectedSessionKeys.has(sessionKey(item)));
+      const targets = selectedCatalog.length > 1 && selectedSessionKeys.has(sessionKey(session))
+        ? selectedCatalog
+        : [session];
+      const confirmed = targets.length > 1
+        ? await confirmDestructive(t("desktop.workbench.removeMultipleConfirm", targets.length), t("desktop.common.remove"))
+        : await confirmDestructive(t("desktop.workbench.removeConfirm", session.title || session.id), t("desktop.common.remove"));
+      if (!confirmed) return;
+      await removeSelectedSessionsFromPanel(targets);
+    }
   };
-  const leaveSearchProjectMode = () => {
-    setSearchProjectMode(false);
-    setSearchProjectQuery("");
-    window.requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
-    });
-  };
-  const moveSearchProjectSelection = (offset: -1 | 1) => {
-    if (!searchProjectResults.length) return;
-    const currentIndex = searchProjectActiveIndex >= 0
-      ? searchProjectActiveIndex
-      : offset > 0 ? -1 : 0;
-    const nextIndex = (currentIndex + offset + searchProjectResults.length) % searchProjectResults.length;
-    setSearchProjectSelectionId(searchProjectResults[nextIndex].id);
-  };
-  const activateSearchProject = (project = searchProjectActive) => {
-    if (!project || project.disabledReason) return;
-    if (taskScopeRef.current) setSessionTarget(project.path);
-    selectProject(project.path, { keepSide: true });
-    leaveSearchProjectMode();
-  };
-  /**
-   * The scope chip on the search box. It names the repository being searched —
-   * which checkout of it is not its business: that is what the checkout control in
-   * the same pane head is for, and naming it here would read as a second, rival
-   * answer to the same question.
-   */
-  const searchProjectLabel = taskScope
-    ? (sideRepoRoots.length === 1
-      ? (aliases[sideRepoRoots[0]] || basename(sideRepoRoots[0]))
-      : sideRepoRoots.length > 1
-        ? t("desktop.workbench.searchAllRepositories")
-        : t("desktop.workbench.quickAccessSelectProject"))
-    : selectedProjectMeta
-      ? `${selectedProjectMeta.label} — ${selectedProjectMeta.path}`
-      : t("desktop.workbench.quickAccessSelectProject");
-  const noProjectReason = sideRoots.length ? undefined : t("desktop.workbench.quickAccessNoProjectCommand");
-  const macShortcuts = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
+const openQuickAccessFile = useCallback(async (file: QuickAccessFile) => {
+    const rootPath = projectForPath(file.path) || quickAccessRoot;
+    if (!rootPath) return;
+    closeQuickAccess();
+    selectProject(rootPath);
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+    await openFile(file.path, undefined, rootPath);
+  }, [closeQuickAccess, projectForPath, quickAccessRoot]);
+    const macShortcuts = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
   const shortcut = (key: string) => macShortcuts ? `⌘${key}` : `Ctrl+${key}`;
   const openWorkbenchView = (view?: SideView) => {
     closeQuickAccess();
     if (quickAccessRoot) selectProject(quickAccessRoot);
     window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
     if (view) setSide(view);
-    if (view === "search") resetSearchProjectMode();
   };
   const navigateToWorkbench = () => {
     closeQuickAccess();
@@ -6319,11 +4591,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     closeQuickAccess();
     window.dispatchEvent(new CustomEvent("agent-resume:view-gtd"));
   };
-  /**
-   * Switching tasks from the palette opens (or focuses) the target task's own
-   * window. This window owns exactly one workbench, so it cannot host another
-   * task in place.
-   */
   const openQuickAccessTask = async (task: WorkbenchTask) => {
     closeQuickAccess();
     try {
@@ -6339,6 +4606,8 @@ export function WorkbenchPanel(): ReactPortal | null {
       setStatus({ text: statusError(error), kind: "error" });
     }
   };
+
+  const noProjectReason = sideRoots.length ? undefined : t("desktop.workbench.quickAccessNoProjectCommand");
   const quickAccessCommands: QuickAccessCommand[] = [
     // 1. Navigation / 导航
     {
@@ -6403,30 +4672,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     },
     // 5. Side Panels / 侧栏面板
     {
-      id: "workbench.explorer",
-      label: t("desktop.workbench.quickAccessShowExplorer"),
-      category: t("desktop.workbench.quickAccessCategoryPanels"),
-      keywords: "files sidebar file tree explorer",
-      disabledReason: noProjectReason,
-      run: () => openWorkbenchView("files")
-    },
-    {
-      id: "workbench.git",
-      label: t("desktop.workbench.quickAccessShowGit"),
-      category: t("desktop.workbench.quickAccessCategoryPanels"),
-      keywords: "changes source control git diff commit",
-      disabledReason: noProjectReason,
-      run: () => openWorkbenchView("git")
-    },
-    {
-      id: "workbench.search",
-      label: t("desktop.workbench.quickAccessShowSearch"),
-      category: t("desktop.workbench.quickAccessCategoryPanels"),
-      keywords: "find content sidebar text search grep",
-      disabledReason: noProjectReason,
-      run: () => openWorkbenchView("search")
-    },
-    {
       id: "workbench.scripts",
       label: t("desktop.workbench.quickAccessShowScripts"),
       category: t("desktop.workbench.quickAccessCategoryPanels"),
@@ -6446,27 +4691,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         setQuickAccessMode("files");
         setQuickAccessQuery("");
         if (sideRoots.length) void loadQuickAccessFiles();
-      }
-    },
-    {
-      id: "file.findInFiles",
-      label: t("desktop.workbench.quickAccessFindInFiles"),
-      category: t("desktop.workbench.quickAccessCategoryFiles"),
-      keywords: "search project content find text",
-      shortcut: macShortcuts ? "⌘⇧F" : "Ctrl+Shift+F",
-      disabledReason: noProjectReason,
-      run: () => openWorkbenchView("search")
-    },
-    {
-      id: "file.save",
-      label: t("desktop.workbench.quickAccessSaveCurrentFile"),
-      category: t("desktop.workbench.quickAccessCategoryFiles"),
-      keywords: "write editor save file",
-      shortcut: shortcut("S"),
-      disabledReason: currentEditor ? undefined : t("desktop.workbench.quickAccessNoActiveEditor"),
-      run: () => {
-        closeQuickAccess();
-        if (currentEditor) void saveEditor(currentEditor.key);
       }
     },
     {
@@ -6494,36 +4718,25 @@ export function WorkbenchPanel(): ReactPortal | null {
         void desktopApi().openSettingsWindow?.({ pane: "general" }).catch(() => undefined);
       }
     }
+  
   ];
+  /**
+   * Switching tasks from the palette opens (or focuses) the target task's own
+   * window. This window owns exactly one workbench, so it cannot host another
+   * task in place.
+   */
 
-  // The editor menu carries the selection actions (rich content, not an NSMenu), so
-  // it keeps its DOM but takes the shared measured position and keyboard handling.
-  const closeEditorContextMenu = useCallback(() => setEditorContextMenu(null), [setEditorContextMenu]);
-  useMenuPosition(
-    Boolean(editorContextMenu) && !editorContextMenuClosing,
-    editorContextMenuRef,
-    { x: editorContextMenu?.x ?? 0, y: editorContextMenu?.y ?? 0 }
-  );
-  useMenuKeyboard(
-    Boolean(editorContextMenu) && !editorContextMenuClosing,
-    editorContextMenuRef,
-    closeEditorContextMenu
-  );
   const clearWorkbenchDrag = () => {
     draggedSessionRef.current = null;
     setDraggedSessionKey(null);
   };
-
   const sessionTabCount = currentSessionTerminals.length + currentAcpChats.length + currentThunderChats.length;
   const terminalTabCount = currentShellTerminals.length;
-  const codeTabCount = currentEditors.length + currentDiffs.length;
   const noteTabCount = currentNotePanes.length;
   const sessionTabListRef = useRef<HTMLDivElement | null>(null);
   const terminalTabListRef = useRef<HTMLDivElement | null>(null);
-  const codeTabListRef = useRef<HTMLDivElement | null>(null);
   const noteTabListRef = useRef<HTMLDivElement | null>(null);
   const tabPreview = useTabPreview();
-
   const paneTabGroups = <div className="wb-pane-tab-groups">
     <div className="wb-terminal-tabs is-session-group" data-pane-group="session">
       <button ref={newSessionButtonRef} type="button" className={`wb-pane-tab-group-label${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} aria-haspopup="menu" onClick={() => void newSession()}>{terminalCreating ? <ThemeIcon name="loader" className="spin" size={ICON_SIZE.dense} aria-hidden="true" /> : <ThemeIcon name="bot" size={ICON_SIZE.dense} aria-hidden="true" />}{sessionTabCount > 0 ? <span className="wb-pane-tab-group-count" aria-hidden="true">{sessionTabCount}</span> : null}</button>
@@ -6543,14 +4756,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         {currentShellTerminals.map((pane) => <div className={`wb-terminal-tab is-terminal${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} {...tabPreview.bind(activePane === pane.key ? null : terminalPreviewTarget(pane))}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="terminal" size={ICON_SIZE.dense} aria-hidden="true" /><span className="wb-terminal-tab-title">{pane.title}</span></button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
       </div>
     </div>
-    {currentEditors.length || currentDiffs.length ? <div className="wb-terminal-tabs is-code-group" data-pane-group="code">
-      <div className="wb-pane-tab-group-label" aria-label={t("desktop.workbench.tabGroupCode")} title={t("desktop.workbench.tabGroupCode")}><ThemeIcon name="file-code" size={ICON_SIZE.dense} aria-hidden="true" /><span className="wb-pane-tab-group-count" aria-hidden="true">{codeTabCount}</span></div>
-      <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupCode")} ref={codeTabListRef}>
-        <PaneTabThumb listRef={codeTabListRef} activeKey={activePane} tabCount={codeTabCount} />
-        {currentEditors.map((pane) => <div className={`wb-terminal-tab is-editor${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} {...tabPreview.bind(activePane === pane.key ? null : editorPreviewTarget(pane))} onContextMenu={(event) => editorTabMenu(event, pane)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-code" size={ICON_SIZE.dense} aria-hidden="true" /><span className="wb-terminal-tab-title">{pane.dirty ? "* " : ""}{basename(pane.path)}</span></button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeFile")} onClick={() => closeEditor(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
-        {currentDiffs.map((pane) => <div className={`wb-terminal-tab is-diff${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} {...tabPreview.bind(activePane === pane.key ? null : diffPreviewTarget(pane))}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-diff" size={ICON_SIZE.dense} aria-hidden="true" /><span className="wb-terminal-tab-title">{basename(pane.path)}</span></button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeDiff")} onClick={() => closeDiff(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
-      </div>
-    </div> : null}
+    
     <div className="wb-terminal-tabs is-note-group" data-pane-group="note">
       <button type="button" className="wb-pane-tab-group-label" aria-label={t("desktop.notes.newLinkedChild")} title={t("desktop.notes.newLinkedChild")} onClick={() => void addChildNote()}><ThemeIcon name="file-plus" size={ICON_SIZE.dense} aria-hidden="true" />{noteTabCount > 0 ? <span className="wb-pane-tab-group-count" aria-hidden="true">{noteTabCount}</span> : null}</button>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.notes.allNotes")} ref={noteTabListRef}>
@@ -6560,24 +4766,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     </div>
   </div>;
 
-  const gitHistoryTitle = gitHistoryContext?.kind === "file"
-    ? t("desktop.workbench.gitFileHistoryTitle", basename(gitHistoryContext.filePath))
-    : t("desktop.workbench.gitLogTitle");
-  const gitHistoryBackLabel = gitHistoryContext?.kind === "file"
-    ? t("desktop.workbench.gitFileHistoryBackToExplorer")
-    : t("desktop.workbench.gitLogBackToChanges");
+;
 
-  const renderGitLogRow = (commit: GitLogCommit, index: number) => {
-    const selected = gitShow?.hash === commit.hash;
-    return <button
-      type="button"
-      className={`wb-git-log-graph-row${selected ? " is-selected" : ""}`}
-      aria-pressed={selected}
-      key={commit.hash}
-      onClick={() => void showCommit(commit)}
-      onContextMenu={(event) => openGitLogContextMenu(event, commit)}
-    ><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog?.layout.rows[index]?.colorIndex ?? 0}`}><ThemeIcon name="circle" size={ICON_SIZE.inline} fill="currentColor" /></span><span className="wb-git-log-graph-content"><GitCommitBranches commit={commit} /><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta"><span className="wb-git-log-hash">{commit.shortHash}</span><span className="wb-git-log-meta-sep">·</span><span>{commit.author}</span><span className="wb-git-log-meta-sep">·</span><span>{formatGitCommitDate(commit.date, locale)}</span></span></span></button>;
-  };
 
   if (!host) return null;
 
@@ -6676,8 +4866,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     </div>
   ) : null;
 
-  const gitDirtyCount = (git?.staged?.length ?? 0) + (git?.unstaged?.length ?? 0);
-
   const detailHeader = (
     <WorkbenchDetailHeader
       title={headerTitle}
@@ -6685,13 +4873,8 @@ export function WorkbenchPanel(): ReactPortal | null {
       onRevealDirectory={headerDirectory ? revealHeaderDirectory : undefined}
       imageUrl={taskScope ? taskImage : null}
       side={side}
-      branchStatusLabel={branchStatusLabel}
-      branchStatusPane={branchStatusPane}
-      branchStatusNested={branchStatusNested}
-      onOpenBranchMenu={openBranchMenu}
       onToggleSide={(view) => setSide((current) => current === view ? null : view)}
       centerContent={workbenchTabsBar}
-      gitDirtyCount={gitDirtyCount}
     />
   );
 
@@ -6937,42 +5120,6 @@ export function WorkbenchPanel(): ReactPortal | null {
             const isSession = pane.group === "session";
             const showSplit = isSession && sessionViewMode === "hybrid";
             const composerProjects = EMPTY_COMPOSER_WORKSPACE_PROJECTS;
-            const gitReviewBanner = isSession && gitDirtyCount > 0 && side !== "git" ? (
-              <div className="wb-session-git-review-banner">
-                <div className="wb-session-git-review-info">
-                  <ThemeIcon name="git-branch" size={ICON_SIZE.dense} aria-hidden="true" />
-                  <span>{t("desktop.workbench.sessionGitReviewHint", gitDirtyCount)}</span>
-                </div>
-                <div className="wb-session-git-review-actions">
-                  <button
-                    type="button"
-                    className="wb-session-git-review-btn"
-                    onClick={() => setSide("git")}
-                  >
-                    <ThemeIcon name="file-diff" size={ICON_SIZE.dense} aria-hidden="true" />
-                    <span>{t("desktop.workbench.sessionGitReviewAction")}</span>
-                    <kbd className="wb-session-git-review-shortcut">{macShortcuts ? "⌃⇧G" : "Ctrl+Shift+G"}</kbd>
-                  </button>
-                  <button
-                    type="button"
-                    className={`wb-session-git-review-btn wb-session-git-commit-btn${commitBusy ? " is-busy" : ""}`}
-                    disabled={commitBusy}
-                    /* Name the repo and the exact files: this button commits
-                       everything dirty in one repo, which is more than a session
-                       touched. */
-                    title={`${t("desktop.workbench.gitCommitAndPush")} · ${basename(gitRoot)}\n${formatCommitScopeTooltip(bannerCommitPaths)}`}
-                    onClick={() => void handleCommitAndPushFromBanner()}
-                  >
-                    {commitBusy ? (
-                      <ThemeIcon name="loader" size={ICON_SIZE.dense} className="spin" aria-hidden="true" />
-                    ) : (
-                      <ThemeIcon name="upload" size={ICON_SIZE.dense} aria-hidden="true" />
-                    )}
-                    <span>{t("desktop.workbench.gitCommitAndPush")} ({bannerCommitPaths.length})</span>
-                  </button>
-                </div>
-              </div>
-            ) : null;
 
             if (showSplit) {
               const provider = sessionIdentity?.provider || pending?.provider || "codex";
@@ -7059,7 +5206,6 @@ export function WorkbenchPanel(): ReactPortal | null {
                       </div>
                     ) : null}
                   </div>
-                  {gitReviewBanner}
                   <TerminalComposerStack
                     items={[{
                       pane: { key: pane.key, cwd: pane.cwd, group: pane.group, projectPath: pane.projectPath },
@@ -7155,8 +5301,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                 <TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} engineType={terminalEngine} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} />
                 {pane.group === "session" ? (
                   <>
-                    {gitReviewBanner}
-                    <TerminalComposerStack
+                      <TerminalComposerStack
                     items={[{
                       pane: { key: pane.key, cwd: pane.cwd, group: pane.group, projectPath: pane.projectPath },
                       ptyId: pane.ptyId ?? null,
@@ -7177,167 +5322,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                 ) : null}
               </div>
             );
-          })}{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
-            <ThemeIcon name="search" size={ICON_SIZE.dense} aria-hidden="true" />
-            <input
-              ref={editorFindInputRef}
-              className="wb-editor-find-input app-inline-search-input"
-              type="text"
-              value={editorFindQuery}
-              placeholder={t("desktop.common.search")}
-              aria-label={t("desktop.common.search")}
-              autoComplete="off"
-              spellCheck={false}
-              enterKeyHint="search"
-              onChange={(event) => {
-                const value = event.target.value;
-                setEditorFindQuery(value);
-                editorFindQueryRef.current = value;
-                runEditorFind("forward", value, true);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  closeEditorFind();
-                }
-              }}
-            />
-            <span className={`wb-editor-find-count app-inline-search-meta${editorFindResult?.total === 0 ? " is-empty" : ""}`} aria-live="polite">
-              {editorFindQuery.trim() && editorFindResult
-                ? t("desktop.common.findCount", editorFindResult.current, editorFindResult.total)
-                : ""}
-            </span>
-            <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => runEditorFind("backward")}><ThemeIcon name="arrow-up" size={ICON_SIZE.dense} /></button>
-            <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runEditorFind("forward")}><ThemeIcon name="arrow-down" size={ICON_SIZE.dense} /></button>
-            <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeEditorFind}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button>
-          </div> : null}{currentEditor ? <div className="wb-editor-pane" onContextMenu={(event) => { event.preventDefault(); const selectedText = editorRef.current?.getSelectedText().trim() || ""; setEditorContextMenu({ x: event.clientX, y: event.clientY, hasSelection: Boolean(selectedText), selectedText }); }}>{editorDiskAlert}{currentEditor.view === "preview" ? <StreamdownRenderer className="wb-editor-preview markdown-body" content={currentEditor.content} hardBreaks imageOptions={{ baseDir: posixDirname(currentEditor.path), rootDir: currentEditor.projectPath }} imageLabels={{ openInBrowser: t("desktop.markdown.openInBrowser"), unavailable: t("desktop.markdown.imageUnavailable"), remoteImage: t("desktop.markdown.remoteImage") }} onImageClick={(src) => setImagePreview(src)} /> : <CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} selectionProjectPath={currentEditor.projectPath} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} />}<div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={ICON_SIZE.default} /></button></div></div> : null}{currentDiff ? (() => {
-    // The review partner is "the session this diff belongs to", which is not the
-    // same thing as "a session pane that happens to be open": the transcript is
-    // loaded from the catalog by provider + id, so it can be shown even when the
-    // session has no live pane. Prefer a live pane (it also gives the composer),
-    // then fall back to the session catalog.
-    const sessionPane = terminals.find((pane) => paneScopeKey(pane) === activeScopeKey && pane.group === "session")
-      || terminals.find((pane) => pane.group === "session")
-      || null;
-    const acpChatPane = acpChats.find((pane) => paneScopeKey(pane) === activeScopeKey)
-      || acpChats[0]
-      || null;
-    // ACP sessions live behind their own chat view, so only CLI sessions can use
-    // the transcript-only fallback.
-    const isCliSession = (session: AgentSession) => session.provider !== "chat";
-    const catalogSession = sessionPane ? null
-      : sessions.find((session) => sessionKey(session) === activeSessionKey && isCliSession(session))
-        ?? visibleSessions.find(isCliSession)
-        ?? null;
-    const reviewIdentity = sessionPane
-      ? sessionIdentityFromKey(sessionPane.sessionKey)
-      : catalogSession
-        ? sessionIdentityFromKey(sessionKey(catalogSession))
-        : null;
-    const hasReviewPartner = Boolean(sessionPane || acpChatPane || catalogSession);
-    const diffPane = (
-      <div className="wb-git-diff-pane">
-        <div className="wb-diff-head">
-          <strong className="wb-diff-title">{currentDiff.path}</strong>
-          <div className="wb-diff-actions">
-            {hasReviewPartner ? (
-              <button
-                type="button"
-                className={`wb-diff-split-toggle${diffSessionAlongside ? " is-active" : ""}`}
-                aria-pressed={diffSessionAlongside}
-                aria-label={t("desktop.workbench.diffSessionAlongside")}
-                title={t("desktop.workbench.diffSessionAlongside")}
-                onClick={() => setDiffSessionAlongside((v) => {
-                  const next = !v;
-                  writeWorkbenchValue(DIFF_SESSION_ALONGSIDE_KEY, activeWorkbenchIdRef.current, String(next));
-                  return next;
-                })}
-              >
-                <ThemeIcon name="panel-right" size={ICON_SIZE.dense} />
-                <span>{t("desktop.workbench.diffSessionAlongside")}</span>
-              </button>
-            ) : null}
-            <button type="button" className="wb-diff-ask-agent" aria-label={t("desktop.workbench.diffAskAgent")} title={t("desktop.workbench.diffAskAgent")} onClick={() => askAgentAboutDiff(currentDiff)}><ThemeIcon name="bot" size={ICON_SIZE.dense} /><span>{t("desktop.workbench.diffAskAgent")}</span></button>
-            <button type="button" className="wb-git-action-btn wb-diff-open" aria-label={t("desktop.workbench.fileOpen")} title={t("desktop.workbench.fileOpen")} onClick={() => void openFile(gitChangeFilePath(currentDiff))}><ThemeIcon name="file" size={ICON_SIZE.default} /></button>
-          </div>
-        </div>
-        <div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div>
-        <DiffWorkerPool><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} onStageHunk={(target) => void stageGitHunk(currentDiff, target)} onUnstageHunk={(target) => void unstageGitHunk(currentDiff, target)} onStageLine={(target) => void stageGitLine(currentDiff, target)} onUnstageLine={(target) => void unstageGitLine(currentDiff, target)} /></DiffWorkerPool>
-      </div>
-    );
-    if (diffSessionAlongside && hasReviewPartner) {
-      const acpChat = acpChatPane;
-      return (
-        <div className="wb-diff-split-layout">
-          <div className="wb-diff-split-session">
-            {sessionPane || catalogSession ? (
-              <>
-                <div className="wb-session-split-transcript">
-                  <SessionTranscriptPane
-                    provider={reviewIdentity?.provider || "codex"}
-                    sessionId={reviewIdentity?.sessionId || ""}
-                    iconProvider={reviewIdentity?.provider || "codex"}
-                    active={active}
-                    fontSize={settings?.workbench?.transcriptFontSize ?? 14}
-                    focusUserMessage={transcriptFocus}
-                    onRefresh={triggerSessionSync}
-                  />
-                </div>
-                {/* Only a live pane can take input; a catalog-only session is
-                    here to be read while the diff is reviewed. */}
-                {sessionPane ? (
-                  <TerminalComposerStack
-                    items={[{
-                      pane: { key: sessionPane.key, cwd: sessionPane.cwd, group: sessionPane.group, projectPath: sessionPane.projectPath },
-                      ptyId: sessionPane.ptyId ?? null,
-                      activePane: true,
-                      value: composerDrafts[sessionPane.key] || "",
-                      provider: reviewIdentity?.provider
-                    }]}
-                    onChange={setComposerDraft}
-                    onSendToTerminal={sendComposerToTerminal}
-                    onRunSlashCommand={runComposerSlashCommand}
-                    onActivate={activateComposerPane}
-                    onClose={closeTerminal}
-                    registerFocus={registerComposerFocus}
-                    slashPhrases={settings?.workbench?.composerSlashPhrases ?? []}
-                    workspaceProjects={EMPTY_COMPOSER_WORKSPACE_PROJECTS}
-                  />
-                ) : null}
-              </>
-            ) : acpChat ? (
-              <div className="wb-diff-split-acp">
-                <AcpChatView
-                  key={acpChat.key}
-                  recordId={acpChat.recordId}
-                  provider={acpChat.provider}
-                  projectPath={acpChat.projectPath}
-                  title={acpChat.title}
-                  active={active}
-                  initialPrompt={acpChat.initialPrompt}
-                  onTitleChange={(nextTitle) => {
-                    setAcpChats((current) => current.map((item) => item.key === acpChat.key ? { ...item, title: nextTitle } : item));
-                    setSessions((current) => current.map((item) =>
-                      sessionKey(item) === acpListSessionKey(acpChat.recordId) ? { ...item, title: nextTitle } : item
-                    ));
-                  }}
-                  onSessionReady={refreshSessionsAfterAcpConnect}
-                  onInitialPromptSubmitted={() => {
-                    setAcpChats((current) => current.map((item) => item.key === acpChat.key ? { ...item, initialPrompt: undefined } : item));
-                  }}
-                />
-              </div>
-            ) : null}
-          </div>
-          <div className="wb-diff-split-diff">
-            {diffPane}
-          </div>
-        </div>
-      );
-    }
-    return diffPane;
-  })() : null}{currentNotePane ? <NotePaneView key={currentNotePane.key} noteId={currentNotePane.noteId} active={active} onOpenNote={(noteId) => openNotePane(noteId)} onTitleChange={updateNotePaneTitle} onDirtyChange={setNotePaneDirty} onClose={() => closeNotePane(currentNotePane.key)} /> : null}{acpChats.map((pane) => {
+          })}{currentNotePane ? <NotePaneView key={currentNotePane.key} noteId={currentNotePane.noteId} active={active} onOpenNote={(noteId) => openNotePane(noteId)} onTitleChange={updateNotePaneTitle} onDirtyChange={setNotePaneDirty} onClose={() => closeNotePane(currentNotePane.key)} /> : null}{acpChats.map((pane) => {
             const visible = paneScopeKey(pane) === activeScopeKey && activePane === pane.key;
             return <AcpChatView
               key={pane.key}
@@ -7376,136 +5361,12 @@ export function WorkbenchPanel(): ReactPortal | null {
                 setThunderChats((current) => current.map((item) => item.uid === pane.uid ? { ...item, initialPrompt: undefined } : item));
               }}
             />;
-          })}{terminalCreating && !currentTerminals.some((pane) => !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={ICON_SIZE.prominent} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length && !currentThunderChats.length && !currentBrowsers.length && !currentNotePanes.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side === "browser" ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel"><BrowserSidePanel active={active} browsers={panelBrowsers} projectPath={panelProject} onRequestCreate={() => void openBrowser(panelProject ?? undefined)} onOpenSource={(path, line) => void openFile(path, { path, line: line ?? 1, column: 1, endColumn: 1 }, projectForPath(path) || undefined)} onSendToSession={sendProbePromptToSession} /></aside></> : side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} roots={filesRoots} formatRootLabel={formatExplorerRootLabel} activePath={currentFilePath} onOpenFile={(path) => void openFile(path, undefined, projectForPath(path) || undefined)} onOpenPreview={(path) => void openFile(path, undefined, projectForPath(path) || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => reportReadFailure(message)} /><WorkbenchScriptsPane compact hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /> : side === "search" ? <WorkbenchSearchSidePane
-            selectedProject={searchRoots.length ? searchRoots[0] : null}
-            searchQuery={searchQuery}
-            onSearchQueryChange={setSearchQuery}
-            searchProjectMode={searchProjectMode}
-            searchProjectQuery={searchProjectQuery}
-            onSearchProjectQueryChange={setSearchProjectQuery}
-            searchProjectResults={searchProjectResults}
-            searchProjectActive={searchProjectActive}
-            searchProjectActiveIndex={searchProjectActiveIndex}
-            searchProjectLabel={searchProjectLabel}
-            searchProjectOptionId={searchProjectOptionId}
-            searchProjectOptionRefs={searchProjectOptionRefs}
-            onEnterSearchProjectMode={enterSearchProjectMode}
-            onLeaveSearchProjectMode={leaveSearchProjectMode}
-            onMoveSearchProjectSelection={moveSearchProjectSelection}
-            onActivateSearchProject={activateSearchProject}
-            onSearchProjectSelectionId={setSearchProjectSelectionId}
-            searchMatchCase={searchMatchCase}
-            searchWholeWord={searchWholeWord}
-            searchUseRegex={searchUseRegex}
-            onToggleMatchCase={() => setSearchMatchCase((v) => !v)}
-            onToggleWholeWord={() => setSearchWholeWord((v) => !v)}
-            onToggleUseRegex={() => setSearchUseRegex((v) => !v)}
-            searchDetailsOpen={searchDetailsOpen}
-            searchReplaceOpen={searchReplaceOpen}
-            onToggleDetails={toggleSearchDetails}
-            onToggleReplace={toggleSearchReplace}
-            searchReplaceText={searchReplaceText}
-            onSearchReplaceTextChange={setSearchReplaceText}
-            searchFilesInclude={searchFilesInclude}
-            onSearchFilesIncludeChange={setSearchFilesInclude}
-            searchFilesExclude={searchFilesExclude}
-            onSearchFilesExcludeChange={setSearchFilesExclude}
-            searchInputRef={searchInputRef}
-            searchReplaceInputRef={searchReplaceInputRef}
-            searchIncludeInputRef={searchIncludeInputRef}
-            searchExcludeInputRef={searchExcludeInputRef}
-            searchLoading={searchLoading}
-            searchError={searchError}
-            searchTruncated={searchTruncated}
-            searchGroups={searchGroups}
-            searchFileCount={searchFileCount}
-            searchMatchCount={searchMatchCount}
-            searchExpanded={searchExpanded}
-            onToggleGroup={(path) => setSearchExpanded((current) => {
-              const next = new Set(current);
-              if (next.has(path)) next.delete(path);
-              else next.add(path);
-              return next;
-            })}
-            searchSelectedKey={searchSelectedKey}
-            searchReplaceVisible={searchReplaceVisible}
-            searchReplacing={searchReplacing}
-            onRunSearch={() => {
-              window.clearTimeout(searchTimerRef.current);
-              void runProjectSearch(searchQuery);
-            }}
-            onReplace={(files, onlyByPath) => void performSearchReplace(files, onlyByPath)}
-            onOpenMatch={(match, key) => {
-              setSearchSelectedKey(key);
-              // The checkout the match was found in is the one this editor belongs
-              // to, even when the other panes are looking at the main checkout.
-              const matchRoot = searchProjectForPath(match.path) || projectForPath(match.path);
-              void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }, matchRoot || undefined);
-            }}
-          /> : <div className="wb-side-pane">
-            <div className="wb-side-pane-head wb-git-pane-head">
-              <span className="wb-side-pane-title">{gitHistoryContext ? gitHistoryTitle : t("desktop.workbench.sidePanelGit")}</span>
-                      <div className="wb-git-actions">{gitHistoryContext ? <>
-                <button type="button" className="wb-git-action-btn" onClick={closeGitHistory} aria-label={gitHistoryBackLabel}><ThemeIcon name="chevron-left" size={ICON_SIZE.default} /></button>
-                <button type="button" className="wb-git-action-btn" disabled={gitLogLoading} onClick={retryGitHistory} aria-label={t("desktop.common.refresh")}><ThemeIcon name="refresh" size={ICON_SIZE.default} className={gitLogLoading ? "spin" : undefined} /></button>
-              </> : <>
-                <button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void loadGitLog()} aria-label={t("desktop.workbench.gitLog")}><ThemeIcon name="history" size={ICON_SIZE.default} /></button>
-                <button type="button" className="wb-git-action-btn" disabled={gitRefreshing} onClick={() => void refreshGit(true)} aria-label={t("desktop.common.refresh")}><ThemeIcon name="refresh" size={ICON_SIZE.default} className={gitRefreshing ? "spin" : undefined} /></button>
-              </>}</div>
-            </div>
-            {gitHistoryContext ? <div className="wb-log-body">
-              {gitLogLoading ? <p className="muted wb-git-empty" role="status">{t(gitHistoryContext.kind === "file" ? "desktop.workbench.gitFileHistoryLoading" : "desktop.common.loading")}</p>
-                : gitLogError ? <div className="wb-git-panel"><p className="muted wb-git-empty is-error" role="alert">{t(gitHistoryContext.kind === "file" ? "desktop.workbench.gitFileHistoryLoadFailed" : "desktop.workbench.gitLogLoadFailed", gitLogError)}</p><button type="button" className="ghost-btn" onClick={retryGitHistory}>{t("desktop.common.refresh")}</button></div>
-                  : gitHistoryContext.kind === "file" ? <div className="wb-git-log-history-layout">
-                      <div className="wb-git-log-history-list">
-                        {gitLog?.commits.length ? <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => renderGitLogRow(commit, index))}</div> : <p className="muted wb-git-empty">{t("desktop.workbench.gitFileHistoryEmpty")}</p>}
-                      </div>
-                      {gitShow ? <div className="wb-git-log-detail wb-git-log-history-detail">
-                        <div className="wb-git-log-detail-head">
-                          <div className="wb-git-log-detail-title-row">
-                            <h4 className="wb-git-log-detail-subject">{gitShow.subject || t("desktop.workbench.gitLogUntitled")}</h4>
-                            <button type="button" className="wb-git-log-detail-close" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitHistoryDetailClose")}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button>
-                          </div>
-                          <p className="wb-git-log-meta"><span className="wb-git-log-hash">{gitShow.shortHash}</span><span className="wb-git-log-meta-sep">·</span><span>{gitShow.author}</span><span className="wb-git-log-meta-sep">·</span><span>{formatGitCommitDate(gitShow.date, locale)}</span></p>
-                        </div>
-                        <pre className="wb-git-log-detail-body">{gitShow.body}</pre>
-                        <div className="wb-git-log-files">{gitShow.files.length ? gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void openGitShowFileDiff(gitShow.hash, file.path)}><span className="wb-git-file-status">{file.status}</span>{file.oldPath ? t("desktop.workbench.gitLogRename", file.oldPath, file.path) : file.path}</button>) : <p className="muted wb-git-empty">{t("desktop.workbench.gitLogNoFiles")}</p>}</div>
-                      </div> : null}
-                    </div>
-                    : gitShow ? <>
-                    <button type="button" className="wb-diff-back" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitLogBackToList")}><ThemeIcon name="chevron-left" size={ICON_SIZE.default} /></button>
-                    <h4 className="wb-git-log-detail-subject">{gitShow.subject}</h4>
-                    <p className="wb-git-log-meta">{gitShow.shortHash} · {gitShow.author}</p>
-                    <pre className="wb-git-log-detail-body">{gitShow.body}</pre>
-                    <div className="wb-git-log-files">{gitShow.files.length ? gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void openGitShowFileDiff(gitShow.hash, file.path)}><span className="wb-git-file-status">{file.status}</span>{file.path}</button>) : <p className="muted wb-git-empty">{t("desktop.workbench.gitLogNoFiles")}</p>}</div>
-                  </>
-                    : gitLog?.commits.length ? <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => renderGitLogRow(commit, index))}</div>
-                      : <p className="muted wb-git-empty">{t("desktop.workbench.gitLogEmpty")}</p>}
-            </div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>
-              {changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}
-              {!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}
-            </> : <p className="muted wb-git-empty">{sideRoot ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}
-          </div>}</aside></> : null}
+          })}{terminalCreating && !currentTerminals.some((pane) => !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={ICON_SIZE.prominent} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentAcpChats.length && !currentThunderChats.length && !currentBrowsers.length && !currentNotePanes.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
+          {side === "browser" ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel"><BrowserSidePanel active={active} browsers={panelBrowsers} projectPath={panelProject} onRequestCreate={() => void openBrowser(panelProject ?? undefined)} onOpenSource={(path, line) => void openFile(path, { path, line: line ?? 1, column: 1, endColumn: 1 }, projectForPath(path) || undefined)} onSendToSession={sendProbePromptToSession} /></aside></> : side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "scripts" ? <WorkbenchScriptsPane hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /> : null}</aside></> : null}
         </div>
       </main>
     </div>
-    {editorContextMenu ? <div ref={editorContextMenuRef} className={`wb-context-menu notes-selection-menu${editorContextMenuClosing ? " is-closing" : ""}`} role="menu" style={{ left: editorContextMenu.x, top: editorContextMenu.y, visibility: "hidden" }} onContextMenu={(event) => event.preventDefault()}>
-      {editorContextMenu.selectedText ? (
-        <>
-          <SelectionActionItems
-            text={editorContextMenu.selectedText}
-            projectPath={currentEditor?.projectPath || selectedProject || undefined}
-            onSent={() => setEditorContextMenu(null)}
-            onActionStart={() => setEditorContextMenu(null)}
-            runAction={runSelectionAction}
-            x={editorContextMenu.x}
-            y={editorContextMenu.y}
-          />
-          <div className="context-menu-separator" role="separator" />
-        </>
-      ) : null}
-    </div> : null}
+    
     {selectionResult ? (
       <SelectionActionResult
         result={selectionResult}
@@ -7514,31 +5375,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         onCopy={copySelectionResult}
       />
     ) : null}
-    {gitLogDialog ? <div className={`wb-git-log-dialog${gitLogDialogClosing ? " is-closing" : ""}`} role="dialog" aria-modal="true">
-      {gitLogDialog.kind === "branch" ? <>
-        <div className="wb-git-log-dialog-title">{t("desktop.workbench.gitBranchFromCommitTitle", gitLogDialog.commit.subject || gitLogDialog.commit.shortHash)}</div>
-        <form className="wb-git-log-dialog-row" onSubmit={(event) => {
-          event.preventDefault();
-          void createBranchFromGitLogCommit(gitLogDialog.commit, gitLogDialogInputRef.current?.value || "");
-        }}>
-          <input ref={gitLogDialogInputRef} className="wb-git-log-dialog-input" type="text" placeholder={t("desktop.workbench.gitBranchFromCommitPlaceholder")} autoComplete="off" spellCheck={false} />
-          <button type="submit" className="ghost-btn">{t("desktop.workbench.gitBranchFromCommitCreate")}</button>
-        </form>
-        <div className="wb-git-log-dialog-actions">
-          <button type="button" className="ghost-btn" onClick={closeGitLogDialog}>{t("desktop.common.cancel")}</button>
-        </div>
-      </> : <>
-        <div className="wb-git-log-dialog-title">{t("desktop.workbench.gitResetTitle", gitLogDialog.commit.subject || gitLogDialog.commit.shortHash)}</div>
-        <div className="wb-git-log-dialog-actions wb-git-log-dialog-reset-actions">
-          <button type="button" className="ghost-btn" onClick={() => void resetGitLogCommit(gitLogDialog.commit, "soft")}>{t("desktop.workbench.gitResetModeSoft")}</button>
-          <button type="button" className="ghost-btn" onClick={() => void resetGitLogCommit(gitLogDialog.commit, "mixed")}>{t("desktop.workbench.gitResetModeMixed")}</button>
-          <button type="button" className="ghost-btn context-menu-item-danger" onClick={() => void resetGitLogCommit(gitLogDialog.commit, "hard")}>{t("desktop.workbench.gitResetModeHard")}</button>
-        </div>
-        <div className="wb-git-log-dialog-actions">
-          <button type="button" className="ghost-btn" onClick={closeGitLogDialog}>{t("desktop.common.cancel")}</button>
-        </div>
-      </>}
-    </div> : null}
+    
     {contextMenu && !(contextMenu.kind === "task" && contextMenu.taskHasSessions && !(contextMenu.noteId === taskScope?.noteId && taskRollup?.override)) ? <div ref={contextMenuRef} className={`wb-context-menu${contextMenu.kind === "session" || contextMenu.kind === "session-tab" || contextMenu.kind === "thunder" ? " wb-session-context-menu" : ""}${contextMenuClosing ? " is-closing" : ""}`} role="menu" style={{ left: contextMenuLeft, top: contextMenu.y, visibility: "hidden" }} onContextMenu={(event) => event.preventDefault()}>
       {contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : contextMenu.kind === "editor-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("toggleEditorPreview")}>{t(contextMenu.editorPreview ? "desktop.common.edit" : "desktop.workbench.preview")}</button> : contextMenu.kind === "note" ? <>
         <span className="wb-context-menu-label">{t("desktop.workbench.setGtdStatus")}</span>
@@ -7593,90 +5430,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       onRemoveProject={(path) => void removeProject(path)}
       onRevealPath={(path) => { void desktopApi().workbenchRevealPath({ rootPath: path, targetPath: path }).catch(() => undefined); }}
     /> : null}
-    <GitChangesPanel
-      visible={side === "git" && !gitHistoryContext}
-      git={git}
-      gitRoot={gitRoot}
-      repositories={gitRepositories}
-      branch={projectTracking?.branch || ""}
-      activeDiff={currentDiff && currentDiff.source !== "commit" ? {
-        repoRoot: currentDiff.repoRoot,
-        repoPath: currentDiff.repoPath,
-        staged: currentDiff.source === "staged"
-      } : undefined}
-      expanded={gitExpandedDirs}
-      discarding={discardingGitPaths}
-      commitMessage={commitMessage}
-      commitBusy={commitBusy}
-      commitSuggestion={commitSuggestion}
-      canCommit={canCommit}
-      syncing={gitSyncing}
-      onSelectRepo={(root) => {
-        selectGitRoot(root);
-        setGitLog(null);
-        setGitShow(null);
-        setGitLogError("");
-      }}
-      onSelectBranch={(selection) => void checkoutGitPanelBranch(selection)}
-      onSync={() => void syncGitBranch()}
-      onToggleDir={toggleGitDirectory}
-      onToggleStage={(targets, targetStaged) => void toggleGitStage(targets, targetStaged)}
-      onOpenDiff={(change, staged) => void openDiff(change, staged)}
-      onOpenFile={(change) => {
-        const filePath = gitChangeFilePath(change);
-        void openFile(filePath, undefined, projectForPath(filePath) || undefined);
-      }}
-      onOpenExternal={(change) => {
-        const filePath = gitChangeFilePath(change);
-        const targetRoot = projectForPath(filePath);
-        if (!targetRoot) return;
-        void desktopApi().workbenchOpenPath({
-          rootPath: targetRoot,
-          filePath
-        }).catch((error) => {
-          setStatus({ text: t("desktop.workbench.fileOpenExternalFailed", statusError(error)), kind: "error" });
-        });
-      }}
-      onCopyPath={(change) => {
-        try {
-          desktopApi().clipboardWriteText(gitChangeFilePath(change));
-          setStatus({ text: t("desktop.workbench.explorerPathCopied") });
-        } catch (error) {
-          setStatus({ text: t("desktop.workbench.explorerCopyPathFailed", statusError(error)), kind: "error" });
-        }
-      }}
-      onDiscard={(change) => void discardGitChange(change)}
-      onDiscardDirectory={(changes, directoryPath) => void discardGitDirectory(changes, directoryPath)}
-      onCommitMessageChange={setCommitMessage}
-      onSuggestCommit={() => void suggestCommit()}
-      onCommit={(pushAfter) => void commit(pushAfter)}
-      onNewSession={() => void newSession()}
-      labels={{
-        stagedTitle: t("desktop.workbench.sidePanelStaged"),
-        changesTitle: t("desktop.workbench.sidePanelChanges"),
-        noChanges: t("desktop.workbench.sidePanelNoChanges"),
-        cleanTitle: t("desktop.workbench.gitCleanTitle"),
-        cleanHint: t("desktop.workbench.gitCleanHint"),
-        cleanNewSession: t("desktop.workbench.gitCleanNewSession"),
-        unavailable: sideRoot ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot"),
-        messageLabel: t("desktop.workbench.gitCommitDialogTitle"),
-        resizeInput: t("desktop.workbench.resizeCommitInput"),
-        autoGenerate: t("desktop.workbench.gitCommitAutoGenerate"),
-        commit: t("desktop.workbench.gitCommit"),
-        commitAndPush: t("desktop.workbench.gitCommitAndPush"),
-        sync: t("desktop.workbench.gitSync"),
-        suggestedLlm: t("desktop.workbench.gitCommitSuggestedLlm"),
-        suggestedUnconfigured: t("desktop.workbench.gitCommitSuggestedUnconfigured"),
-        suggestedFallback: t("desktop.workbench.gitCommitSuggestedFallback"),
-        openFile: t("desktop.workbench.fileOpen"),
-        openDefault: t("desktop.workbench.fileOpenDefault"),
-        copyPath: t("desktop.common.copyPath"),
-        discard: t("desktop.workbench.gitDiscard")
-      }}
-    />
-    <GitGraphPortals gitLog={gitLog} gitShow={gitShow} keepGraph={gitHistoryContext?.kind === "file"} />
-    <GitActionIcons visible={side === "git" && !gitHistoryContext} />
-    <BranchGraphNavigation visible={side === "git" && Boolean(gitLog)} title={gitHistoryTitle} ariaLabel={gitHistoryBackLabel} onBack={closeGitHistory} />
     {floatingNoteTarget ? <FloatingSessionNote target={floatingNoteTarget} onClose={() => setFloatingNoteTarget(null)} /> : null}
     {imagePreview ? <div className={`notes-image-preview${imagePreviewClosing ? " is-closing" : ""}`} role="dialog" aria-modal="true" onClick={() => setImagePreview(null)}><img src={imagePreview} alt="" /><button type="button" className="notes-image-preview-close" aria-label={t("desktop.common.close")} onClick={() => setImagePreview(null)}><ThemeIcon name="close" size={ICON_SIZE.default} /></button></div> : null}
   </section>

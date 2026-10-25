@@ -86,38 +86,11 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     }
   };
 
-  // Auto-dismiss success notices after 5s (errors stay until dismissed)
-  useEffect(() => {
-    if (titleNotice?.kind !== "success") return;
-    const timer = setTimeout(dismissTitleNotice, 5000);
-    return () => clearTimeout(timer);
-  }, [titleNotice, dismissTitleNotice]);
 
   if (!host) return null;
 
   return createPortal(
     <div className={`tb-chat-view${active ? " is-active" : ""}`} style={{ display: active ? "flex" : "none" }}>
-      {titleNotice && (
-        <div
-          className={`tb-chat-title-notice ${titleNotice.kind}`}
-          role="status"
-          onClick={dismissTitleNotice}
-          title="点击关闭"
-        >
-          <span className="tb-chat-title-notice-text">{titleNotice.text}</span>
-          <button
-            type="button"
-            className="tb-chat-title-notice-close"
-            aria-label="关闭"
-            onClick={(e) => {
-              e.stopPropagation();
-              dismissTitleNotice();
-            }}
-          >
-            ×
-          </button>
-        </div>
-      )}
       <ChatSidebar
         conversations={conversations}
         activeSessionId={activeSessionId}
@@ -133,6 +106,9 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
 
       <ChatMain
         active={active}
+        notice={titleNotice}
+        onDismissNotice={dismissTitleNotice}
+        showWorkspacePicker={false}
         sessionId={activeSessionId}
         sessionTitle={activeSession?.title}
         messages={messages}

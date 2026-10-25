@@ -716,6 +716,8 @@ export class ThunderClient {
   public async runTask(options: {
     taskId: string;
     prompt: string;
+    /** One-shot role preamble for this run (Quick Agent). Prepended before any context prefix. */
+    roleContext?: string;
     workspaceDir?: string;
     /** Extra roots (referenced repositories) granted the workspace's read/write standing. */
     extraWorkspaceDirs?: string[];
@@ -799,6 +801,10 @@ export class ThunderClient {
           } else if (options.workspaceDir && options.workspaceDir.trim()) {
             const ws = options.workspaceDir.trim();
             effectivePrompt = `[Active Workspace: ${ws}]\n\n${options.prompt}`;
+          }
+
+          if (options.roleContext && options.roleContext.trim()) {
+            effectivePrompt = `${options.roleContext.trim()}\n\n${effectivePrompt}`;
           }
 
           // Send run_task request (acknowledged synchronously)

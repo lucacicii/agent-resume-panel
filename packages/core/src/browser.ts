@@ -12,3 +12,4 @@
  * Everything exported here must stay pure data or pure logic — no `node:*`.
  */
 export { THUNDER_PERMISSION_MODES, normalizeThunderPermissionMode } from "./thunder/types";
+export { buildMentionPrompt } from "./settings/mentionPrompt";
