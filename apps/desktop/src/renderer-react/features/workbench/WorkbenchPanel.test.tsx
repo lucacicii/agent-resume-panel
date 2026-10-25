@@ -2299,7 +2299,7 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     await activateTaskDirectory("/work/app", { noteId: "wi-multi", projects: ["/work/app", "/work/api"] });
-    await waitFor(() => expect(document.querySelector(".wb-task-target")?.textContent).toBe("New sessions start in: app"));
+    await waitFor(() => expect(document.querySelector(".wb-detail-project-path")?.textContent).toBe("/work/app"));
 
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
@@ -9878,7 +9878,7 @@ describe("WorkbenchPanel", () => {
         noteId: "wi-multi", title: "Multi", status: "next", sessions: [], projects: ["/work/app", "/work/api"], primaryProject: "/work/app"
       } }));
     });
-    await waitFor(() => expect(document.querySelector(".wb-task-target")?.textContent).toBe("New sessions start in: app"));
+    await waitFor(() => expect(document.querySelector(".wb-detail-project-path")?.textContent).toBe("/work/app"));
 
     // A referenced project can be removed from the task.
     const confirmStub = vi.spyOn(window, "confirm").mockReturnValue(true);
@@ -9897,7 +9897,60 @@ describe("WorkbenchPanel", () => {
         noteId: "wi-single", title: "Single", status: "next", sessions: [], projects: ["/work/app"], primaryProject: "/work/app"
       } }));
     });
-    await waitFor(() => expect(document.querySelector(".wb-task-target")?.textContent).toBe("New sessions start in: app"));
+    await waitFor(() => expect(document.querySelector(".wb-detail-project-path")?.textContent).toBe("/work/app"));
+  });
+
+  it("releases the session-target override when the focused chip is clicked again", async () => {
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.taskSessions": "{0} sessions",
+        "desktop.workbench.removeProject": "Remove from this task",
+        "desktop.workbench.addProject": "Add project"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListTasks: async () => [
+        { noteId: "wi-multi", title: "Multi", gtdStatus: "next", work: { sessions: [], projects: ["/work/app", "/work/api"], primaryProject: "/work/app" } }
+      ],
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-task", { detail: {
+        noteId: "wi-multi", title: "Multi", status: "next", sessions: [], projects: ["/work/app", "/work/api"], primaryProject: "/work/app"
+      } }));
+    });
+    const chip = (name: string) => [...document.querySelectorAll(".wb-task-project")]
+      .find((node) => node.textContent?.includes(name)) as HTMLElement;
+
+    // A multi-repo task starts with no focused chip: the primary repository carries the cwd.
+    await waitFor(() => expect(chip("app")).toBeTruthy());
+    expect(document.querySelector(".wb-task-project.is-active")).toBeNull();
+
+    // Focusing a chip pins the next session there…
+    fireEvent.click(chip("app").querySelector(".wb-task-project-chip") as HTMLElement);
+    expect(chip("app").classList.contains("is-active")).toBe(true);
+
+    // …and clicking it again releases the override back to the automatic rule.
+    fireEvent.click(chip("app").querySelector(".wb-task-project-chip") as HTMLElement);
+    expect(document.querySelector(".wb-task-project.is-active")).toBeNull();
   });
 
   it("shows every referenced project in the Explorer and Git panels", async () => {
@@ -9960,7 +10013,7 @@ describe("WorkbenchPanel", () => {
         noteId: "wi-multi", title: "Multi", status: "next", sessions: [], projects: ["/work/app", "/work/api"], primaryProject: "/work/app"
       } }));
     });
-    await waitFor(() => expect(document.querySelector(".wb-task-target")?.textContent).toBe("New sessions start in: app"));
+    await waitFor(() => expect(document.querySelector(".wb-detail-project-path")?.textContent).toBe("/work/app"));
 
     // Explorer spans both project roots.
     fireEvent.click(screen.getAllByRole("button", { name: "Explorer" })[0]!);
@@ -10063,7 +10116,7 @@ describe("WorkbenchPanel", () => {
         noteId: "wi-multi", title: "Multi", status: "next", sessions: [], projects: ["/work/app", "/work/api"], primaryProject: "/work/app"
       } }));
     });
-    await waitFor(() => expect(document.querySelector(".wb-task-target")?.textContent).toBe("New sessions start in: app"));
+    await waitFor(() => expect(document.querySelector(".wb-detail-project-path")?.textContent).toBe("/work/app"));
 
     // Cmd+P lists files from every project root.
     fireEvent.keyDown(window, { key: "p", metaKey: true });
@@ -10151,7 +10204,7 @@ describe("WorkbenchPanel", () => {
         noteId: "wi-multi", title: "Multi", status: "next", sessions: [], projects: ["/work/app", "/work/api"], primaryProject: "/work/app"
       } }));
     });
-    await waitFor(() => expect(document.querySelector(".wb-task-target")?.textContent).toBe("New sessions start in: app"));
+    await waitFor(() => expect(document.querySelector(".wb-detail-project-path")?.textContent).toBe("/work/app"));
 
     fireEvent.click(screen.getByRole("button", { name: /New session/i }));
     await waitFor(() => expect(window.agentResume.notesLinkSessionToTask).toHaveBeenCalledWith({
@@ -10209,7 +10262,7 @@ describe("WorkbenchPanel", () => {
         noteId: "wi-single", title: "Single", status: "next", sessions: [], projects: ["/work/app"], primaryProject: "/work/app"
       } }));
     });
-    await waitFor(() => expect(document.querySelector(".wb-task-target")?.textContent).toBe("New sessions start in: app"));
+    await waitFor(() => expect(document.querySelector(".wb-detail-project-path")?.textContent).toBe("/work/app"));
 
     fireEvent.click(screen.getByRole("button", { name: /New session/i }));
     await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({
