@@ -13,6 +13,7 @@ import type {
 import { THUNDER_PERMISSION_MODES } from "@agent-resume/core/browser";
 import type { WorkbenchComposerMention } from "@agent-resume/core";
 import { normalizeComposerMentions } from "../../workspacePacks";
+import { buildMentionSuggestions, GTD_STATUS_LABELS, sortGtdTasks, type ChatMentionSuggestion } from "./composerMentions";
 import type { ChatRunMetrics } from "./useThunderChat";
 import {
   atTokenAtCursor,
@@ -28,17 +29,6 @@ export type ChatSlashSuggestion = {
   location?: string;
 };
 
-export type ChatMentionSuggestion = {
-  kind: "note" | "task" | "session" | "workspace" | "project";
-  /** Mention key: note id, task id, session id, workspace-pack id, project id. */
-  id: string;
-  title: string;
-  subtitle?: string;
-  badge: string;
-  gtdStatus?: string;
-  /** Absolute directory a workspace/project mention binds the conversation to. */
-  path?: string;
-};
 
 export interface PendingChatImage {
   id: string;
@@ -97,12 +87,6 @@ const GTD_STATUS_ORDER: Record<string, number> = {
   done: 3
 };
 
-const GTD_STATUS_LABELS: Record<string, string> = {
-  inbox: "待办",
-  next: "进行中",
-  waiting: "等待",
-  done: "已完成"
-};
 
 /**
  * Chip labels for the two approval modes, in `Shift+Tab` order.
@@ -127,16 +111,6 @@ const PERMISSION_MODE_HINTS: Record<ThunderPermissionMode, string> = {
   yolo: "Never asks — every call runs"
 };
 
-export function sortGtdTasks<T extends { gtdStatus?: string; updatedAtMs?: number }>(items: T[]): T[] {
-  return [...items].sort((a, b) => {
-    const orderA = GTD_STATUS_ORDER[a.gtdStatus || "inbox"] ?? 99;
-    const orderB = GTD_STATUS_ORDER[b.gtdStatus || "inbox"] ?? 99;
-    if (orderA !== orderB) {
-      return orderA - orderB;
-    }
-    return (b.updatedAtMs || 0) - (a.updatedAtMs || 0);
-  });
-}
 
 /**
  * Compile prompt by reading referenced skills, notes/tasks/sessions (@), and files (#)
@@ -817,84 +791,13 @@ export function ChatComposer({
   // Mention suggestions (@): notes, GTD tasks, sessions
   const mentionSuggestions = useMemo<ChatMentionSuggestion[]>(() => {
     if (!atToken) return [];
-    const q = atToken.query.toLowerCase();
-    const out: ChatMentionSuggestion[] = [];
-
-    // Workspace packs first: "@anfeng" both points the conversation at the pack's
-    // work folder and carries its read-only references into the prompt.
-    const packIds = new Set(workspacePacks.map((pack) => pack.id.toLowerCase()));
-    for (const pack of workspacePacks) {
-      if (!q || pack.id.toLowerCase().includes(q) || pack.cwd.toLowerCase().includes(q)) {
-        out.push({
-          kind: "workspace",
-          id: pack.id,
-          title: pack.id,
-          subtitle: pack.cwd,
-          badge: "工作区",
-          path: pack.cwd
-        });
-      }
-    }
-    // Catalog projects fill in for directories no pack covers.
-    for (const project of mentionProjects) {
-      const label = project.label || project.path;
-      if (packIds.has(label.toLowerCase())) continue;
-      if (!q || label.toLowerCase().includes(q) || project.path.toLowerCase().includes(q)) {
-        out.push({
-          kind: "project",
-          id: project.id,
-          title: label,
-          subtitle: project.path,
-          badge: "项目",
-          path: project.path
-        });
-      }
-    }
-
-    // GTD Tasks
-    for (const t of sortGtdTasks(tasks)) {
-      const title = t.title || t.noteId;
-      const statusLabel = GTD_STATUS_LABELS[t.gtdStatus || "inbox"] || "待办";
-      if (!q || title.toLowerCase().includes(q) || statusLabel.toLowerCase().includes(q)) {
-        out.push({
-          kind: "task",
-          id: t.noteId,
-          title,
-          subtitle: `[${statusLabel}]`,
-          badge: "任务",
-          gtdStatus: t.gtdStatus
-        });
-      }
-    }
-
-    // Notes
-    for (const n of notes) {
-      if (!q || n.title.toLowerCase().includes(q) || n.folder?.toLowerCase().includes(q)) {
-        out.push({
-          kind: "note",
-          id: n.id,
-          title: n.title,
-          subtitle: n.folder || "笔记",
-          badge: "笔记"
-        });
-      }
-    }
-
-    // Sessions
-    for (const c of conversations) {
-      const title = c.title || "会话";
-      if (!q || title.toLowerCase().includes(q)) {
-        out.push({
-          kind: "session",
-          id: c.id,
-          title,
-          subtitle: `${c.message_count || 0} 条消息`,
-          badge: "会话"
-        });
-      }
-    }
-
-    return out.slice(0, 30);
+    return buildMentionSuggestions(atToken.query, {
+      packs: workspacePacks,
+      projects: mentionProjects,
+      tasks,
+      notes,
+      conversations
+    });
   }, [atToken, tasks, notes, conversations, workspacePacks, mentionProjects]);
 
   // Path suggestions (#): directories and files

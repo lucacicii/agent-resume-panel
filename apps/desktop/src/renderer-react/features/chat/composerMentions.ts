@@ -1,0 +1,224 @@
+import { useEffect, useState } from "react";
+import { desktopApi } from "../../bridge";
+import { normalizeComposerMentions } from "../../workspacePacks";
+import type { WorkbenchComposerMention } from "@agent-resume/core";
+
+/**
+ * The entities an `@` can point at, shared by every composer that offers one.
+ *
+ * The chat composer injects a mention's content into the prompt; the terminal
+ * and ACP composers have no prompt-compilation step, so they insert the
+ * entity's path instead. Both read the same ordered, filtered list from here —
+ * one rule for what `@` finds, whichever surface you type it on.
+ */
+export type ChatMentionSuggestion = {
+  kind: "note" | "task" | "session" | "workspace" | "project";
+  /** Mention key: note id, task id, session id, workspace-pack id, project id. */
+  id: string;
+  title: string;
+  subtitle?: string;
+  badge: string;
+  gtdStatus?: string;
+  /** Absolute path a workspace/project mention binds or inserts. */
+  path?: string;
+};
+
+export type MentionTask = {
+  noteId: string;
+  title?: string;
+  gtdStatus?: string;
+  updatedAtMs?: number;
+  work?: { projects?: string[]; primaryProject?: string };
+};
+
+export type MentionNote = { id: string; title: string; folder?: string };
+export type MentionConversation = { id: string; title?: string; message_count?: number };
+export type MentionProject = { id: string; label: string; path: string };
+
+export const GTD_STATUS_LABELS: Record<string, string> = {
+  inbox: "收集箱",
+  next: "进行中",
+  waiting: "等待中",
+  someday: "将来",
+  reference: "参考",
+  done: "已完成"
+};
+
+/** TODO → DONE order, as the composer's `@` menu has always shown it. */
+const GTD_STATUS_ORDER: Record<string, number> = {
+  inbox: 0,
+  todo: 0,
+  next: 1,
+  waiting: 2,
+  done: 3
+};
+
+export function sortGtdTasks<T extends { gtdStatus?: string; updatedAtMs?: number }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const orderA = GTD_STATUS_ORDER[a.gtdStatus || "inbox"] ?? 99;
+    const orderB = GTD_STATUS_ORDER[b.gtdStatus || "inbox"] ?? 99;
+    if (orderA !== orderB) {
+      return orderA - orderB;
+    }
+    return (b.updatedAtMs || 0) - (a.updatedAtMs || 0);
+  });
+}
+
+export interface MentionSources {
+  packs: WorkbenchComposerMention[];
+  projects: MentionProject[];
+  tasks: MentionTask[];
+  notes: MentionNote[];
+  conversations: MentionConversation[];
+}
+
+/**
+ * Workspace packs, catalog projects, GTD tasks, notes and conversations, for a
+ * composer that offers `@`. Each source degrades to empty on failure: a missing
+ * daemon or catalog must not disable the composer.
+ */
+export function useMentionSources(): MentionSources {
+  const [sources, setSources] = useState<MentionSources>({
+    packs: [], projects: [], tasks: [], notes: [], conversations: []
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const next: MentionSources = { packs: [], projects: [], tasks: [], notes: [], conversations: [] };
+      try {
+        const settings = await desktopApi().getSettings();
+        next.packs = normalizeComposerMentions(settings?.workbench?.composerMentions);
+      } catch {
+        // no packs configured
+      }
+      try {
+        const projects = await desktopApi().listProjects();
+        next.projects = projects
+          .filter((project) => project.localPath && !project.pathMissing)
+          .map((project) => ({
+            id: project.projectId,
+            label: project.alias || project.localPath || "",
+            path: project.localPath || ""
+          }));
+      } catch {
+        // no catalog yet
+      }
+      try {
+        const tasks = await desktopApi().notesListTasks({ includeArchived: false });
+        next.tasks = Array.isArray(tasks) ? tasks : [];
+      } catch {
+        // notes store unavailable
+      }
+      try {
+        const notes = await desktopApi().notesList();
+        next.notes = (Array.isArray(notes) ? notes : []).map((note) => ({
+          id: note.noteId,
+          title: note.title || note.noteId,
+          folder: note.relDir
+        }));
+      } catch {
+        // notes store unavailable
+      }
+      try {
+        const conversations = await desktopApi().thunderChatListConversations();
+        next.conversations = Array.isArray(conversations)
+          ? conversations.map((conversation) => ({
+              id: conversation.id,
+              title: conversation.title,
+              message_count: conversation.message_count
+            }))
+          : [];
+      } catch {
+        // daemon offline
+      }
+      if (!cancelled) setSources(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return sources;
+}
+
+/**
+ * `@` candidates for a query, in the order every composer shows them: the two
+ * that relocate the conversation first (workspace packs, then catalog projects),
+ * then tasks, notes and conversations.
+ */
+export function buildMentionSuggestions(
+  query: string,
+  sources: MentionSources
+): ChatMentionSuggestion[] {
+  const q = query.toLowerCase();
+  const out: ChatMentionSuggestion[] = [];
+
+  const packIds = new Set(sources.packs.map((pack) => pack.id.toLowerCase()));
+  for (const pack of sources.packs) {
+    if (!q || pack.id.toLowerCase().includes(q) || pack.cwd.toLowerCase().includes(q)) {
+      out.push({
+        kind: "workspace",
+        id: pack.id,
+        title: pack.id,
+        subtitle: pack.cwd,
+        badge: "工作区",
+        path: pack.cwd
+      });
+    }
+  }
+  for (const project of sources.projects) {
+    const label = project.label || project.path;
+    if (packIds.has(label.toLowerCase())) continue;
+    if (!q || label.toLowerCase().includes(q) || project.path.toLowerCase().includes(q)) {
+      out.push({
+        kind: "project",
+        id: project.id,
+        title: label,
+        subtitle: project.path,
+        badge: "项目",
+        path: project.path
+      });
+    }
+  }
+  for (const task of sortGtdTasks(sources.tasks)) {
+    const title = task.title || task.noteId;
+    const statusLabel = GTD_STATUS_LABELS[task.gtdStatus || "inbox"] || "待办";
+    if (!q || title.toLowerCase().includes(q) || statusLabel.toLowerCase().includes(q)) {
+      out.push({
+        kind: "task",
+        id: task.noteId,
+        title,
+        subtitle: `[${statusLabel}]`,
+        badge: "任务",
+        gtdStatus: task.gtdStatus,
+        path: task.work?.primaryProject || task.work?.projects?.[0]
+      });
+    }
+  }
+  for (const note of sources.notes) {
+    if (!q || note.title.toLowerCase().includes(q) || note.folder?.toLowerCase().includes(q)) {
+      out.push({
+        kind: "note",
+        id: note.id,
+        title: note.title,
+        subtitle: note.folder || "笔记",
+        badge: "笔记"
+      });
+    }
+  }
+  for (const conversation of sources.conversations) {
+    const title = conversation.title || "会话";
+    if (!q || title.toLowerCase().includes(q)) {
+      out.push({
+        kind: "session",
+        id: conversation.id,
+        title,
+        subtitle: `${conversation.message_count || 0} 条消息`,
+        badge: "会话"
+      });
+    }
+  }
+
+  return out.slice(0, 30);
+}

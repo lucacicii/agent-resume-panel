@@ -22,6 +22,8 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 - **`@` in chat points the conversation at a directory**: typing `@anfeng` — a workspace pack from `workbench.composerMentions`, the list the `arpm` CLI already reads — binds the conversation's working directory to the pack's work folder and carries its read-only reference folders into the prompt. Catalog projects fill in when no pack matches. A folder dragged from Finder onto the composer does the same without a pack. Switching keeps the conversation and says so in a notice; a cold start with no remembered directory runs from home. The workspace / GTD picker chip is gone from the board chat and Quick Agent — the workbench chat keeps it
 
+- **One autocomplete across every composer**: `/`, `@` and `#` mean the same thing in the chat composer, the workbench terminal composer and the ACP chat composer. `@` finds the same entities everywhere in the same order (workspace packs, catalog projects, tasks, notes, sessions); the raw-text surfaces — terminal and ACP — type the entity's absolute path instead of injecting content, because they have no prompt-compilation step and a CLI agent opens a path itself. `#` browses directories with the same keys everywhere (Tab accepts, → steps into a folder). The suggestion sources and the mention ordering now live in `composerMentions`, the insertion behaviour in `useReferenceSuggestions`, and the terminal's copy of the token parsers is gone — `chatTokens` owns them
+
 ### [0.2.36]
 
 #### Added
@@ -844,6 +846,8 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - **工作台不再复刻 IDE**。全局查找（⌘⇧F 搜索侧栏、包含/排除 glob、项目选择器与替换）、Git 侧栏（状态树、暂存、提交、分支菜单、Git 提交图及其回退/合并/cherry-pick/reset、全分支文件历史）、以及工作台内代码查看器（编辑器页签与脏保存流程、Markdown 预览、diff 查看器）全部移除——小查询交给悬浮助手或真正的编辑器。打开文件（以及 Quick Access 里选中的目录）改为交给系统默认应用/Finder。**文件目录侧栏（Explorer）一并移除**——工作台侧栏只剩「脚本」与「浏览器」两个入口。聊天内自己的提交链路（改动面板、diff、提交并推送）不受影响，任务状态灯与终端分支显示同样保留。脚本面板独立保留
 
 - **聊天里的 `@` 直接定位对话目录**：输入 `@anfeng`（`workbench.composerMentions` 里的工作区 pack，`arpm` CLI 读的是同一份列表）即把该对话的工作目录绑到 pack 的工作目录，并把只读参考目录带进提示词；没有同名 pack 时用 catalog 项目别名兜底。从 Finder 拖一个文件夹到输入框也能达到同样效果。切换时延续当前对话并弹提示说明上下文已调整；冷启动无记忆时从用户主目录开始。看板聊天与悬浮助手的 workspace / GTD 选择器已移除，工作台聊天保留
+
+- **所有 composer 共用一套补全**：`/`、`@`、`#` 在聊天、工作台终端、ACP 聊天三处含义一致。`@` 在各处按同样顺序找到同样的实体（工作区 pack、项目、任务、笔记、会话）；终端与 ACP 这类纯文本面插入实体的**绝对路径**而不是注入内容，因为它们没有提示词编译环节，而 CLI agent 自己就能打开路径。`#` 在各处用同样的键浏览目录（Tab 接受、→ 进入子目录）。候选来源与 `@` 排序收敛到 `composerMentions`，插入行为收敛到 `useReferenceSuggestions`，终端里那份重复的 token 解析已删除——由 `chatTokens` 统一提供
 
 ### [0.2.36]
 

@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useOverlayState } from "../../components/useOverlayMotion";
 import { desktopApi } from "../../bridge";
+import { atTokenAtCursor, hashTokenAtCursor, joinDirPath } from "../chat/chatTokens";
+import { buildMentionSuggestions, useMentionSources } from "../chat/composerMentions";
 import { useI18n } from "../../i18n";
 import type { SessionDotStatus } from "./sessionStatus";
 import {
@@ -90,35 +92,6 @@ function newPastedImageId(): string {
 function tokenStartAtCursor(value: string, cursor: number): number {
   const before = value.slice(0, cursor);
   return Math.max(before.lastIndexOf(" "), before.lastIndexOf("\n"), before.lastIndexOf("\t")) + 1;
-}
-
-/** Join a slash-relative path onto an absolute directory, keeping the platform separator. */
-function joinDirPath(base: string, relative: string): string {
-  const separator = base.includes("\\") && !base.includes("/") ? "\\" : "/";
-  const trimmed = base.replace(/[\\/]+$/, "");
-  const tail = relative.split(/[\\/]+/).filter(Boolean).join(separator);
-  return tail ? `${trimmed}${separator}${tail}` : trimmed;
-}
-
-/**
- * `#` mention at the cursor. The token may contain `/` to walk into nested
- * directories: `#src/comp` → dirPath `src`, query `comp`; `#src/` → dirPath `src`.
- */
-function hashTokenAtCursor(
-  value: string,
-  cursor: number
-): { start: number; dirPath: string; query: string } | null {
-  const start = tokenStartAtCursor(value, cursor);
-  const token = value.slice(start, cursor);
-  if (!token.startsWith("#") || token.slice(1).includes("#")) return null;
-  const body = token.slice(1);
-  const lastSlash = body.lastIndexOf("/");
-  const rawDir = lastSlash >= 0 ? body.slice(0, lastSlash) : "";
-  return {
-    start,
-    dirPath: rawDir.replace(/^(?:\/+)|(?:\/+)$/g, "").replace(/\/{2,}/g, "/"),
-    query: lastSlash >= 0 ? body.slice(lastSlash + 1) : body
-  };
 }
 
 /**
@@ -297,6 +270,8 @@ export function TerminalComposer(props: {
       })
       .map((name) => ({ kind: "directory", name }));
   }, [directories, hashToken, sharedWorkspaceRoot, workspaceProjects]);
+
+
   const [activeDirectory, setActiveDirectory] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const dragDepth = useRef(0);
@@ -328,6 +303,7 @@ export function TerminalComposer(props: {
     setDirectories(null);
     setDirectoriesError("");
     setDirectoriesDismissed(false);
+    setMentionsDismissed(false);
     setActiveDirectory(0);
   }, [directoryRoot]);
 
@@ -501,6 +477,38 @@ export function TerminalComposer(props: {
     inputRef.current?.focus();
   }, [applyValue]);
 
+  /**
+   * `@` finds the same entities as the chat composer — packs, projects, tasks,
+   * notes, sessions — but a terminal has no prompt step, so accepting one types
+   * the entity's absolute path. Same trigger, same order, same keys.
+   */
+  const mentionSources = useMentionSources();
+  const atToken = useMemo(() => atTokenAtCursor(value, cursor), [cursor, value]);
+  const [mentionsDismissed, setMentionsDismissed] = useState(false);
+  const [activeMention, setActiveMention] = useState(0);
+  const mentionSuggestions = useMemo(
+    () => (atToken ? buildMentionSuggestions(atToken.query, mentionSources).filter((item) => Boolean(item.path)) : []),
+    [atToken, mentionSources]
+  );
+  const mentionOpen = focused && Boolean(atToken) && !mentionsDismissed && mentionSuggestions.length > 0;
+  const mentionItemRefs = useRef<Array<HTMLLIElement | null>>([]);
+
+  const acceptMention = useCallback((item: ReturnType<typeof buildMentionSuggestions>[number]) => {
+    if (!atToken || !item.path) return;
+    const inserted = `${item.path} `;
+    const next = `${value.slice(0, atToken.start)}${inserted}${value.slice(cursor)}`;
+    const nextCursor = atToken.start + inserted.length;
+    applyValue(next);
+    setMentionsDismissed(true);
+    setActiveMention(0);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(nextCursor, nextCursor);
+    });
+  }, [applyValue, atToken, cursor, value]);
+
   const acceptSlashPhrase = useCallback((phrase: WorkbenchComposerSlashPhrase) => {
     const start = slashToken?.start ?? 0;
     const prefix = value.slice(0, start);
@@ -626,6 +634,32 @@ export function TerminalComposer(props: {
   const onKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const isEnter = event.key === "Enter";
     const isTab = event.key === "Tab";
+
+    if (mentionOpen) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMentionsDismissed(true);
+        return;
+      }
+    if (mentionOpen && mentionSuggestions.length) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveMention((current) => (current + 1) % mentionSuggestions.length);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveMention((current) => (current - 1 + mentionSuggestions.length) % mentionSuggestions.length);
+        return;
+      }
+      if (isTab) {
+        event.preventDefault();
+        const pick = mentionSuggestions[activeMention];
+        if (pick) acceptMention(pick);
+        return;
+      }
+    }
+    }
 
     if (directoryOpen) {
       if (event.key === "Escape") {
@@ -928,7 +962,34 @@ export function TerminalComposer(props: {
           <ThemeIcon name="send" size={ICON_SIZE.default} />
         </button>
       </div>
-      {directoryOpen ? (
+      {mentionOpen ? (
+        <ul
+          id={`${listId}-mentions`}
+          className="wb-terminal-composer-suggestions"
+          role="listbox"
+          aria-label="@ references"
+        >
+          {mentionSuggestions.map((item, index) => (
+            <li
+              key={`${item.kind}:${item.id}`}
+              ref={(element) => {
+                mentionItemRefs.current[index] = element;
+              }}
+              id={`${listId}-mention-${index}`}
+              role="option"
+              aria-selected={index === activeMention}
+              className={`wb-terminal-composer-suggestion${index === activeMention ? " is-active" : ""}`}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => acceptMention(item)}
+            >
+              <span className="wb-terminal-composer-suggestion-text">@{item.title}</span>
+              <span className="tb-composer-suggestion-badge">{item.badge}</span>
+              <span className="wb-terminal-composer-suggestion-desc">{item.path}</span>
+              <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">Tab</span>
+            </li>
+          ))}
+        </ul>
+      ) : directoryOpen ? (
         <ul
           id={`${listId}-directories`}
           className="wb-terminal-composer-suggestions"

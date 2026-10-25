@@ -129,6 +129,13 @@ async function renderComposer(options: {
     getI18nBundle: vi.fn(async () => ({ locale: "en", messages: COMPOSER_MESSAGES })),
     onLocaleChanged: vi.fn(() => () => undefined),
     workbenchListDirectory: workbenchListDirectoryMock,
+    getSettings: vi.fn(async () => ({
+      workbench: { composerMentions: [{ id: "anfeng", cwd: "/Users/lucas/wb/wlgk/anfeng" }] }
+    })),
+    listProjects: vi.fn(async () => []),
+    notesListTasks: vi.fn(async () => []),
+    notesList: vi.fn(async () => []),
+    thunderChatListConversations: vi.fn(async () => []),
     notesClipboardHasImage: vi.fn(() => false),
     workbenchPasteClipboardImage: vi.fn(async () => null)
   } as unknown as typeof window.agentResume;
@@ -265,6 +272,16 @@ describe("TerminalComposer", () => {
     expect(await within(listbox).findByText("#src")).toBeTruthy();
     fireEvent.keyDown(textbox(), { key: "Tab" });
     expect(onChange).toHaveBeenCalledWith("please inspect #src");
+  });
+
+  it("offers @ references and types the absolute path the agent can open", async () => {
+    const { onChange } = await renderComposer({ cwd: "/other", projectPath: "/work/app" });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "look at @anf" } });
+    const listbox = await screen.findByRole("listbox", { name: "@ references" });
+    expect(within(listbox).getByText("@anfeng")).toBeTruthy();
+    fireEvent.keyDown(textbox(), { key: "Tab" });
+    expect(onChange).toHaveBeenCalledWith("look at /Users/lucas/wb/wlgk/anfeng ");
   });
 
   it("lists the shared workspace's projects and inserts the project path on Tab", async () => {

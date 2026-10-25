@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { ChatView } from "./ChatView";
-import { sortGtdTasks } from "./ChatComposer";
+import { sortGtdTasks } from "./composerMentions";
 import type { ThunderChatStreamPayload, ThunderChatTaskResult, ThunderConversationSummary } from "@agent-resume/core";
 import type { DesktopApi } from "../../../preload/preload";
 

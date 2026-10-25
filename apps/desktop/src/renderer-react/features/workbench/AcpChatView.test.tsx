@@ -1,5 +1,7 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+
+const user = userEvent.setup();
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { AcpChatView } from "./AcpChatView";
@@ -45,7 +47,15 @@ async function renderChat(initExtra: Record<string, unknown> = {}): Promise<void
     acpDisconnect: vi.fn(async () => ({ ok: true })),
     acpPrompt: vi.fn(async () => ({ ok: true })),
     acpSetMode: vi.fn(async () => ({ ok: true })),
-    acpOpenPath: vi.fn(async () => ({ ok: true }))
+    acpOpenPath: vi.fn(async () => ({ ok: true })),
+    getSettings: vi.fn(async () => ({
+      workbench: { composerMentions: [{ id: "anfeng", cwd: "/Users/lucas/wb/wlgk/anfeng" }] }
+    })),
+    listProjects: vi.fn(async () => []),
+    notesListTasks: vi.fn(async () => []),
+    notesList: vi.fn(async () => []),
+    thunderChatListConversations: vi.fn(async () => []),
+    workbenchListDirectory: vi.fn(async () => ({ entries: [{ name: "src", path: "/work/app/src", isDirectory: true }] }))
   } as unknown as typeof window.agentResume;
   render(<I18nProvider><AcpChatView recordId="chat-1" provider="codex" projectPath="/work/app" title="Chat" active /></I18nProvider>);
   await waitFor(() => expect(streamListeners.size).toBe(1));
@@ -125,6 +135,28 @@ describe("AcpChatView session readiness", () => {
     rendered.rerender(view(true));
     await waitFor(() => expect(acpConnect).toHaveBeenCalledTimes(2));
     expect(onSessionReady).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AcpChatView references", () => {
+  it("offers @ references and types the absolute path", async () => {
+    await renderChat();
+    const input = screen.getByRole("textbox") as HTMLTextAreaElement;
+    await user.type(input, "look at @anf");
+    const menu = await screen.findByRole("listbox", { name: "@ and # references" });
+    expect(within(menu).getByText("@anfeng")).toBeTruthy();
+    await user.keyboard("{Tab}");
+    expect(input.value).toBe("look at /Users/lucas/wb/wlgk/anfeng ");
+  });
+
+  it("browses the project with # and inserts the absolute path", async () => {
+    await renderChat();
+    const input = screen.getByRole("textbox") as HTMLTextAreaElement;
+    await user.type(input, "inspect #s");
+    const menu = await screen.findByRole("listbox", { name: "@ and # references" });
+    expect(within(menu).getByText("src")).toBeTruthy();
+    await user.keyboard("{Tab}");
+    expect(input.value).toBe("inspect /work/app/src ");
   });
 });
 

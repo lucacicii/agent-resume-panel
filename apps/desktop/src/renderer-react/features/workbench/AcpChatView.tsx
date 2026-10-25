@@ -3,6 +3,7 @@ import { NativeMenuSelect } from "../../components/NativeMenuSelect";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { desktopApi } from "../../bridge";
+import { useReferenceSuggestions } from "../chat/useReferenceSuggestions";
 import { StreamdownRenderer } from "../../components/StreamdownRenderer";
 import { Sheet } from "../../components/Sheet";
 import { notifyDesktop } from "../../components/Notifications";
@@ -341,6 +342,27 @@ export function AcpChatView({
   const logRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [inputCursor, setInputCursor] = useState(0);
+  /**
+   * `@` and `#` behave exactly as they do in the chat composer, and insert the
+   * absolute path the agent can open: this surface has no prompt-compilation
+   * step, so a path is the only reference that survives the trip.
+   */
+  const references = useReferenceSuggestions({
+    value: input,
+    cursor: inputCursor,
+    rootDir: projectPath || "",
+    onInsert: (next, caret) => {
+      setInput(next);
+      setInputCursor(caret);
+      window.requestAnimationFrame(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(caret, caret);
+      });
+    }
+  });
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const activeCommandRef = useRef<HTMLButtonElement>(null);
   /** Tracks in-flight / completed connect for this mount so we do not double-connect. */
@@ -1493,9 +1515,40 @@ export function AcpChatView({
                 aria-activedescendant={slashMenuOpen && activeCommand ? `wb-acp-command-${activeCommand.name}` : undefined}
                 onChange={(event) => {
                   setInput(event.target.value);
+                  setInputCursor(event.target.selectionStart || event.target.value.length);
                   setSlashMenuDismissed(false);
                 }}
+                onSelect={(event) => setInputCursor(event.currentTarget.selectionStart || 0)}
+                onClick={(event) => setInputCursor(event.currentTarget.selectionStart || 0)}
+                onKeyUp={(event) => setInputCursor(event.currentTarget.selectionStart || 0)}
                 onKeyDown={(event) => {
+                  if (references.open) {
+                    if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      references.move(1);
+                      return;
+                    }
+                    if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      references.move(-1);
+                      return;
+                    }
+                    if (event.key === "ArrowRight") {
+                      event.preventDefault();
+                      references.step();
+                      return;
+                    }
+                    if ((event.key === "Tab" && !event.shiftKey) || (event.key === "Enter" && !event.shiftKey)) {
+                      event.preventDefault();
+                      references.accept();
+                      return;
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      references.dismiss();
+                      return;
+                    }
+                  }
                   if (slashMenuOpen) {
                     if (event.key === "ArrowDown") {
                       event.preventDefault();
@@ -1537,6 +1590,39 @@ export function AcpChatView({
                 }}
               />
             </div>
+            {references.open ? (
+              <ul
+                id="wb-acp-reference-list"
+                className="wb-terminal-composer-suggestions"
+                role="listbox"
+                aria-label="@ and # references"
+              >
+                {references.items.map((item, index) => (
+                  <li
+                    key={item.key}
+                    id={`wb-acp-reference-${index}`}
+                    role="option"
+                    aria-selected={index === references.activeIndex}
+                    className={`wb-terminal-composer-suggestion${index === references.activeIndex ? " is-active" : ""}`}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => references.accept(index)}
+                  >
+                    <ThemeIcon
+                      name={item.directory ? "folder" : item.badge === "目录" ? "folder" : "file"}
+                      size={ICON_SIZE.dense}
+                    />
+                    <span className="wb-terminal-composer-suggestion-text">{item.label}</span>
+                    <span className="tb-composer-suggestion-badge">{item.badge}</span>
+                    {item.detail ? (
+                      <span className="wb-terminal-composer-suggestion-desc">{item.detail}</span>
+                    ) : null}
+                    <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">
+                      {item.directory ? "Tab · →" : "Tab"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {slashMenuOpen ? (
               <div
                 id="wb-acp-command-list"
