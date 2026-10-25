@@ -410,6 +410,8 @@ export interface DesktopApi {
   hideSession(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
   hideSessions(args: { sessions: Array<{ provider: string; id: string }> }): Promise<{ ok: boolean }>;
   createScratchDir(): Promise<string>;
+  /** The user's home directory — the zero-repository session cwd. */
+  homePath(): Promise<string>;
   workbenchOpenSession(args: {
     provider: string;
     id: string;
@@ -1863,6 +1865,7 @@ const api: DesktopApi = {
   hideSession: (args) => ipcRenderer.invoke("sessions:hide", args),
   hideSessions: (args) => ipcRenderer.invoke("sessions:hideMany", args),
   createScratchDir: () => ipcRenderer.invoke("workbench:createScratchDir"),
+  homePath: () => ipcRenderer.invoke("workbench:homePath"),
   workbenchOpenSession: (args) => ipcRenderer.invoke("workbench:openSession", args),
   setWorkbenchActiveSessions: (sessions) => {
     ipcRenderer.send("workbench:activeSessions", sessions);

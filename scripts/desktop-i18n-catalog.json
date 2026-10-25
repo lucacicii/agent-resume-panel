@@ -353,7 +353,8 @@
     "desktop.workbench.worktreeDoneNotice": "Task marked done, with {0} worktree(s) still to clean up.",
     "desktop.workbench.worktreeCloseNotice": "Closing with {0} worktree(s) still around.",
     "desktop.workbench.worktreeReview": "Show Worktrees",
-    "desktop.workbench.worktreeNothingDeleted": "Nothing is deleted — the panel only reminds you."
+    "desktop.workbench.worktreeNothingDeleted": "Nothing is deleted — the panel only reminds you.",
+    "desktop.workbench.searchAllRepositories": "All repositories"
   },
   "ja": {
     "desktop.nav.label": "ナビゲーション",
@@ -709,7 +710,8 @@
     "desktop.workbench.worktreeDoneNotice": "タスクを完了にしましたが、後片付けが必要なワークツリーが {0} 個あります。",
     "desktop.workbench.worktreeCloseNotice": "ワークツリーを {0} 個残したまま閉じます。",
     "desktop.workbench.worktreeReview": "ワークツリーを表示",
-    "desktop.workbench.worktreeNothingDeleted": "何も削除されません — これは確認です。"
+    "desktop.workbench.worktreeNothingDeleted": "何も削除されません — これは確認です。",
+    "desktop.workbench.searchAllRepositories": "すべてのリポジトリ"
   },
   "zh-cn": {
     "desktop.nav.label": "导航",
@@ -1065,6 +1067,7 @@
     "desktop.workbench.worktreeDoneNotice": "任务已完成，但还有 {0} 个 worktree 需要清理。",
     "desktop.workbench.worktreeCloseNotice": "关闭窗口时还有 {0} 个 worktree 留在磁盘上。",
     "desktop.workbench.worktreeReview": "查看 worktree",
-    "desktop.workbench.worktreeNothingDeleted": "不会删除任何东西——面板只负责提醒。"
+    "desktop.workbench.worktreeNothingDeleted": "不会删除任何东西——面板只负责提醒。",
+    "desktop.workbench.searchAllRepositories": "全部仓库"
   }
 }

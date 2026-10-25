@@ -3161,6 +3161,8 @@ function registerIpc(): void {
     return dir;
   });
 
+  safeHandle("workbench:homePath", () => os.homedir());
+
   safeHandle(
     "workbench:openSession",
     async (_event, args: { provider: AgentProvider; id: string }) => {

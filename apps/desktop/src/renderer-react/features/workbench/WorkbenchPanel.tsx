@@ -334,7 +334,6 @@ type WorkbenchContextMenu = {
   /** Tasks / notes: the note id (and title for labels). */
   noteId?: string;
   noteTitle?: string;
-  workspaceDir?: string;
   /** Task title + whether it has ever been linked to a session. */
   taskTitle?: string;
   taskHasSessions?: boolean;
@@ -845,11 +844,6 @@ export function WorkbenchPanel(): ReactPortal | null {
    */
   const [sessionTarget, setSessionTarget] = useState<string | null>(null);
   const sessionTargetRef = useRef<string | null>(null);
-  /**
-   * The task's shared (neutral) workspace directory. Deterministic per note, so
-   * the header can name it before anything is written there.
-   */
-  const [taskWorkspaceDir, setTaskWorkspaceDir] = useState<string | null>(null);
   const [tasks, setTasks] = useState<WorkbenchTask[]>([]);
   const [selectedSessionKeys, setSelectedSessionKeys] = useState<Set<string>>(() => new Set());
   const [selectionAnchorKey, setSelectionAnchorKey] = useState("");
@@ -921,7 +915,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const pendingSessionsRef = useRef<PendingWorkbenchSession[]>([]);
   const unboundThunderTuiRef = useRef<UnboundThunderTuiPane[]>([]);
   /** Latest task workspace scope, for values read during session binding. */
-  const taskScopeRef = useRef<{ noteId: string } | null>(null);
+  const taskScopeRef = useRef<{ noteId: string; primaryProject?: string } | null>(null);
   const workbenchesRef = useRef<Workbench[]>([]);
   const activeWorkbenchIdRef = useRef<string | null>(null);
   /** A workbench explicitly requested by a deep-link (GTD chip), honored over the stored one. */
@@ -1358,7 +1352,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [pendingExplorerReveal, selectedProject, side]);
   useEffect(() => { pendingSessionsRef.current = pendingSessions; }, [pendingSessions]);
   useEffect(() => { sessionTargetRef.current = sessionTarget; }, [sessionTarget]);
-  useEffect(() => { taskScopeRef.current = taskScope ? { noteId: taskScope.noteId } : null; }, [taskScope]);
+  useEffect(() => { taskScopeRef.current = taskScope ? { noteId: taskScope.noteId, primaryProject: taskScope.primaryProject } : null; }, [taskScope]);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
 
   // Task GTD rollup for the scoped task (children + linked sessions).
@@ -2074,19 +2068,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   );
   const scopeProjectsRef = useRef<string[]>(scopeProjects);
   useEffect(() => { scopeProjectsRef.current = scopeProjects; }, [scopeProjects]);
-  // Resolve the shared workspace path for the header; it need not exist yet.
-  useEffect(() => {
-    const noteId = taskScope?.noteId;
-    if (!noteId || typeof desktopApi().notesTaskWorkspace !== "function") {
-      setTaskWorkspaceDir(null);
-      return;
-    }
-    let cancelled = false;
-    void desktopApi().notesTaskWorkspace({ noteId }).then(({ dir }) => {
-      if (!cancelled) setTaskWorkspaceDir(dir || null);
-    }).catch(() => { if (!cancelled) setTaskWorkspaceDir(null); });
-    return () => { cancelled = true; };
-  }, [taskScope?.noteId]);
   const taskSessionKeys = useMemo(
     () => mergeTaskSessionKeys(liveTask?.sessions ?? taskScope?.sessions ?? [], terminals, activeWorkbenchId ?? null),
     [liveTask, taskScope, terminals, activeWorkbenchId]
@@ -2156,12 +2137,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     const scoped = sessionFilter === "task" && taskScope && taskSessionsKnown;
     if (!scoped) return thunderConversations;
     const linkedKeys = new Set(taskSessionKeys);
-    const workspace = taskWorkspaceDir ? projectPathKey(taskWorkspaceDir) : "";
-    return thunderConversations.filter((conversation) => {
-      if (linkedKeys.has(`thunder:${conversation.id}`)) return true;
-      return Boolean(workspace && projectPathKey(conversation.workspace || "") === workspace);
-    });
-  }, [thunderConversations, sessionFilter, taskScope, taskSessionsKnown, taskSessionKeys, taskWorkspaceDir]);
+    return thunderConversations.filter((conversation) => linkedKeys.has(`thunder:${conversation.id}`));
+  }, [thunderConversations, sessionFilter, taskScope, taskSessionsKnown, taskSessionKeys]);
 
   const visibleThunderConversations = useMemo(() => {
     const q = sessionQuery.trim().toLowerCase();
@@ -3352,25 +3329,18 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (terminalCreating) return;
     setTerminalCreating(true);
     try {
-      // A task with several repositories opens its terminal in the shared
-      // workspace: that is where the project switcher can cd anywhere from.
-      // An explicit target or single-project task keeps the old behaviour.
+      // A task's blank terminal follows the same rule a new session uses:
+      // an explicit target, the only repository, the primary one — and a
+      // zero-repository task lands in home.
       let base = targetProject;
       if (!base && taskScopeRef.current) {
-        if (sessionTargetRef.current) {
-          base = sessionTargetRef.current;
-        } else if (scopeProjectsRef.current.length === 1) {
-          base = scopeProjectsRef.current[0];
-        } else if (typeof desktopApi().notesEnsureTaskWorkspace === "function") {
-          try {
-            const { dir } = await desktopApi().notesEnsureTaskWorkspace({ noteId: taskScopeRef.current.noteId });
-            if (dir) base = dir;
-          } catch {
-            /* fall through to the plain project selection */
-          }
-        }
+        const projects = scopeProjectsRef.current;
+        base = sessionTargetRef.current
+          ?? (projects.length === 1 ? projects[0] : undefined)
+          ?? taskScopeRef.current.primaryProject
+          ?? projects[0];
       }
-      base = base || selectedProject || await desktopApi().createScratchDir();
+      base = base || selectedProject || await desktopApi().homePath();
       // Where the terminal scope points decides this, so ⌘T lands in the checkout
       // you are working in rather than always in the main one.
       const cwd = worktreesRef.current.rootFor("terminal", base);
@@ -3418,37 +3388,27 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [parseNewSessionTarget, settings?.workbench]);
 
   /**
-   * New-session cwd: an explicit target, the selected project, or — when a work
-   * item is open with no project chosen — the task's own neutral workspace
-   * (deterministic, not a throwaway scratch dir).
+   * New-session cwd: an explicit target, then the task's repositories — the
+   * focused folder, the only repository, else the primary one — then the
+   * selected project; a zero-repository task starts in home.
    */
-  const resolveNewSessionCwd = useCallback(async (targetProject?: string): Promise<{ cwd: string; isWorkspace: boolean }> => {
+  const resolveNewSessionCwd = useCallback(async (targetProject?: string): Promise<string> => {
     // Whatever this resolves to, the terminal scope has the last word: it is the
-    // folder the next session starts in. A path that is no repository of this
-    // task (the shared workspace, a scratch directory) passes through untouched.
+    // folder the next session starts in.
     const inTerminalScope = (value: string) => worktreesRef.current.rootFor("terminal", value);
-    if (targetProject) return { cwd: inTerminalScope(targetProject), isWorkspace: false };
+    if (targetProject) return inTerminalScope(targetProject);
     const scope = taskScopeRef.current;
     if (scope) {
       // An explicit chip choice always wins.
       const explicit = sessionTargetRef.current;
-      if (explicit) return { cwd: inTerminalScope(explicit), isWorkspace: false };
+      if (explicit) return inTerminalScope(explicit);
       const projects = scopeProjectsRef.current;
-      // Exactly one repository → the task has an unambiguous cwd.
-      if (projects.length === 1) return { cwd: inTerminalScope(projects[0]), isWorkspace: false };
-      // Several (or none) → the neutral workspace; the address table tells the
-      // agent where each repository lives.
-      if (typeof desktopApi().notesEnsureTaskWorkspace === "function") {
-        try {
-          const { dir } = await desktopApi().notesEnsureTaskWorkspace({ noteId: scope.noteId });
-          if (dir) return { cwd: dir, isWorkspace: true };
-        } catch {
-          /* fall through */
-        }
+      if (projects.length > 0) {
+        return inTerminalScope(scope.primaryProject || projects[0]);
       }
     }
-    if (selectedProject) return { cwd: inTerminalScope(selectedProject), isWorkspace: false };
-    return { cwd: await desktopApi().createScratchDir(), isWorkspace: false };
+    if (selectedProject) return inTerminalScope(selectedProject);
+    return await desktopApi().homePath();
   }, [selectedProject]);
 
   const launchNewSession = useCallback(async (
@@ -3461,7 +3421,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     setTerminalCreating(true);
     try {
       const resolvedCwd = await resolveNewSessionCwd(targetProject);
-      let cwd = resolvedCwd.cwd;
+      let cwd = resolvedCwd;
       if (projectId && typeof desktopApi().resolveProjectCwd === "function") {
         const resolved = await desktopApi().resolveProjectCwd({ projectId });
         if (resolved.source === "missing" || !resolved.cwd) {
@@ -3470,7 +3430,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         }
         cwd = resolved.cwd;
       }
-      if (taskScopeRef.current && !resolvedCwd.isWorkspace) selectProject(cwd, { keepSessionKey: true });
+      if (taskScopeRef.current) selectProject(cwd, { keepSessionKey: true });
       const prompt = initialPrompt?.trim() || "";
       if (target.channel === "acp") {
         const record = await desktopApi().acpCreateSession({ projectPath: cwd, provider: target.provider });
@@ -4421,7 +4381,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         // Opening a task shows its note: defer until the workbench is active.
         setTaskNoteRequest({ noteId: detail.noteId, title: detail.title, nonce: Date.now() });
       }
-      taskScopeRef.current = { noteId: detail.noteId };
+      taskScopeRef.current = { noteId: detail.noteId, primaryProject: detail.primaryProject };
       setTaskScope(detail);
       // Entering a task lands on its session list; the explicit open-note
       // request above overrides this once its workbench is active.
@@ -4566,13 +4526,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       y: event.clientY
     };
     setContextMenu(menu);
-    // The workspace is allocated on demand, so ask whether it exists before
-    // offering to open it.
-    if (typeof desktopApi().notesTaskWorkspace !== "function") return;
-    void desktopApi().notesTaskWorkspace({ noteId: item.noteId }).then(({ dir, exists }) => {
-      if (!exists) return;
-      setContextMenu((current) => current === menu ? { ...current, workspaceDir: dir } : current);
-    }).catch(() => undefined);
   };
 
   const refreshFloatingNoteAvailability = useCallback((target: FloatingSessionNoteTarget, menu: WorkbenchContextMenu) => {
@@ -4778,11 +4731,6 @@ export function WorkbenchPanel(): ReactPortal | null {
           window.dispatchEvent(new Event("agent-resume:notes-mutated"));
         } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
         return;
-      }
-      if (action === "openWorkspace" && typeof desktopApi().notesOpenTaskWorkspace === "function") {
-        try {
-          await desktopApi().notesOpenTaskWorkspace({ noteId: menu.noteId });
-        } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
       }
       if (action === "deleteTask") {
         // Only a task that has never been linked to a session may be deleted.
@@ -6370,13 +6318,6 @@ export function WorkbenchPanel(): ReactPortal | null {
    * The `#` menu in a session running in the shared workspace offers the task's
    * referenced repositories (their folders live outside the workspace cwd).
    */
-  const composerWorkspaceProjects = useMemo<ComposerWorkspaceProject[]>(
-    () => workspaceRootOptions
-      .filter((option) => !option.disabledReason)
-      .map((option) => ({ label: option.label, path: option.path })),
-    [workspaceRootOptions]
-  );
-
   const searchRootOptions = useMemo<SearchRootOption[]>(() => {
     if (taskScope) return workspaceRootOptions;
     return allProjects.map((project) => ({
@@ -6468,7 +6409,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     ? (sideRepoRoots.length === 1
       ? (aliases[sideRepoRoots[0]] || basename(sideRepoRoots[0]))
       : sideRepoRoots.length > 1
-        ? t("desktop.workbench.sharedWorkspace")
+        ? t("desktop.workbench.searchAllRepositories")
         : t("desktop.workbench.quickAccessSelectProject"))
     : selectedProjectMeta
       ? `${selectedProjectMeta.label} — ${selectedProjectMeta.path}`
@@ -6570,7 +6511,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       disabledReason: noProjectReason,
       run: () => {
         openWorkbenchView();
-        void openBlankTerminal(sessionTarget || (taskScope && scopeProjects.length > 1 ? undefined : sideRoots[0]));
+        void openBlankTerminal(sessionTarget ?? undefined);
       }
     },
     // 5. Side Panels / 侧栏面板
@@ -6759,11 +6700,11 @@ export function WorkbenchPanel(): ReactPortal | null {
   // header itself, where the window's own chrome strip is.
   const inlineHeader = document.documentElement.dataset.windowMode === "task";
   // The header names the task and points at the directory the workbench is in:
-  // an explicitly activated project, the task's only project, else the shared
-  // workspace — the same rule a new session uses for its cwd.
+  // an explicitly activated project, the task's only project, else its primary
+  // one — the same rule a new session uses for its cwd.
   const headerDirectoryBase = sessionTarget
     || (scopeProjects.length === 1 ? scopeProjects[0] : null)
-    || (taskScope ? taskWorkspaceDir : null)
+    || (taskScope ? (taskScope.primaryProject || scopeProjects[0] || null) : null)
     || selectedProject
     || null;
   const headerDirectory = headerDirectoryBase ? worktrees.rootFor("default", headerDirectoryBase) : null;
@@ -6794,13 +6735,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (!target) return;
     void (async () => {
       try {
-        // The shared workspace is allocated on demand, so create it before revealing.
-        let dir = target;
-        if (taskScope && target === taskWorkspaceDir && typeof desktopApi().notesEnsureTaskWorkspace === "function") {
-          const ensured = await desktopApi().notesEnsureTaskWorkspace({ noteId: taskScope.noteId });
-          if (ensured?.dir) dir = ensured.dir;
-        }
-        await desktopApi().workbenchRevealPath({ rootPath: dir, targetPath: dir });
+        await desktopApi().workbenchRevealPath({ rootPath: target, targetPath: target });
       } catch (error) {
         notifyDesktop({ text: error instanceof Error ? error.message : String(error), kind: "error" });
       }
@@ -7005,9 +6940,9 @@ export function WorkbenchPanel(): ReactPortal | null {
             <p className="wb-task-target">
               {t("desktop.workbench.sessionTarget", sessionTarget
                 ? basename(sessionTarget)
-                : scopeProjects.length === 1
-                  ? basename(scopeProjects[0])
-                  : t("desktop.workbench.sharedWorkspace"))}
+                : scopeProjects.length > 0
+                  ? basename(taskScope?.primaryProject || scopeProjects[0])
+                  : "~")}
               {sessionTarget ? (
                 <button
                   type="button"
@@ -7154,10 +7089,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             const pending = pendingSessions.find((item) => item.terminalKey === pane.key);
             const isSession = pane.group === "session";
             const showSplit = isSession && sessionViewMode === "hybrid";
-            // In the shared workspace the `#` menu points at the task's repos.
-            const composerProjects = taskWorkspaceDir && projectPathKey(pane.cwd) === projectPathKey(taskWorkspaceDir)
-              ? composerWorkspaceProjects
-              : EMPTY_COMPOSER_WORKSPACE_PROJECTS;
+            const composerProjects = EMPTY_COMPOSER_WORKSPACE_PROJECTS;
             const gitReviewBanner = isSession && gitDirtyCount > 0 && side !== "git" ? (
               <div className="wb-session-git-review-banner">
                 <div className="wb-session-git-review-info">
@@ -7303,19 +7235,13 @@ export function WorkbenchPanel(): ReactPortal | null {
             }
 
             // The floating cd switcher belongs strictly on shell terminals
-            // (pane.group === "terminal") in the task's shared workspace:
+            // (pane.group === "terminal") of a multi-repository task:
             // sessions run agents (Claude, Codex, …) with their own prompt flows
             // and must never show this control.
             const isSharedTerminal = Boolean(
               pane.group === "terminal"
               && taskScope
-              && scopeProjects.length > 0
-              && (
-                (taskWorkspaceDir && projectPathKey(pane.cwd) === projectPathKey(taskWorkspaceDir))
-                || !pane.projectPath
-                || (taskWorkspaceDir && projectPathKey(pane.projectPath) === projectPathKey(taskWorkspaceDir))
-                || scopeProjects.length > 1
-              )
+              && scopeProjects.length > 1
             );
 
             const cdTerminalTo = (targetPath: string) => {
@@ -7330,14 +7256,9 @@ export function WorkbenchPanel(): ReactPortal | null {
             };
 
             const handleCdToProject = (projectPath: string) => {
-              // A pure shell `cd`: the pane stays scoped to the workspace it was
+              // A pure shell `cd`: the pane stays scoped to the folder it was
               // opened in, so moving the panel selection here would just hide it.
               cdTerminalTo(projectPath);
-            };
-
-            const handleCdToSharedWorkspace = () => {
-              if (!taskWorkspaceDir) return;
-              cdTerminalTo(taskWorkspaceDir);
             };
 
             return (
@@ -7370,18 +7291,6 @@ export function WorkbenchPanel(): ReactPortal | null {
                               </button>
                             );
                           })}
-                          {taskWorkspaceDir ? (
-                            <button
-                              type="button"
-                              className={`wb-terminal-project-chip is-workspace${projectPathKey(terminalCdTargets[pane.key] || "") === projectPathKey(taskWorkspaceDir) ? " is-active" : ""}`}
-                              title={`${t("desktop.workbench.terminalCdActionTitle", t("desktop.workbench.terminalCdSharedWorkspace"))} (${taskWorkspaceDir})`}
-                              aria-label={t("desktop.workbench.terminalCdProject", t("desktop.workbench.terminalCdSharedWorkspace"))}
-                              onClick={handleCdToSharedWorkspace}
-                            >
-                              <ThemeIcon name="folder-tree" size={ICON_SIZE.dense} aria-hidden="true" />
-                              <span className="wb-terminal-project-chip-label">{t("desktop.workbench.terminalCdSharedWorkspace")}</span>
-                            </button>
-                          ) : null}
                         </div>
                       </div>
                     ) : null}
@@ -7548,7 +7457,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                     onClose={closeTerminal}
                     registerFocus={registerComposerFocus}
                     slashPhrases={settings?.workbench?.composerSlashPhrases ?? []}
-                    workspaceProjects={sessionPane.cwd === taskWorkspaceDir ? composerWorkspaceProjects : EMPTY_COMPOSER_WORKSPACE_PROJECTS}
+                    workspaceProjects={EMPTY_COMPOSER_WORKSPACE_PROJECTS}
                   />
                 ) : null}
               </>
@@ -7787,14 +7696,14 @@ export function WorkbenchPanel(): ReactPortal | null {
         </div>
       </>}
     </div> : null}
-    {contextMenu && !(contextMenu.kind === "task" && !contextMenu.workspaceDir && contextMenu.taskHasSessions) ? <div ref={contextMenuRef} className={`wb-context-menu${contextMenu.kind === "session" || contextMenu.kind === "session-tab" || contextMenu.kind === "thunder" ? " wb-session-context-menu" : ""}${contextMenuClosing ? " is-closing" : ""}`} role="menu" style={{ left: contextMenuLeft, top: contextMenu.y, visibility: "hidden" }} onContextMenu={(event) => event.preventDefault()}>
+    {contextMenu && !(contextMenu.kind === "task" && contextMenu.taskHasSessions && !(contextMenu.noteId === taskScope?.noteId && taskRollup?.override)) ? <div ref={contextMenuRef} className={`wb-context-menu${contextMenu.kind === "session" || contextMenu.kind === "session-tab" || contextMenu.kind === "thunder" ? " wb-session-context-menu" : ""}${contextMenuClosing ? " is-closing" : ""}`} role="menu" style={{ left: contextMenuLeft, top: contextMenu.y, visibility: "hidden" }} onContextMenu={(event) => event.preventDefault()}>
       {contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : contextMenu.kind === "editor-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("toggleEditorPreview")}>{t(contextMenu.editorPreview ? "desktop.common.edit" : "desktop.workbench.preview")}</button> : contextMenu.kind === "note" ? <>
         <span className="wb-context-menu-label">{t("desktop.workbench.setGtdStatus")}</span>
         <div className="wb-gtd-context-tags" role="group" aria-label={t("desktop.workbench.setGtdStatus")}>
           {GTD_STATUSES.map((gtdStatus) => <button type="button" role="menuitemradio" className={`wb-gtd-context-tag is-${gtdStatus}`} aria-checked={noteItems.find((item) => item.noteId === contextMenu.noteId)?.gtdStatus === gtdStatus} key={gtdStatus} onClick={() => void runContextAction(`gtd:${gtdStatus}`)}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</button>)}
         </div>
         {noteItems.find((item) => item.noteId === contextMenu.noteId)?.gtdStatus ? <button type="button" role="menuitem" onClick={() => void runContextAction("gtd:clear")}>{t("desktop.workbench.clearGtdStatus")}</button> : null}
-      </> : contextMenu.kind === "task" ? <>{contextMenu.workspaceDir ? <button type="button" role="menuitem" onClick={() => void runContextAction("openWorkspace")}>{t("desktop.workbench.openTaskWorkspace")}</button> : null}{contextMenu.noteId && contextMenu.noteId === taskScope?.noteId && taskRollup?.override ? <button type="button" role="menuitem" onClick={() => void runContextAction("followChildren")}>{t("desktop.gtd.followChildren")}</button> : null}{!contextMenu.taskHasSessions ? <>{contextMenu.workspaceDir ? <div className="context-menu-separator" role="separator" /> : null}<button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteTask")}>{t("desktop.workbench.deleteTask")}</button></> : null}</> : contextMenu.kind === "thunder" && contextMenu.thunderConversation ? <>
+      </> : contextMenu.kind === "task" ? <>{contextMenu.noteId && contextMenu.noteId === taskScope?.noteId && taskRollup?.override ? <button type="button" role="menuitem" onClick={() => void runContextAction("followChildren")}>{t("desktop.gtd.followChildren")}</button> : null}{!contextMenu.taskHasSessions ? <><button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteTask")}>{t("desktop.workbench.deleteTask")}</button></> : null}</> : contextMenu.kind === "thunder" && contextMenu.thunderConversation ? <>
         <button type="button" role="menuitem" onClick={() => void runContextAction("openThunderChat")}>{t("desktop.workbench.openThunderChat")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("thunderTui")}>{t("desktop.workbench.resumeThunderTui")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button>
