@@ -18,10 +18,10 @@ Every task workbench lives in **its own window**. The main window is the **GTD b
 
 1. Click a task on the **GTD board**. Its workbench window opens on that task’s sessions (a task with several workbenches opens the one you used last).  
 2. Select a task to see only its sessions. With no task selected, the middle pane lists all sessions.  
-3. Attach a local folder with **Add folder** (macOS folder picker). Click a folder chip to make it the active root for Explorer / Git / Search / Scripts. A task can reference several folders; with none or several, new sessions start in the task’s shared workspace, whose `AGENTS.md` / `CLAUDE.md` carry the address table (where each folder lives), the note’s background knowledge, and a pointer to `.arp/docs/` in that workspace for long-lived shared docs. Right-click the task to open that folder once a session has created it. With a single folder, the session starts directly in that repository and the same address table and knowledge are appended to the agent’s system prompt (Codex, Claude, Pi, Prime) — nothing is written into the repository, and the injected block says nothing about `.arp` (there `.arp/` is the committed panel config, see [Settings & data](settings-and-data.md)). In a session running in the shared workspace, typing `#` in the composer suggests the task’s referenced repositories; `→` walks into a folder level by level (`←` steps back) and `Tab` inserts the highlighted entry — the absolute path for a project inside the shared workspace.  
+3. Attach a local folder with **Add folder** (macOS folder picker). Click a folder chip to make it the active root for Explorer / Git / Search / Scripts. A task can reference several folders: new sessions start in the folder you activated, else the task’s only folder, else its primary folder — never in a panel-managed directory. The task’s context (note path, status, where each folder lives, background knowledge) is rendered from the catalog at launch and appended to the agent’s system prompt (Codex, Claude, Pi, Prime) — nothing is written into the repository, and the injected block says nothing about `.arp` (there `.arp/` is the committed panel config, see [Settings & data](settings-and-data.md)). A task with no folder starts its sessions in your home directory. Typing `#` in the composer suggests directories of the session’s working folder; `→` walks into a folder level by level (`←` steps back) and `Tab` inserts the highlighted entry.  
 4. Resume CLI sessions in the **embedded terminal** (multi-tab) or **external** terminal. If [workspace mentions](workspace-mentions.md) are configured, the new-session picker can open a pack’s work folder and inject reference paths into the first prompt. `arpm go <id>` does the same from any terminal.  
 5. If the default target is an **ACP · …** agent, **New session** opens a **visual chat pane** in the same tab strip (Agent Client Protocol; Claude Code, Codex, Grok Build, OpenCode, Pi).  
-6. The detail header names the **task** and points at the directory it works in — the folder you activated, else its only folder, else the task's shared workspace — with a one-click **reveal in Finder** and the **branch** control; watch the **status bar** for live **cwd** and **git branch** (including nested repos when detected).  
+6. The detail header names the **task** and points at the directory it works in — the folder you activated, else its only folder, else the task's primary folder — with a one-click **reveal in Finder** and the **branch** control; watch the **status bar** for live **cwd** and **git branch** (including nested repos when detected).  
 7. Open **Search**, **Scripts** or **Browser** from the detail toolbar, or expand scripts under **Explorer**; click the status bar branch to switch branches when Git IPC is available.  
 8. In **Git**, select specific changed files before commit when you do not want to commit everything; open a changed file to inspect an inline diff and search within it. **Auto generate** uses `<repo>/.arp/config.json` `workbench.git.commitMessage` when present, otherwise **Settings → Workbench** commit-message style.
 9. In **Explorer**, right-click a file to inspect its Git history across local and remote-tracking branches, including commits before renames. Right-click a folder to discard Git changes under that directory, or use context menus on changed files to open them or copy absolute / relative paths. Open editors watch the workspace and report external changes, conflicts, and deleted files.
@@ -97,25 +97,6 @@ When the agent needs an answer — a plan to approve, a plugin's question — a 
 4. Closing a terminal/editor tab focuses the most recently used panel.  
 5. Terminal features depend on a healthy PTY host; other Desktop tabs still work if the terminal subsystem fails to load.  
 6. **Jump to top / bottom** controls appear in embedded terminals: for streaming CLIs (Codex) they scroll the terminal history, and for full-screen TUIs (Claude Code, Prime Agent, …) they scroll the agent's own viewport.
-7. Each change belongs on its own branch, in its own checkout — see **Worktrees** below.
-
-### Worktrees
-
-A task that touches repositories usually wants every change on its own branch, in
-its own working copy. Open the task's **settings** (the gear in the task card) and
-turn on **Enable worktree mode**. From then on:
-
-- Every checkout of the task lives under `<panelHome>/.desktop/workspaces/<taskId>/.worktrees/<repository>-<branch>`. The path is derived from the task id, so renaming the task moves nothing.
-- Agents are told that location, and told to leave the checkouts alone: the panel never deletes one on its own initiative.
-- **Git**, **Explorer**, **Search** and the **terminal** group each carry a checkout selector. They follow one shared choice; the pin beside it keeps one of them on a different checkout. A repository is always listed with its own working tree first, so a pane can come back to it. What a pane reads is the checkout it is on: pinning **Search** searches that checkout, and the scope chip beside the search box keeps naming the repository while the control in the same pane head names the checkout.
-- A checkout can also vanish under a pane: the agent that just merged its branch removed it, or Finder did. The pane then returns to its repository's main checkout and says nothing — a folder the panel itself picked and somebody else removed is not a fault to interrupt for. A search running over that folder does the same, and a row in the settings sheet whose checkout went away before you pressed Delete simply goes away.
-- **New Worktree…** creates one and offers to install dependencies in a terminal — a fresh checkout has no `node_modules`.
-- Removing one is always your decision. The settings sheet inspects the checkout first, says how many changes are uncommitted and how many commits are not in the base branch, and never touches the branch. Records of checkouts whose folder has already gone are cleared separately, as are checkouts left behind by a deleted task.
-- The panel reminds you when a task is marked done and when you close its window, and those dialogs only report: closing the window is not deleting anything.
-
-The switch governs what agents are told and which creation entries appear — a
-checkout that exists on disk stays visible either way, because work hidden behind
-a boolean reads as a bug.
 
 ### Related
 
@@ -136,10 +117,10 @@ a boolean reads as a bug.
 
 1. 在 **GTD 看板**点一个任务。它的 Workbench 窗口会打开到该任务的 session（一个任务有多个 workbench 时，打开你上次用的那个）。  
 2. 选中任务只看它的 session；未选任务时中间栏列出全部 session。  
-3. 用 **新增目录**（macOS 文件夹选择器）挂本地目录。点目录 chip 把它设为 Explorer / Git / Search / Scripts 的活动根。一个任务可挂多个目录；零个或多个时，新 session 走任务的共享 workspace，其 `AGENTS.md` / `CLAUDE.md` 内含地址表（各目录在哪）、笔记的背景知识，以及该 workspace 中 `.arp/docs/` 作为长期共享文档落点的说明。右键任务可在目录生成后打开它。只有单个目录时，会话直接在该仓库中启动，并通过系统提示参数注入相同的地址表与背景知识（Codex、Claude、Pi、Prime），不污染用户仓库，注入的 block 也不提 `.arp`（仓库里的 `.arp/` 是已提交的面板配置，见 [设置与数据](settings-and-data.md)）。在共享 workspace 中运行的会话里，输入框键入 `#` 会列出任务引用的仓库；按 `→` 可逐级进入下一层目录（`←` 返回上一级），`Tab` 插入当前选中项——共享 workspace 内的项目会插入其绝对路径。  
+3. 用 **新增目录**（macOS 文件夹选择器）挂本地目录。点目录 chip 把它设为 Explorer / Git / Search / Scripts 的活动根。一个任务可挂多个目录：新 session 落在你激活的目录，否则唯一目录，否则主目录——不再有面板托管的中间目录。任务的上下文（笔记路径、状态、各目录在哪、背景知识）在启动时从 catalog 现场渲染并注入 agent 的系统提示（Codex、Claude、Pi、Prime），不污染用户仓库，注入的 block 也不提 `.arp`（仓库里的 `.arp/` 是已提交的面板配置，见 [设置与数据](settings-and-data.md)）。零目录任务的会话从用户主目录启动。输入框键入 `#` 会列出会话所在目录的子目录；按 `→` 可逐级进入下一层（`←` 返回上一级），`Tab` 插入当前选中项。  
 4. CLI 会话用 **内嵌终端**（多标签）或 **外部终端** 恢复。若配置了 [工作区 Mention](workspace-mentions.md)，新建会话选择器可打开该包的工作目录并把参考路径写入首条 prompt。任意终端也可用 `arpm go <id>`。  
 5. 若默认目标为 **ACP · …** Agent，**新建会话**会在同一标签栏打开 **可视化聊天**（Agent Client Protocol；支持 Claude Code、Codex、Grok Build、OpenCode、Pi）。  
-6. 详情头显示 **任务名** 与它指向的目录（你激活的目录 → 唯一目录 → 任务的共享 workspace），目录后可一键 **在 Finder 中显示**，同一行还有 **分支** 控件；**状态栏** 显示实时 **cwd** 与 **git 分支**（可识别嵌套 git 根）。  
+6. 详情头显示 **任务名** 与它指向的目录（你激活的目录 → 唯一目录 → 任务的主目录），目录后可一键 **在 Finder 中显示**，同一行还有 **分支** 控件；**状态栏** 显示实时 **cwd** 与 **git 分支**（可识别嵌套 git 根）。  
 7. 从详情工具栏打开 **Search**、**Scripts** 或 **Browser**，也可在 **Explorer** 下展开脚本区；Git IPC 可用时可点击状态栏分支切换分支。  
 8. 在 **Git** 中可先勾选变更文件再提交，不必一次提交全部改动；打开变更文件可查看内联 diff 并在其中查找。**自动生成**优先使用仓库 `<repo>/.arp/config.json` 的 `workbench.git.commitMessage`，没有该文件时回退到 **设置 → Workbench** 的提交信息格式。
 9. 在 **Explorer** 中右键文件可查看本地分支与远程跟踪分支中的 Git 提交历史（包含文件重名前的记录）；右键目录可一键回退该目录下的 Git 改动；在 Git 变更项右键菜单中可直接打开文件或复制绝对/相对路径。打开的编辑器会监听工作区，并提示外部修改、冲突和文件删除。
@@ -216,22 +197,6 @@ agent 需要你回答时——批准计划、插件的提问——输入框上�
 4. 关闭终端 / 编辑器标签后会激活最近使用的面板。  
 5. 终端依赖 PTY；若终端子系统加载失败，其它页签仍可使用。  
 6. 内嵌终端支持**跳到顶部 / 回到底部**：流式 CLI（Codex）直接滚动终端历史；全屏 TUI（Claude Code、Prime Agent 等）会滚动 Agent 自身的视图。
-7. 每份改动各占一个分支、各自一份检出——见下文 **Worktree**。
-
-### Worktree
-
-一个涉及仓库的任务，通常希望每份改动都在自己的分支、自己的工作副本里。打开任务的**设置**（任务卡片上的齿轮），打开 **启用 worktree 模式**。之后：
-
-- 该任务的所有 worktree 都落在 `<panelHome>/.desktop/workspaces/<任务 id>/.worktrees/<仓库名>-<分支名>`。路径由任务 id 派生，任务改名不会挪动任何目录。
-- Agent 会被告知这个落点，也会被告知不要动这些目录：面板**不会**自作主张删掉任何一个。
-- **Git 改动 / 文件目录 / 全局查找 / 终端**各自带一个 checkout 选择器，默认联动；旁边的图钉可以让其中一个钉在别的 checkout 上。每个仓库都把自己的主工作副本列在最前，所以任何一个面板都能切回来。面板读的就是它当前所在的 checkout：把**全局查找**钉在某个 checkout 上，搜索就搜那个 checkout；搜索框旁的目录 chip 始终只说是哪个仓库，具体 checkout 由同一行上的选择器负责说明。
-- checkout 也可能在你眼皮底下消失：agent 刚把分支合掉顺手删了它，或者你在访达里删了。面板会把这个面板切回该仓库的主工作副本，而且什么都不说——一个面板自己挑的目录被别的程序删掉，不算需要打断你的事故。跑在它上面的搜索同样如此；设置弹层里那一行如果在按下删除之前就已经没了，也直接消失，不弹报错。
-- **新建 worktree…** 可以直接建一个，并顺手在终端里装依赖——新 checkout 里没有 `node_modules`。
-- 删除永远由你决定：设置弹层会先体检这个 checkout，告诉你有多少处未提交改动、多少提交还没进基础分支，并且**不碰分支**。目录已经消失的登记单独清理；被删任务遗留的 worktree 也会单独列出。
-- 面板会在**任务标记完成**和**关闭窗口**这两个时刻提醒你，而这些弹窗只负责报告：关窗不会删掉任何东西。
-
-开关管的是「告诉 agent 什么」和「哪里能新建」——磁盘上真实存在的 checkout
-无论如何都会显示，因为把真实存在的活儿藏在一个开关后面，看起来就像坏了。
 
 ### 相关文档
 

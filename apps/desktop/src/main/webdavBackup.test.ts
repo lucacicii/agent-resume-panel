@@ -315,10 +315,6 @@ describe("WebDAV managed backups", () => {
     const templates = path.join(source.panelHome!, "templates");
     await fs.mkdir(templates, { recursive: true });
     await fs.writeFile(path.join(templates, "template-1.png"), "png-bytes");
-    const workspaces = path.join(source.panelHome!, ".desktop", "workspaces", "task-1");
-    await fs.mkdir(path.join(workspaces, ".worktrees", "checkout"), { recursive: true });
-    await fs.writeFile(path.join(workspaces, "AGENTS.md"), "address table");
-    await fs.writeFile(path.join(workspaces, ".worktrees", "checkout", "big.bin"), "worktree");
 
     const progress: Array<{ phase: string; percent: number }> = [];
     const exported = await exportStoredBackup(context(source, dav), "webdav", "test", {
@@ -364,9 +360,8 @@ describe("WebDAV managed backups", () => {
     expect(actions).toEqual([{ name: "Explain" }]);
     expect(schedules).toEqual([{ name: "Daily" }]);
     await expect(fs.readFile(path.join(target.panelHome!, "templates", "template-1.png"), "utf8")).resolves.toBe("png-bytes");
-    await expect(fs.readFile(path.join(target.panelHome!, ".desktop", "workspaces", "task-1", "AGENTS.md"), "utf8")).resolves.toBe("address table");
-    // Worktrees are machine-local runtime state and never travel.
-    await expect(fs.access(path.join(target.panelHome!, ".desktop", "workspaces", "task-1", ".worktrees", "checkout", "big.bin"))).rejects.toMatchObject({ code: "ENOENT" });
+    // The retired neutral-workspace tree never travels in either direction.
+    await expect(fs.access(path.join(target.panelHome!, ".desktop", "workspaces"))).rejects.toMatchObject({ code: "ENOENT" });
   }, 60_000);
 
   it("keeps a saved backup when the post-upload cleanup fails", async () => {

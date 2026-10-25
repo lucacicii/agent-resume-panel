@@ -9,7 +9,7 @@ import {
  * Workbench tools (read-only).
  *
  * A workbench is a desktop-only unit of work under a task: it binds to one
- * project root (or the task's neutral workspace when `projectPath` is null) and
+ * folder list when `projectPath` is null) and
  * owns its own pane layout and session set. These tables live in `desktop.db`,
  * which the extension does not have — reads degrade to "no workbenches".
  *

@@ -2456,7 +2456,6 @@ describe("WorkbenchPanel", () => {
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES,
         "desktop.workbench.sessionTarget": "New sessions start in: {0}",
-        "desktop.workbench.sharedWorkspace": "shared workspace",
         "desktop.workbench.terminalSwitchProject": "Switch project"
       } }),
       onLocaleChanged: () => () => undefined,
@@ -10112,7 +10111,6 @@ describe("WorkbenchPanel", () => {
         "desktop.workbench.taskNext": "Next:",
         "desktop.workbench.taskSessions": "{0} sessions",
         "desktop.workbench.sessionTarget": "New sessions start in: {0}",
-        "desktop.workbench.sharedWorkspace": "shared workspace",
         "desktop.workbench.newSession": "New session"
       } }),
       onLocaleChanged: () => () => undefined,
@@ -10179,7 +10177,6 @@ describe("WorkbenchPanel", () => {
         "desktop.workbench.taskNext": "Next:",
         "desktop.workbench.taskSessions": "{0} sessions",
         "desktop.workbench.sessionTarget": "New sessions start in: {0}",
-        "desktop.workbench.sharedWorkspace": "shared workspace",
         "desktop.workbench.newSession": "New session"
       } }),
       onLocaleChanged: () => () => undefined,

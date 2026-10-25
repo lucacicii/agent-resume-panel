@@ -83,17 +83,14 @@ const NATIVE_PROVIDERS: Record<Exclude<NativeConversationProvider, "cursor-ide">
 /**
  * Directories copied verbatim into the payload. `restoreRecovery` uses the same
  * list, so a failed import rolls back exactly what it may have written.
- *
- * `.desktop/workspaces` holds each task's AGENTS.md / CLAUDE.md address table and
- * any files the user put there; worktrees and runtime logs inside it are
- * machine-local and excluded.
+ * Payloads from before the neutral-workspace removal may still carry a
+ * `.desktop/workspaces` tree; it is neither exported nor imported anymore.
  */
 const ARCHIVE_DIRECTORIES: Array<{ relative: string; exclude?: string[] }> = [
   { relative: "notes" },
   { relative: "acp" },
   { relative: "templates" },
-  { relative: ".desktop/scratch" },
-  { relative: ".desktop/workspaces", exclude: [".worktrees", ".arp/run", ".arp/tmp"] }
+  { relative: ".desktop/scratch" }
 ];
 
 /**
@@ -1806,9 +1803,6 @@ export async function importBackup(settings: PanelSettings, importToken: string,
       await cleanupRemovedSessionExecutionNotes({ ...paths, panelHome: home, sourceDesktopDbs: [path.join(payload, ".desktop", "desktop.db")] });
       await mergeTree(path.join(payload, ".desktop", "scratch"), path.join(home, ".desktop", "scratch"), pending.manifest, `${PAYLOAD_ROOT}/.desktop/scratch`);
       await mergeTree(path.join(payload, "templates"), path.join(home, "templates"), pending.manifest, `${PAYLOAD_ROOT}/templates`);
-      // The payload never contains the excluded runtime subtrees, so a plain
-      // merge cannot bring `.worktrees` or `.arp/{run,tmp}` across.
-      await mergeTree(path.join(payload, ".desktop", "workspaces"), path.join(home, ".desktop", "workspaces"), pending.manifest, `${PAYLOAD_ROOT}/.desktop/workspaces`);
       await mergeAcp(path.join(payload, "acp"), path.join(home, "acp"), pending.manifest);
       reportProgress(options.onProgress, "import", "merging", 65);
       await maybeApplySettings(home, pending.root, pending.manifest);

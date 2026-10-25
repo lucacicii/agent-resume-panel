@@ -120,7 +120,7 @@ A task is a note with front-matter `work: true`. Tasks are library-scoped and **
 
 #### Workbenches
 
-A workbench is a desktop-only unit of work under a task: it binds to one repository root (or the task's neutral workspace when the binding is null) and owns its own pane layout and session set. External MCP callers cannot open Desktop's Workbench UI, so these tools are read-only.
+A workbench is a desktop-only unit of work under a task: it binds to one repository root (or follows the task's folder list when the binding is null) and owns its own pane layout and session set. External MCP callers cannot open Desktop's Workbench UI, so these tools are read-only.
 
 | Tool | Purpose |
 |---|---|

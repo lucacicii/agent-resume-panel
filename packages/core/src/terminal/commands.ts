@@ -141,13 +141,12 @@ function newSessionCommandFor(
  * repository (no cwd change, nothing written into the repository).
  *
  * Only verified flags are listed. Providers without one return an empty string:
- * their sessions get the context through the working directory (the task's
- * neutral workspace) or not at all.
+ * their sessions get no context injected.
  */
 export function sessionContextFlags(provider: AgentProvider, file: string): string {
   if (provider === "codex") {
     // `-c` values are TOML when they parse, literal text otherwise. The block
-    // starts with an HTML comment, so it always arrives as literal text.
+    // starts with a markdown heading, so it never parses as TOML.
     return `-c "developer_instructions=$(cat ${shellQuote(file)})"`;
   }
   if (provider === "claude" || provider === "pi" || provider === "prime" || provider === "omp") {

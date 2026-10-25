@@ -4,12 +4,8 @@ import { escapeSqlLiteral, runSqliteJson, runSqliteTransaction } from "../sqlite
 /**
  * A workbench is a desktop-only unit of work under a GTD task (a `work: true`
  * note). One task can hold several workbenches; each one binds to a project
- * path (or runs in the task's neutral workspace when `projectPath` is null) and
+ * path (or follows the task's folder list when `projectPath` is null) and
  * owns its own pane layout and session set.
- *
- * This is deliberately stored in `desktop.db`, not in note front-matter: the
- * extension has no notion of a workbench, and keeping it here leaves the shared
- * catalog schema untouched.
  */
 export interface TaskWorkbench {
   workbenchId: string;

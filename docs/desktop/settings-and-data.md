@@ -86,7 +86,7 @@ CLI transcripts remain in native agent homes. Change panel home only if you unde
 5. **WebDAV** is configured once in the same pane: server URL (for example `https://dav.jianguoyun.com/dav/`), username, app password, and a remote folder (default `Agent Resume/Backups`). The app password is encrypted with the system keychain (Electron `safeStorage`) and never written in plaintext or returned to the window. Use **Test connection** to verify the folder before uploading.
 6. Each machine keeps the latest 10 backups it created on the selected remote target; older ones are deleted. Files are uploaded as `.partial` and renamed only when complete, so an interrupted upload never appears in the list.
 7. Choose a ZIP or select a stored backup to preview it. **Restore native Agent conversations** is off by default. The merge keeps newer local native files and reports conflicts; it never copies Agent configuration or authentication files. If a provider exceeds the per-file or archive size limits, that provider is skipped and the backup shows an actionable warning; the rest of the backup still completes.
-8. What a backup contains: `catalog.db` and `desktop.db` (rebuildable search/vector indexes excluded), notes with their assets, archive marks and hierarchy, ACP threads, task templates and images, task workspaces (worktrees and runtime directories excluded), Thunder conversations, and `settings.json` / `settings.desktop.json` with credentials stripped.
+8. What a backup contains: `catalog.db` and `desktop.db` (rebuildable search/vector indexes excluded), notes with their assets, archive marks and hierarchy, ACP threads, task templates and images, Thunder conversations, and `settings.json` / `settings.desktop.json` with credentials stripped.
 9. Backups written by older releases are encrypted `.arbak` files. They still appear in the list and can be restored, but the password used when they were created is required. New backups are always plain ZIPs.
 
 **Manual folder copy (full control):**
@@ -191,7 +191,7 @@ CLI 原文仍在各 Agent 原生目录。修改 panel home 时请确保两产品
 5. **WebDAV** 在同一页配置一次：服务器地址（例如 `https://dav.jianguoyun.com/dav/`）、用户名、应用密码与远端目录（默认 `Agent Resume/Backups`）。应用密码经系统钥匙串（Electron `safeStorage`）加密，不会以明文写入磁盘，也不会返回给界面。上传前可先用 **测试连接** 验证目录。
 6. 每台机器在所选远端目标上仅保留自己创建的最近 10 份备份，更旧的会被删除。上传时先写成 `.partial`，完成后再改名，因此中断的上传不会出现在列表里。
 7. 选择 ZIP 或某份已存备份后可先预览。**恢复原始 Agent 对话** 默认关闭；合并会保留本机较新的原始文件并报告冲突，绝不会复制 Agent 配置或认证文件。如果某个 Provider 超过单文件或归档容量限制，该 Provider 会被跳过并显示可操作的警告，其余备份仍会完成。
-8. 备份内容：`catalog.db` 与 `desktop.db`（不含可重建的搜索/向量索引）、笔记及其附件、归档状态与层级、ACP 线程、任务模板与图片、任务工作区（不含 worktree 与运行期目录）、Thunder 对话，以及剔除凭据后的 `settings.json` / `settings.desktop.json`。
+8. 备份内容：`catalog.db` 与 `desktop.db`（不含可重建的搜索/向量索引）、笔记及其附件、归档状态与层级、ACP 线程、任务模板与图片、Thunder 对话，以及剔除凭据后的 `settings.json` / `settings.desktop.json`。
 9. 旧版本写出的是加密 `.arbak` 文件：仍会出现在列表中并可恢复，但需要当时设置的密码。新备份一律为明文 ZIP。
 
 **手动复制目录（完全控制）：**
