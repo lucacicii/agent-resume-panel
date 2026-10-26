@@ -40,7 +40,7 @@ Requirements: macOS 12+, Apple Silicon or Intel. Version history: [Changelog](..
 | [Report](report.md) | Background daily/weekly/monthly digests; read them through MCP |
 | [Agent memory](agent.md) | MCP `memory_retrieve` over local digests, notes, and sessions (no in-app Agent tab) |
 | [Workbench](workbench.md) | Embedded terminal (themes), ACP visual chat, multi-tab resume, project search, scripts, Git select-commit, explorer |
-| [Workspace mentions](workspace-mentions.md) | Global work/reference packs for New session and the `arpm` CLI |
+| [Workspace mentions](workspace-mentions.md) | The `@` menu: workspace packs, which kinds it lists, and auto-collecting directories |
 | [Sessions](sessions.md) | Reference list and read-only preview |
 | [Notes](notes.md) | Markdown editor shared with the extension |
 | [MCP](mcp.md) | Register trusted local agents to use Notes, Tasks, Reports, memory retrieval, Sessions, and GTD tools |
@@ -117,7 +117,7 @@ macOS 导向的 **Session OS + Memory** 桌面应用：**Workbench** 恢复会�
 | [Report](report.md) | 后台日/周/月回顾报告；通过 MCP 阅读 |
 | [Agent memory](agent.md) | 通过 MCP `memory_retrieve` 检索本机报告 / 笔记 / 会话（应用内已无 Agent 页签） |
 | [Workbench](workbench.md) | 内嵌终端（配色）、ACP 可视化聊天、多标签恢复、项目搜索、脚本、Git 选择提交、资源管理器 |
-| [工作区 Mention](workspace-mentions.md) | 全局工作/参考目录包，供新建会话和 `arpm` 使用 |
+| [工作区提及](workspace-mentions.md) | `@` 菜单：工作区 pack、列出的类别，以及自动收集目录 |
 | [Sessions](sessions.md) | 参考列表与只读预览 |
 | [Notes](notes.md) | 与扩展共用的 Markdown 笔记 |
 | [MCP](mcp.md) | 为受信任的本机 Agent 注册 Notes、任务、Reports、记忆检索、Sessions 与 GTD 工具 |

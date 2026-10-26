@@ -5,8 +5,11 @@ import type {
   PanelSettings,
   ProviderModel,
   WorkbenchComposerSlashPhrase,
-  WorkbenchComposerMention
+  WorkbenchComposerMention,
+  WorkbenchMentionSources
 } from "@agent-resume/core";
+import { normalizeWorkbenchMentionSources } from "@agent-resume/core/browser";
+
 import { normalizeComposerMentions } from "../../workspacePacks";
 import {
   resolveTerminalThemeId,
@@ -140,6 +143,8 @@ export interface WorkbenchDraft {
    * optional read-only references. Shared with the `arpm` CLI.
    */
   composerMentions: WorkbenchComposerMention[];
+  /** Which entity kinds the `@` menu lists. */
+  composerMentionsEnabled: WorkbenchMentionSources;
   /** ACP permission policy */
   acpAutoApprovePermissions: "ask" | "allowAll";
   /** Experimental Grok Build vendor ACP UI (model + reasoning effort). */
@@ -510,6 +515,7 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     gitNestedScanIgnoreDirs: Array.isArray(workbench?.gitNestedScanIgnoreDirs) ? workbench.gitNestedScanIgnoreDirs.join("\n") : "",
     composerSlashPhrases: normalizeComposerSlashPhrases(workbench?.composerSlashPhrases),
     composerMentions: normalizeComposerMentions(workbench?.composerMentions),
+    composerMentionsEnabled: normalizeWorkbenchMentionSources(workbench?.composerMentionSources),
     acpAutoApprovePermissions: settings.acp?.autoApprovePermissions === "allowAll" ? "allowAll" : "ask",
     acpExperimentalGrokVendorUi: settings.acp?.experimentalGrokVendorUi === true
   };
@@ -562,6 +568,7 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       gitNestedScanIgnoreDirs: draft.gitNestedScanIgnoreDirs.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean),
       composerSlashPhrases: normalizeComposerSlashPhrases(draft.composerSlashPhrases),
       composerMentions: normalizeComposerMentions(draft.composerMentions),
+      composerMentionSources: normalizeWorkbenchMentionSources(draft.composerMentionsEnabled)
     },
     acp: {
       ...settings.acp,

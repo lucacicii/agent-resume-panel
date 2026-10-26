@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { desktopApi } from "../../bridge";
 import { normalizeComposerMentions } from "../../workspacePacks";
-import type { WorkbenchComposerMention } from "@agent-resume/core";
+import {
+  DEFAULT_WORKBENCH_MENTION_SOURCES,
+  normalizeWorkbenchMentionSources
+} from "@agent-resume/core/browser";
+import type {
+  WorkbenchComposerMention,
+  WorkbenchMentionSources
+} from "@agent-resume/core";
 
 /**
  * The entities an `@` can point at, shared by every composer that offers one.
@@ -12,14 +19,14 @@ import type { WorkbenchComposerMention } from "@agent-resume/core";
  * one rule for what `@` finds, whichever surface you type it on.
  */
 export type ChatMentionSuggestion = {
-  kind: "note" | "task" | "session" | "workspace" | "project";
-  /** Mention key: note id, task id, session id, workspace-pack id, project id. */
+  kind: "note" | "task" | "session" | "workspace";
+  /** Mention key: note id, task id, session id, workspace-pack id. */
   id: string;
   title: string;
   subtitle?: string;
   badge: string;
   gtdStatus?: string;
-  /** Absolute path a workspace/project mention binds or inserts. */
+  /** Absolute path a workspace mention binds or inserts. */
   path?: string;
 };
 
@@ -37,7 +44,6 @@ export type MentionTask = {
 
 export type MentionNote = { id: string; title: string; folder?: string; relMdPath?: string; path?: string };
 export type MentionConversation = { id: string; title?: string; message_count?: number };
-export type MentionProject = { id: string; label: string; path: string };
 
 export const GTD_STATUS_LABELS: Record<string, string> = {
   inbox: "收集箱",
@@ -70,43 +76,45 @@ export function sortGtdTasks<T extends { gtdStatus?: string; updatedAtMs?: numbe
 
 export interface MentionSources {
   packs: WorkbenchComposerMention[];
-  projects: MentionProject[];
   tasks: MentionTask[];
   notes: MentionNote[];
   conversations: MentionConversation[];
+  /** Which kinds the composer should list. */
+  enabled: WorkbenchMentionSources;
 }
 
 /**
- * Workspace packs, catalog projects, GTD tasks, notes and conversations, for a
- * composer that offers `@`. Each source degrades to empty on failure: a missing
- * daemon or catalog must not disable the composer.
+ * Workspace packs, GTD tasks, notes and conversations, for a composer that
+ * offers `@`. Each source degrades to empty on failure: a missing daemon or
+ * catalog must not disable the composer. Catalog projects are deliberately not
+ * loaded — a directory the user never named is not a mention, and the settings
+ * pane is where such directories get promoted into packs.
  */
 export function useMentionSources(): MentionSources {
   const [sources, setSources] = useState<MentionSources>({
-    packs: [], projects: [], tasks: [], notes: [], conversations: []
+    packs: [],
+    tasks: [],
+    notes: [],
+    conversations: [],
+    enabled: DEFAULT_WORKBENCH_MENTION_SOURCES
   });
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const next: MentionSources = { packs: [], projects: [], tasks: [], notes: [], conversations: [] };
+      const next: MentionSources = {
+        packs: [],
+        tasks: [],
+        notes: [],
+        conversations: [],
+        enabled: DEFAULT_WORKBENCH_MENTION_SOURCES
+      };
       try {
         const settings = await desktopApi().getSettings();
         next.packs = normalizeComposerMentions(settings?.workbench?.composerMentions);
+        next.enabled = normalizeWorkbenchMentionSources(settings?.workbench?.composerMentionSources);
       } catch {
         // no packs configured
-      }
-      try {
-        const projects = await desktopApi().listProjects();
-        next.projects = projects
-          .filter((project) => project.localPath && !project.pathMissing)
-          .map((project) => ({
-            id: project.projectId,
-            label: project.alias || project.localPath || "",
-            path: project.localPath || ""
-          }));
-      } catch {
-        // no catalog yet
       }
       try {
         const tasks = await desktopApi().notesListTasks({ includeArchived: false });
@@ -170,9 +178,10 @@ export function useMentionSources(): MentionSources {
 }
 
 /**
- * `@` candidates for a query, in the order every composer shows them: the two
- * that relocate the conversation first (workspace packs, then catalog projects),
- * then tasks, notes and conversations.
+ * `@` candidates for a query, in the order every composer shows them: the pack
+ * that relocates the conversation first, then tasks, notes and conversations.
+ * A kind switched off in Settings is never built, so a disabled source costs
+ * nothing and leaves no stale row behind.
  */
 export function buildMentionSuggestions(
   query: string,
@@ -181,8 +190,8 @@ export function buildMentionSuggestions(
   const q = query.toLowerCase();
   const out: ChatMentionSuggestion[] = [];
 
-  const packIds = new Set(sources.packs.map((pack) => pack.id.toLowerCase()));
-  for (const pack of sources.packs) {
+  const { enabled } = sources;
+  for (const pack of enabled.workspaces ? sources.packs : []) {
     if (!q || pack.id.toLowerCase().includes(q) || pack.cwd.toLowerCase().includes(q)) {
       out.push({
         kind: "workspace",
@@ -194,21 +203,7 @@ export function buildMentionSuggestions(
       });
     }
   }
-  for (const project of sources.projects) {
-    const label = project.label || project.path;
-    if (packIds.has(label.toLowerCase())) continue;
-    if (!q || label.toLowerCase().includes(q) || project.path.toLowerCase().includes(q)) {
-      out.push({
-        kind: "project",
-        id: project.id,
-        title: label,
-        subtitle: project.path,
-        badge: "项目",
-        path: project.path
-      });
-    }
-  }
-  for (const task of sortGtdTasks(sources.tasks)) {
+  for (const task of enabled.tasks ? sortGtdTasks(sources.tasks) : []) {
     const title = task.title || task.noteId;
     const statusLabel = GTD_STATUS_LABELS[task.gtdStatus || "inbox"] || "待办";
     if (!q || title.toLowerCase().includes(q) || statusLabel.toLowerCase().includes(q)) {
@@ -223,7 +218,7 @@ export function buildMentionSuggestions(
       });
     }
   }
-  for (const note of sources.notes) {
+  for (const note of enabled.notes ? sources.notes : []) {
     if (!q || note.title.toLowerCase().includes(q) || note.folder?.toLowerCase().includes(q)) {
       out.push({
         kind: "note",
@@ -235,7 +230,7 @@ export function buildMentionSuggestions(
       });
     }
   }
-  for (const conversation of sources.conversations) {
+  for (const conversation of enabled.sessions ? sources.conversations : []) {
     const title = conversation.title || "会话";
     if (!q || title.toLowerCase().includes(q)) {
       out.push({

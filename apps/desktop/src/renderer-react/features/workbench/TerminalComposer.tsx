@@ -478,9 +478,10 @@ export function TerminalComposer(props: {
   }, [applyValue]);
 
   /**
-   * `@` finds the same entities as the chat composer — packs, projects, tasks,
-   * notes, sessions — but a terminal has no prompt step, so accepting one types
-   * the entity's absolute path. Same trigger, same order, same keys.
+   * `@` finds the same entities as the chat composer — packs, tasks, notes,
+   * sessions, as enabled in Settings — but a terminal has no prompt step, so
+   * accepting one types the entity's absolute path. Same trigger, same order,
+   * same keys.
    */
   const mentionSources = useMentionSources();
   const atToken = useMemo(() => atTokenAtCursor(value, cursor), [cursor, value]);

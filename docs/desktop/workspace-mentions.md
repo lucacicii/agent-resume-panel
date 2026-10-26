@@ -40,19 +40,32 @@ Example:
 
 ### Related `@`, `#` and `/`
 
-- `@name` — a workspace pack or a catalog project (both relocate the conversation); a **task** binds the task instead, so the run inherits every repository the task references (plus its context and worktree rule); a note or session injects its content.
+- `@name` — a workspace pack (relocates the conversation); a **task** binds the task instead, so the run inherits every repository the task references (plus its context and worktree rule); a note or session injects its content.
 - `#path` — references one file or directory inside the current workspace, without moving it.
 - `/command` — a skill, an MCP tool, or one of the Quick Agent's local lookups (`/git status`, `/git log`, `/find`).
+
+The menu lists exactly four kinds — **workspace packs, tasks, notes, conversations** — in that order. Catalog projects are not a mention: a directory you never named does not belong in `@`.
 
 ### Configure
 
 1. Open **⚙ Settings → Workbench**.
-2. Under **Workspace mentions**, click **Add workspace pack**.
-3. Set **Mention id** (`anfeng` — letters, digits, `_`, `-`; no `@` in the stored id).
-4. Set the **Directory** (absolute or `~/…`).
-5. Fields save when they lose focus.
+2. **Mention sources (@)** — four switches decide which kinds the menu may list. A kind switched off is never queried, so it costs nothing. Switching one off only hides it from `@`; the catalog keeps indexing sessions either way.
+3. **Workspace mentions** — click **Add workspace pack**, then set **Mention id** (`anfeng` — letters, digits, `_`, `-`; no `@` in the stored id) and the **Directory** (absolute or `~/…`). Fields save when they lose focus.
 
 Ids are unique case-insensitively. Rows with an empty id or directory are dropped on save, and duplicate ids keep the first.
+
+### Auto-collecting project directories
+
+History knows every folder an agent ever ran in, and most of them are noise: `~`, `/tmp`, the app's own scratch workspaces. So auto-collection is a **suggestion list**, not an import:
+
+1. Turn on **Project directories (auto-collected)** in **Mention sources (@)**.
+2. Under **Auto-collect project directories**, click **Scan candidates**. The scan only reads the catalog — nothing is written.
+3. Each row shows the id it would get, the path and its session count. Excluded rows stay visible and greyed with a reason: home directory, temporary folder, app's own workspace, folder is gone, already a pack.
+4. Tick what you want, then **Apply to @ mentions**. Ticked rows are *appended* to the packs you already have, so an existing `@anfeng` is never rewritten.
+
+A candidate id is the directory's last segment, lowercased and reduced to `[A-Za-z0-9_-]`, with `-2`-style suffixes on collision.
+
+Switching the source off afterwards hides the collected packs from `@` without deleting them.
 
 ### Finder paths
 
@@ -96,19 +109,32 @@ Pack 存在 Desktop 设置里，与 `arpm` CLI 共用同一份数据：
 
 ### `@`、`#`、`/` 的分工
 
-- `@名字` —— 工作区 pack 或项目别名（两者都切换对话目录）；**任务**则是直接绑定该任务，本次运行会继承它引用的全部仓库（连同任务上下文与 worktree 规则）；笔记 / 会话则注入其内容。
+- `@名字` —— 工作区 pack（切换对话目录）；**任务**则是直接绑定该任务，本次运行会继承它引用的全部仓库（连同任务上下文与 worktree 规则）；笔记 / 会话则注入其内容。
 - `#路径` —— 引用当前工作区里的某个文件或目录，但不切换目录。
 - `/命令` —— 技能、MCP 工具，或悬浮助手的本地快查（`/git status`、`/git log`、`/find`）。
+
+菜单只列四类：**工作区 pack、任务、笔记、会话**，顺序如上。项目目录不算提及——你没命名过的目录不该出现在 `@` 里。
 
 ### 配置
 
 1. 打开 **⚙ 设置 → Workbench**。
-2. 在 **工作区提及（@）** 里点「新增工作区 pack」。
-3. 填**提及 ID**（`anfeng`，允许字母、数字、`_`、`-`；存储时不带 `@`）。
-4. 填**目录**（绝对路径或 `~/…`）。
-5. 字段失焦即保存。
+2. **提及来源（@）** —— 四个开关决定菜单能列出哪几类。关掉的类别根本不会被查询，所以不产生开销；关掉只是让它从 `@` 里消失，项目目录照常索引会话。
+3. **工作区提及（@）** —— 点「新增工作区 pack」，填**提及 ID**（`anfeng`，允许字母、数字、`_`、`-`；存储时不带 `@`）和**目录**（绝对路径或 `~/…`）。字段失焦即保存。
 
 ID 大小写不敏感且唯一；ID 或目录为空的行在保存时丢弃，重复 ID 保留第一个。
+
+### 自动收集项目目录
+
+历史里记着 agent 跑过的每个目录，其中大部分是噪音：`~`、`/tmp`、应用自己的草稿目录。所以自动收集是**候选清单**，不是导入：
+
+1. 在 **提及来源（@）** 里打开 **项目目录（自动收集）**。
+2. 在 **自动收集项目目录** 里点「扫描候选」。扫描只读项目目录，不写任何东西。
+3. 每行显示它将会得到的 id、路径与会话数。被排除的行仍然列出（灰色）并给出原因：主目录、临时目录、应用内部工作区、目录不存在、已在 pack 中。
+4. 勾选需要的行，点「应用到 @ 提及」。勾选的行会**追加**到已有的 pack 之后，已有的 `@anfeng` 不会被覆盖。
+
+候选 id 取目录最后一段，转小写并只保留 `[A-Za-z0-9_-]`，冲突时加 `-2` 之类后缀。
+
+之后关掉该来源开关，只会把这些 pack 从 `@` 里隐藏，不会删除。
 
 ### Finder 路径
 

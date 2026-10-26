@@ -5,10 +5,11 @@ import path from "node:path";
 import test from "node:test";
 import {
   DEFAULT_SETTINGS,
-  buildMentionPrompt,
   loadSettings,
   matchMentionForCwd,
+  DEFAULT_WORKBENCH_MENTION_SOURCES,
   normalizeWorkbenchComposerMentions,
+  normalizeWorkbenchMentionSources,
   resolveMention,
   saveSettings
 } from "../dist/index.js";
@@ -16,37 +17,19 @@ import {
 test("normalizeWorkbenchComposerMentions expands home, strips @, and dedupes ids", () => {
   const home = os.homedir();
   const mentions = normalizeWorkbenchComposerMentions([
-    {
-      id: "@Anfeng",
-      cwd: "~/work/c",
-      roots: [
-        { path: path.join(home, "work", "a"), role: "reference" },
-        { path: "~/work/c", role: "work" },
-        { path: "", role: "reference" },
-        { path: path.join(home, "work", "a"), role: "reference" }
-      ]
-    },
-    { id: "anfeng", cwd: "/other", roots: [] },
-    { id: "bad id", cwd: "/tmp", roots: [] },
-    { id: "empty", cwd: "   ", roots: [] },
-    { cwd: "/tmp/x", roots: [] }
+    { id: "@Anfeng", cwd: "~/work/c" },
+    { id: "anfeng", cwd: "/other" },
+    { id: "bad id", cwd: "/tmp" },
+    { id: "empty", cwd: "   " },
+    { cwd: "/tmp/x" }
   ]);
-  assert.deepEqual(mentions, [
-    {
-      id: "Anfeng",
-      cwd: path.join(home, "work", "c"),
-      roots: [
-        { path: path.join(home, "work", "c"), role: "work" },
-        { path: path.join(home, "work", "a"), role: "reference" }
-      ]
-    }
-  ]);
+  assert.deepEqual(mentions, [{ id: "Anfeng", cwd: path.join(home, "work", "c") }]);
 });
 
 test("resolveMention and matchMentionForCwd are case-insensitive on id and exact on cwd", () => {
   const mentions = normalizeWorkbenchComposerMentions([
-    { id: "anfeng", cwd: "/work/c", roots: [{ path: "/work/a", role: "reference" }] },
-    { id: "other", cwd: "/work/d", roots: [] }
+    { id: "anfeng", cwd: "/work/c" },
+    { id: "other", cwd: "/work/d" }
   ]);
   assert.equal(resolveMention(mentions, "@ANFENG")?.id, "anfeng");
   assert.equal(resolveMention(mentions, "missing"), null);
@@ -55,27 +38,18 @@ test("resolveMention and matchMentionForCwd are case-insensitive on id and exact
   assert.equal(matchMentionForCwd(mentions, "/work/a"), null);
 });
 
-test("buildMentionPrompt lists work cwd and reference roots", () => {
-  const mention = normalizeWorkbenchComposerMentions([
-    {
-      id: "anfeng",
-      cwd: "/work/c",
-      roots: [
-        { path: "/work/a", role: "reference" },
-        { path: "/work/b", role: "reference" }
-      ]
-    }
-  ])[0];
-  assert.equal(
-    buildMentionPrompt(mention),
-    [
-      "[Workspace anfeng]",
-      "Work cwd (write here only): /work/c",
-      "Reference (read only):",
-      "- /work/a",
-      "- /work/b"
-    ].join("\n")
+test("normalizeWorkbenchMentionSources keeps the four named kinds and defaults projects off", () => {
+  assert.deepEqual(normalizeWorkbenchMentionSources(undefined), DEFAULT_WORKBENCH_MENTION_SOURCES);
+  assert.equal(DEFAULT_WORKBENCH_MENTION_SOURCES.projects, false);
+  assert.equal(DEFAULT_WORKBENCH_MENTION_SOURCES.workspaces, true);
+
+  // Only the keys the type knows survive; junk and non-booleans fall back to
+  // the default rather than becoming an `undefined` the composer would read.
+  assert.deepEqual(
+    normalizeWorkbenchMentionSources({ workspaces: false, projects: true, notes: "yes", extra: 1 }),
+    { workspaces: false, tasks: true, notes: true, sessions: true, projects: true }
   );
+  assert.deepEqual(normalizeWorkbenchMentionSources(null), DEFAULT_WORKBENCH_MENTION_SOURCES);
 });
 
 test("composer mentions persist through settings load/save", async () => {
@@ -87,27 +61,24 @@ test("composer mentions persist through settings load/save", async () => {
         panelHome,
         workbench: {
           composerMentions: [
-            {
-              id: "@anfeng",
-              cwd: path.join(panelHome, "c"),
-              roots: [{ path: path.join(panelHome, "a"), role: "reference" }]
-            }
-          ]
+            { id: "@anfeng", cwd: path.join(panelHome, "c") }
+          ],
+          composerMentionSources: { workspaces: true, tasks: false, notes: true, sessions: true, projects: true }
         }
       },
       panelHome
     );
     const loaded = await loadSettings(panelHome);
     assert.deepEqual(loaded.workbench.composerMentions, [
-      {
-        id: "anfeng",
-        cwd: path.join(panelHome, "c"),
-        roots: [
-          { path: path.join(panelHome, "c"), role: "work" },
-          { path: path.join(panelHome, "a"), role: "reference" }
-        ]
-      }
+      { id: "anfeng", cwd: path.join(panelHome, "c") }
     ]);
+    assert.deepEqual(loaded.workbench.composerMentionSources, {
+      workspaces: true,
+      tasks: false,
+      notes: true,
+      sessions: true,
+      projects: true
+    });
 
     await saveSettings(
       {

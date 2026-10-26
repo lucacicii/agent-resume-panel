@@ -186,6 +186,32 @@ export interface WorkbenchComposerMention {
   cwd: string;
 }
 
+/** The entity kinds a composer's `@` menu may list. */
+export interface WorkbenchMentionSources {
+  /** Named directories from `composerMentions`. */
+  workspaces: boolean;
+  /** GTD tasks; binding one relocates the run and inherits its repositories. */
+  tasks: boolean;
+  /** Notes; a mention injects the note's body. */
+  notes: boolean;
+  /** Thunder conversations; a mention injects the conversation. */
+  sessions: boolean;
+  /**
+   * Catalog directories auto-collected from session history into packs. Default
+   * off: a directory the user never named should stay out of `@` until they
+   * pick it in Settings, so history noise cannot rewrite the menu on its own.
+   */
+  projects: boolean;
+}
+
+export const DEFAULT_WORKBENCH_MENTION_SOURCES: WorkbenchMentionSources = {
+  workspaces: true,
+  tasks: true,
+  notes: true,
+  sessions: true,
+  projects: false
+};
+
 export interface WorkbenchEditorSettings {
   /** Whether project text files can be edited in the embedded editor. Default true. */
   editable?: boolean;
@@ -283,6 +309,8 @@ export interface WorkbenchSettings {
   composerSlashPhrases?: WorkbenchComposerSlashPhrase[];
   /** Global workspace packs for New session / `arpm`. Default empty. */
   composerMentions?: WorkbenchComposerMention[];
+  /** Which entity kinds a composer's `@` menu lists. Projects default off. */
+  composerMentionSources?: WorkbenchMentionSources;
 }
 
 export type GhosttyLaunchMode = "pasteCommand" | "copyCommand" | "executeCommand";
@@ -495,6 +523,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     gitCommitCustomInstructions: DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS,
     composerSlashPhrases: [],
     composerMentions: [],
+    composerMentionSources: DEFAULT_WORKBENCH_MENTION_SOURCES,
     transcriptFontSize: 14,
     editor: {
       editable: true,

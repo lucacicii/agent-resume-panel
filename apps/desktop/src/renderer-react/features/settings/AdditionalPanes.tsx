@@ -6,6 +6,7 @@ import { SelectRow, ToggleRow } from "../../components/SettingRows";
 import { Status, type StatusKind } from "../../components/Status";
 import { confirmAction, confirmDestructive } from "../../confirmAction";
 import { WORKBENCH_TERMINAL_THEME_IDS } from "../workbench/terminalThemes";
+import { buildMentionCandidates, type MentionCandidate } from "./mentionCandidates";
 import type { NotesDraft, StorageDraft, WorkbenchDraft } from "./model";
 import { formatShortcutForDisplay, WORKBENCH_NEW_SESSION_TARGET_OPTIONS } from "./model";
 
@@ -61,6 +62,78 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
     const nextDraft = { ...draft, composerMentions: next };
     setDraft(nextDraft);
     if (commitNow) commit(nextDraft);
+  };
+
+  /**
+   * Auto-collection stays a suggestion list until "应用" runs: the scan only
+   * reads the catalog, and every ticked row is appended to the packs the user
+   * already has, so an existing `@anfeng` is never rewritten.
+   */
+  const [candidates, setCandidates] = useState<MentionCandidate[] | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const scanCandidates = useCallback(async () => {
+    setScanning(true);
+    try {
+      const [projects, home, settings] = await Promise.all([
+        desktopApi().listProjects({ includeHidden: true }),
+        desktopApi().homePath().catch(() => ""),
+        desktopApi().getSettings().catch(() => null)
+      ]);
+      const rows = buildMentionCandidates(
+        projects.map((project) => ({
+          projectId: project.projectId,
+          alias: project.alias,
+          localPath: project.localPath,
+          pathMissing: project.pathMissing,
+          sessionCount: project.sessionCount,
+          lastSeenAtMs: project.lastSeenAtMs,
+          pinned: project.pinned
+        })),
+        {
+          homeDir: home || "",
+          // The app's own folders sit under the panel home, which the settings
+          // override or the default `~/.agent-resume-panel` decides.
+          panelHome: settings?.panelHome || (home ? `${home}/.agent-resume-panel` : ""),
+          packs: workspacePacks
+        }
+      );
+      setCandidates(rows);
+      setSelectedPaths(new Set());
+    } catch (error) {
+      console.warn("Failed to scan mention candidates:", error);
+      setCandidates([]);
+    } finally {
+      setScanning(false);
+    }
+  }, [workspacePacks]);
+  const applicable = (candidates ?? []).filter((row) => !row.exclusion);
+  const toggleCandidate = (path: string, checked: boolean) => {
+    setSelectedPaths((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(path);
+      else next.delete(path);
+      return next;
+    });
+  };
+  const applyCandidates = () => {
+    const rows = applicable.filter((row) => selectedPaths.has(row.path));
+    if (rows.length === 0) return;
+    const taken = new Set(workspacePacks.map((pack) => pack.cwd.trim()));
+    const added = rows
+      .filter((row) => !taken.has(row.path))
+      .map((row) => ({ id: row.id, cwd: row.path }));
+    if (added.length === 0) return;
+    update("composerMentions", [...workspacePacks, ...added]);
+    setCandidates(null);
+    setSelectedPaths(new Set());
+  };
+  const exclusionLabel = (exclusion: MentionCandidate["exclusion"]): string => {
+    if (exclusion === "home") return t("desktop.settings.mentionScanExcludedHome");
+    if (exclusion === "temp") return t("desktop.settings.mentionScanExcludedTemp");
+    if (exclusion === "internal") return t("desktop.settings.mentionScanExcludedInternal");
+    if (exclusion === "missing") return t("desktop.settings.mentionScanExcludedMissing");
+    return t("desktop.settings.mentionScanExcludedAdded");
   };
   return <>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.newSessionGroup")}</h3><div className="settings-group-body">
@@ -220,6 +293,39 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
         ><ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />{t("desktop.settings.composerSlashAdd")}</button>
       </div>
     </div></section>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.mentionSourcesGroup")}</h3><div className="settings-group-body">
+      <p className="settings-footnote">{t("desktop.settings.mentionSourcesHint")}</p>
+      <ToggleRow
+        title={t("desktop.settings.mentionSourceWorkspaces")}
+        description={t("desktop.settings.mentionSourceWorkspacesDesc")}
+        checked={draft.composerMentionsEnabled.workspaces}
+        onChange={(value) => update("composerMentionsEnabled", { ...draft.composerMentionsEnabled, workspaces: value })}
+      />
+      <ToggleRow
+        title={t("desktop.settings.mentionSourceTasks")}
+        description={t("desktop.settings.mentionSourceTasksDesc")}
+        checked={draft.composerMentionsEnabled.tasks}
+        onChange={(value) => update("composerMentionsEnabled", { ...draft.composerMentionsEnabled, tasks: value })}
+      />
+      <ToggleRow
+        title={t("desktop.settings.mentionSourceNotes")}
+        description={t("desktop.settings.mentionSourceNotesDesc")}
+        checked={draft.composerMentionsEnabled.notes}
+        onChange={(value) => update("composerMentionsEnabled", { ...draft.composerMentionsEnabled, notes: value })}
+      />
+      <ToggleRow
+        title={t("desktop.settings.mentionSourceSessions")}
+        description={t("desktop.settings.mentionSourceSessionsDesc")}
+        checked={draft.composerMentionsEnabled.sessions}
+        onChange={(value) => update("composerMentionsEnabled", { ...draft.composerMentionsEnabled, sessions: value })}
+      />
+      <ToggleRow
+        title={t("desktop.settings.mentionSourceProjectDirs")}
+        description={t("desktop.settings.mentionSourceProjectDirsDesc")}
+        checked={draft.composerMentionsEnabled.projects}
+        onChange={(value) => update("composerMentionsEnabled", { ...draft.composerMentionsEnabled, projects: value })}
+      />
+    </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.workspaceMentionsGroup")}</h3>
       <p className="settings-footnote muted">{t("desktop.settings.workspaceMentionsHint")}</p>
       <div className="settings-group-body">
@@ -267,6 +373,57 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
           onClick={() => update("composerMentions", [...workspacePacks, { id: "", cwd: "" }], { commit: false })}
         ><ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />{t("desktop.settings.workspaceMentionAdd")}</button>
       </div>
+    </div></section>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.mentionScanGroup")}</h3><div className="settings-group-body">
+      <p className="settings-footnote">{draft.composerMentionsEnabled.projects ? t("desktop.settings.mentionScanHint") : t("desktop.settings.mentionScanHintDisabled")}</p>
+      <div className="settings-action-row">
+        <button type="button" className="tool-btn" disabled={scanning || !draft.composerMentionsEnabled.projects} onClick={() => void scanCandidates()}>
+          <ThemeIcon name="search" size={ICON_SIZE.dense} aria-hidden="true" />
+          {scanning ? t("desktop.settings.mentionScanRunning") : t("desktop.settings.mentionScanRun")}
+        </button>
+        {candidates ? (
+          <>
+            <button type="button" className="tool-btn" disabled={applicable.length === 0} onClick={() => setSelectedPaths(new Set(applicable.map((row) => row.path)))}>{t("desktop.settings.mentionScanSelectAll")}</button>
+            <button type="button" className="tool-btn" disabled={selectedPaths.size === 0} onClick={() => setSelectedPaths(new Set())}>{t("desktop.settings.mentionScanSelectNone")}</button>
+            <button type="button" className="tool-btn" disabled={selectedPaths.size === 0} onClick={applyCandidates}>{t("desktop.settings.mentionScanApply")}</button>
+          </>
+        ) : null}
+      </div>
+      {candidates ? (
+        <p className="settings-footnote muted">
+          {t("desktop.settings.mentionScanSummary", applicable.length, candidates.length - applicable.length, selectedPaths.size)}
+        </p>
+      ) : null}
+      {candidates && candidates.length > 0 ? (
+        <div className="settings-item-list">
+          {candidates.slice(0, 200).map((row) => {
+            const disabled = Boolean(row.exclusion);
+            return (
+              <label
+                key={row.projectId}
+                className={`settings-row settings-mention-candidate${disabled ? " is-excluded" : ""}`}
+                title={row.path}
+              >
+                <input
+                  type="checkbox"
+                  checked={!disabled && selectedPaths.has(row.path)}
+                  disabled={disabled}
+                  onChange={(event) => toggleCandidate(row.path, event.target.checked)}
+                />
+                <span className="settings-row-label">
+                  <span className="settings-row-title">@{row.id} · {row.label}</span>
+                  <span className="settings-row-desc">{row.path}</span>
+                </span>
+                <span className="settings-row-desc">
+                  {disabled
+                    ? exclusionLabel(row.exclusion)
+                    : `${row.sessionCount}`}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      ) : null}
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.embeddedEditorGroup")}</h3><div className="settings-group-body">
       <ToggleRow title={t("desktop.settings.editorEditable")} description={t("desktop.settings.editorEditableDesc")} checked={draft.editorEditable} onChange={(value) => update("editorEditable", value)} />

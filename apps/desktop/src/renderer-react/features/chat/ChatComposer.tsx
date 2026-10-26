@@ -13,6 +13,11 @@ import type {
 import { THUNDER_PERMISSION_MODES } from "@agent-resume/core/browser";
 import type { WorkbenchComposerMention } from "@agent-resume/core";
 import { normalizeComposerMentions } from "../../workspacePacks";
+import {
+  DEFAULT_WORKBENCH_MENTION_SOURCES,
+  normalizeWorkbenchMentionSources
+} from "@agent-resume/core/browser";
+import type { WorkbenchMentionSources } from "@agent-resume/core";
 import { buildMentionSuggestions, GTD_STATUS_LABELS, sortGtdTasks, type ChatMentionSuggestion } from "./composerMentions";
 import type { ChatRunMetrics } from "./useThunderChat";
 import {
@@ -407,37 +412,31 @@ export function ChatComposer({
   const [conversations, setConversations] = useState<Array<{ id: string; title?: string; message_count?: number }>>([]);
   const [referencedMentions, setReferencedMentions] = useState<ChatMentionSuggestion[]>([]);
   /**
-   * Workspace packs (`@anfeng`) and catalog projects (`@wlgk`) — the two ways a
-   * mention can point the conversation at a directory, since the board chat and
-   * Quick Agent carry no workspace picker.
+   * Workspace packs (`@anfeng`): the only mention that points the conversation
+   * at a directory, since the board chat and Quick Agent carry no workspace
+   * picker. Catalog projects stay out — Settings promotes one into a pack.
    */
   const [workspacePacks, setWorkspacePacks] = useState<WorkbenchComposerMention[]>([]);
-  const [mentionProjects, setMentionProjects] = useState<Array<{ id: string; label: string; path: string }>>([]);
+  /**
+   * Which kinds the `@` menu lists. Read here too: the composer compiles a
+   * mention's content, so it must not offer a kind it would then ignore.
+   */
+  const [mentionSourcesEnabled, setMentionSourcesEnabled] = useState<WorkbenchMentionSources>(
+    DEFAULT_WORKBENCH_MENTION_SOURCES
+  );
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
         const settings = await desktopApi().getSettings();
-        if (!cancelled) setWorkspacePacks(normalizeComposerMentions(settings?.workbench?.composerMentions));
+        if (cancelled) return;
+        setWorkspacePacks(normalizeComposerMentions(settings?.workbench?.composerMentions));
+        setMentionSourcesEnabled(
+          normalizeWorkbenchMentionSources(settings?.workbench?.composerMentionSources)
+        );
       } catch (err) {
         console.warn("Failed to read workspace packs:", err);
-      }
-      try {
-        const projects = await desktopApi().listProjects();
-        if (!cancelled) {
-          setMentionProjects(
-            projects
-              .filter((project) => project.localPath && !project.pathMissing)
-              .map((project) => ({
-                id: project.projectId,
-                label: project.alias || project.localPath || "",
-                path: project.localPath || ""
-              }))
-          );
-        }
-      } catch (err) {
-        console.warn("Failed to read projects:", err);
       }
     })();
     return () => {
@@ -793,12 +792,12 @@ export function ChatComposer({
     if (!atToken) return [];
     return buildMentionSuggestions(atToken.query, {
       packs: workspacePacks,
-      projects: mentionProjects,
       tasks,
       notes,
-      conversations
+      conversations,
+      enabled: mentionSourcesEnabled
     });
-  }, [atToken, tasks, notes, conversations, workspacePacks, mentionProjects]);
+  }, [atToken, tasks, notes, conversations, workspacePacks, mentionSourcesEnabled]);
 
   // Path suggestions (#): directories and files
   const directoryQueryPath = hashToken?.dirPath ?? "";
@@ -980,7 +979,7 @@ export function ChatComposer({
   const acceptMentionSuggestion = useCallback(
     (item: ChatMentionSuggestion) => {
       if (!atToken) return;
-      if (item.kind === "workspace" || item.kind === "project") {
+      if (item.kind === "workspace") {
         bindMentionDirectory(item);
       }
       // A task is the multi-repository container: binding it lets the run inherit
@@ -1007,9 +1006,9 @@ export function ChatComposer({
       setText(next);
       setMentionDismissed(true);
       setActiveMention(0);
-      // Projects carry no reference block, and a bound task supplies its own
-      // context on the run, so neither is kept as a mention.
-      if (item.kind !== "project" && !boundTask) setReferencedMentions((prev) => [...prev, item]);
+      // A bound task supplies its own context on the run, so it is not kept as
+      // a mention; every other kind contributes a block to the prompt.
+      if (!boundTask) setReferencedMentions((prev) => [...prev, item]);
       requestAnimationFrame(() => {
         const el = textareaRef.current;
         if (el) {

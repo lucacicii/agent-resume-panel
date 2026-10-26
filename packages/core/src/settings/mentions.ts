@@ -2,6 +2,18 @@ import * as path from "node:path";
 import { expandHome } from "../pathUtils";
 import type { WorkbenchComposerMention } from "./types";
 
+import {
+  COMPOSER_MENTION_ID,
+  COMPOSER_MENTIONS_MAX,
+  isMentionRecord
+} from "./mentionSources";
+
+export {
+  COMPOSER_MENTION_ID,
+  COMPOSER_MENTIONS_MAX,
+  normalizeWorkbenchMentionSources
+} from "./mentionSources";
+
 function mentionIdKey(id: string): string {
   return id.trim().replace(/^@+/, "").toLowerCase();
 }
@@ -29,13 +41,6 @@ export function matchMentionForCwd(
   return mentions.find((item) => cwdKey(item.cwd) === key) ?? null;
 }
 
-export const COMPOSER_MENTION_ID = /^[A-Za-z0-9_-]{1,40}$/;
-export const COMPOSER_MENTIONS_MAX = 50;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function normalizeMentionPath(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const expanded = expandHome(value);
@@ -55,7 +60,7 @@ export function normalizeWorkbenchComposerMentions(
   const seen = new Set<string>();
   const output: WorkbenchComposerMention[] = [];
   for (const entry of value) {
-    if (!isRecord(entry)) continue;
+    if (!isMentionRecord(entry)) continue;
     const id = String(entry.id ?? "").trim().replace(/^@+/, "");
     if (!COMPOSER_MENTION_ID.test(id)) continue;
     const key = id.toLowerCase();

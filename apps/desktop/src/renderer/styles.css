@@ -2280,6 +2280,45 @@ html[data-window-mode="task"] #react-chrome:empty {
   line-height: var(--line-height-body);
 }
 
+/* Scan results for auto-collected `@` packs: a checkbox, the id it would take,
+   the path, then the session count or the reason it was excluded. */
+.settings-mention-candidate {
+  justify-content: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.settings-mention-candidate.is-excluded {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.settings-mention-candidate .settings-row-label {
+  gap: 0;
+}
+
+.settings-mention-candidate .settings-row-title,
+.settings-mention-candidate .settings-row-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-mention-candidate > .settings-row-desc {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-item-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: var(--space-1);
+}
+
 .settings-row-control {
   flex: 0 0 auto;
   display: inline-flex;

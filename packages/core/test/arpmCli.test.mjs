@@ -52,28 +52,23 @@ function captureStdio(fn) {
   }).then((code) => ({ code, stdout: stdout.join("\n"), stderr: stderr.join("\n") }));
 }
 
-test("arpm list / prompt / go print the configured workspace pack", async () => {
+test("arpm list / go print the configured workspace pack", async () => {
   await withPanelHome(async (panelHome) => {
     const listed = await captureStdio(() => runArpmCli(["list"]));
     assert.equal(listed.code, 0);
     assert.match(listed.stdout, /anfeng/);
     assert.match(listed.stdout, new RegExp(path.join(panelHome, "c")));
 
-    const prompted = await captureStdio(() => runArpmCli(["prompt", "anfeng"]));
-    assert.equal(prompted.code, 0);
-    assert.match(prompted.stdout, /\[Workspace anfeng\]/);
-    assert.match(prompted.stdout, /Reference \(read only\):/);
-
     const gone = await captureStdio(() => runArpmCli(["go", "anfeng"]));
     assert.equal(gone.code, 0);
-    assert.match(gone.stdout, /\[Workspace anfeng\]/);
     assert.match(gone.stdout, /cd '/);
+    assert.match(gone.stdout, new RegExp(path.join(panelHome, "c")));
 
     const printed = await captureStdio(() => runArpmCli(["go", "anfeng", "--print-cwd"]));
     assert.equal(printed.code, 0);
     assert.equal(printed.stdout.trim(), path.join(panelHome, "c"));
 
-    const missing = await captureStdio(() => runArpmCli(["prompt", "nope"]));
+    const missing = await captureStdio(() => runArpmCli(["go", "nope"]));
     assert.equal(missing.code, 1);
     assert.match(missing.stderr, /Unknown mention/);
   });

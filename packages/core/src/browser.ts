@@ -12,3 +12,10 @@
  * Everything exported here must stay pure data or pure logic — no `node:*`.
  */
 export { THUNDER_PERMISSION_MODES, normalizeThunderPermissionMode } from "./thunder/types";
+export {
+  COMPOSER_MENTION_ID,
+  COMPOSER_MENTIONS_MAX,
+  DEFAULT_WORKBENCH_MENTION_SOURCES,
+  normalizeWorkbenchMentionSources
+} from "./settings/mentionSources";
+export type { WorkbenchMentionSources } from "./settings/mentionSources";

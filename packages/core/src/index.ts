@@ -56,6 +56,7 @@ export type {
   WorkbenchEditorAutoSaveDelayMs,
   WorkbenchComposerSlashPhrase,
   WorkbenchComposerMention,
+  WorkbenchMentionSources,
   WorkbenchNewSessionTarget,
   AcpAgentProvider,
   AcpAutoApprovePermissions,
@@ -148,10 +149,14 @@ export {
   effectivePanelHome,
   catalogDbFromSettings
 } from "./settings/store";
+export { DEFAULT_WORKBENCH_MENTION_SOURCES } from "./settings/types";
 export {
   COMPOSER_MENTION_ID,
   COMPOSER_MENTIONS_MAX,
-  normalizeWorkbenchComposerMentions
+  matchMentionForCwd,
+  normalizeWorkbenchComposerMentions,
+  normalizeWorkbenchMentionSources,
+  resolveMention
 } from "./settings/mentions";
 
 export type { AgentProvider, AgentSession, CatalogSessionRow } from "./catalog/types";

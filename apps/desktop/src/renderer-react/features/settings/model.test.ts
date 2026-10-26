@@ -253,6 +253,56 @@ describe("settings model", () => {
     expect(emptied.workbench?.composerSlashPhrases).toEqual([]);
   });
 
+  it("defaults the @ sources on, with auto-collected project directories off", () => {
+    const draft = workbenchDraftFromSettings(settings);
+    expect(draft.composerMentionsEnabled).toEqual({
+      workspaces: true,
+      tasks: true,
+      notes: true,
+      sessions: true,
+      projects: false
+    });
+  });
+
+  it("round-trips the @ sources and repairs a partial value", () => {
+    const draft = workbenchDraftFromSettings(settings);
+    const patched = workbenchPatch(settings, {
+      ...draft,
+      composerMentionsEnabled: {
+        workspaces: false,
+        tasks: true,
+        notes: false,
+        sessions: true,
+        projects: true
+      }
+    });
+    expect(patched.workbench?.composerMentionSources).toEqual({
+      workspaces: false,
+      tasks: true,
+      notes: false,
+      sessions: true,
+      projects: true
+    });
+    expect(
+      workbenchDraftFromSettings({ ...settings, workbench: patched.workbench })
+        .composerMentionsEnabled
+    ).toEqual(patched.workbench?.composerMentionSources);
+
+    // A stored value missing keys falls back to the default per key rather than
+    // becoming an `undefined` the composer would have to guard.
+    const partial = workbenchDraftFromSettings({
+      ...settings,
+      workbench: { composerMentionSources: { sessions: false } }
+    } as unknown as PanelSettings);
+    expect(partial.composerMentionsEnabled).toEqual({
+      workspaces: true,
+      tasks: true,
+      notes: true,
+      sessions: false,
+      projects: false
+    });
+  });
+
 
   it("defaults and clamps workbench transcript markdown font size", () => {
     expect(workbenchDraftFromSettings(settings).transcriptFontSize).toBe(14);

@@ -209,14 +209,6 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
           ]
         }
       }),
-      listProjects: vi.fn().mockResolvedValue([
-        {
-          projectId: "proj-1",
-          alias: "web-ums",
-          localPath: "/Users/lucas/wb/wb-auth/web-ums",
-          pathMissing: false
-        }
-      ]),
       workbenchReadFileText: vi.fn().mockResolvedValue({
         content: "{\n  \"name\": \"app\"\n}",
         truncated: false,
@@ -244,18 +236,31 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
       await waitFor(() => expect(onSelectFinderDir).toHaveBeenCalledWith("/Users/lucas/wb/wlgk/anfeng"));
     });
 
-    it("falls back to catalog projects when no pack matches", async () => {
-      const onSelectFinderDir = vi.fn();
-      const { container } = render(
-        <ChatComposer {...defaultProps} onSelectFinderDir={onSelectFinderDir} />
-      );
+    it("never lists catalog projects, only configured packs", async () => {
+      const { container } = render(<ChatComposer {...defaultProps} />);
       const textarea = container.querySelector("textarea")!;
       fireEvent.change(textarea, { target: { value: "@web", selectionStart: 4 } });
 
-      const option = await screen.findByText("@web-ums");
-      fireEvent.click(option);
+      // The catalog knows this directory, but a directory nobody named is not
+      // a mention: Settings is where it becomes a pack.
+      await waitFor(() => expect(window.agentResume.getSettings).toHaveBeenCalled());
+      expect(screen.queryByText("@web-ums")).toBeNull();
+      expect(screen.queryByRole("listbox")).toBeNull();
+    });
 
-      await waitFor(() => expect(onSelectFinderDir).toHaveBeenCalledWith("/Users/lucas/wb/wb-auth/web-ums"));
+    it("hides a kind switched off in settings", async () => {
+      (window as any).agentResume.getSettings = vi.fn().mockResolvedValue({
+        workbench: {
+          composerMentions: [{ id: "anfeng", cwd: "/Users/lucas/wb/wlgk/anfeng" }],
+          composerMentionSources: { workspaces: false, tasks: true, notes: true, sessions: true, projects: false }
+        }
+      });
+      const { container } = render(<ChatComposer {...defaultProps} />);
+      const textarea = container.querySelector("textarea")!;
+      fireEvent.change(textarea, { target: { value: "@anf", selectionStart: 4 } });
+
+      await waitFor(() => expect(window.agentResume.getSettings).toHaveBeenCalled());
+      expect(screen.queryByText("@anfeng")).toBeNull();
     });
   });
 
