@@ -9,7 +9,7 @@ export const EXTERNAL_MCP_SERVICE_ID = "agent-resume";
 /** In-app browser tools (requires Desktop running). */
 export const EXTERNAL_BROWSER_MCP_SERVICE_ID = "agent-resume-browser";
 
-export type McpClientId = "codex" | "claude" | "gemini" | "antigravity" | "opencode" | "cursor" | "pi" | "grok";
+export type McpClientId = "codex" | "claude" | "gemini" | "antigravity" | "opencode" | "cursor" | "pi" | "grok" | "thunder";
 type McpClientMode = "automatic" | "manual";
 
 interface McpLaunchConfig {
@@ -45,7 +45,8 @@ const definitions: McpClientDefinition[] = [
   { id: "opencode", label: "OpenCode", mode: "automatic", executable: "opencode", configPath: path.join(homedir(), ".config", "opencode", "opencode.json"), detectPath: path.join(homedir(), ".local", "share", "opencode") },
   { id: "cursor", label: "Cursor", mode: "manual", manualHome: path.join(homedir(), ".cursor") },
   { id: "pi", label: "Pi", mode: "manual", manualHome: path.join(homedir(), ".pi", "agent") },
-  { id: "grok", label: "Grok Build", mode: "manual", manualHome: path.join(homedir(), ".grok") }
+  { id: "grok", label: "Grok Build", mode: "manual", manualHome: path.join(homedir(), ".grok") },
+  { id: "thunder", label: "Thunder", mode: "automatic", configPath: path.join(homedir(), ".thunder", "config.toml"), detectPath: path.join(homedir(), ".thunder") }
 ];
 
 function definitionFor(id: string): McpClientDefinition {
@@ -417,6 +418,8 @@ export async function registerMcpClient(
   }
   if (definition.id === "codex" || definition.id === "claude") {
     await registerCliClient(definition.id, definition, launch, replace);
+  } else if (definition.id === "thunder") {
+    await registerTomlClient(definition, EXTERNAL_MCP_SERVICE_ID, launch);
   } else {
     await registerJsonClient(definition, launch, replace);
   }
@@ -436,6 +439,10 @@ export async function removeMcpClient(id: McpClientId): Promise<void> {
       ? ["mcp", "remove", "--scope", "user", EXTERNAL_MCP_SERVICE_ID]
       : ["mcp", "remove", EXTERNAL_MCP_SERVICE_ID];
     await run(executable, args);
+    return;
+  }
+  if (definition.id === "thunder") {
+    await removeTomlServer(definition, EXTERNAL_MCP_SERVICE_ID);
     return;
   }
   await removeJsonClient(definition);
@@ -587,6 +594,8 @@ export async function registerBrowserMcpClient(
   }
   if (definition.id === "codex" || definition.id === "claude") {
     await registerBrowserCliClient(definition.id, definition, launch, replace);
+  } else if (definition.id === "thunder") {
+    await registerTomlClient(definition, EXTERNAL_BROWSER_MCP_SERVICE_ID, withClientName(launch, "thunder"));
   } else {
     await registerBrowserJsonClient(definition, launch, replace);
   }
@@ -603,6 +612,10 @@ export async function removeBrowserMcpClient(id: McpClientId): Promise<void> {
         ? ["mcp", "remove", "--scope", "user", EXTERNAL_BROWSER_MCP_SERVICE_ID]
         : ["mcp", "remove", EXTERNAL_BROWSER_MCP_SERVICE_ID];
     await run(executable, args).catch(() => {});
+    return;
+  }
+  if (definition.id === "thunder") {
+    await removeTomlServer(definition, EXTERNAL_BROWSER_MCP_SERVICE_ID);
     return;
   }
   await removeBrowserJsonClient(definition);
@@ -776,6 +789,91 @@ export function migrateTomlAgentResumeSection(
   return { content: next, changed: next !== content };
 }
 
+/**
+ * Upsert [mcp_servers.<serverName>] command/args/env in TOML configs (Thunder, Codex, Grok).
+ */
+export function upsertTomlMcpSection(
+  content: string,
+  serverName: string,
+  launch: McpLaunchConfig
+): { content: string; changed: boolean } {
+  const sectionHeader = `[mcp_servers.${serverName}]`;
+  const envHeader = `[mcp_servers.${serverName}.env]`;
+
+  const envLines = Object.entries(launch.env)
+    .map(([k, v]) => `${k} = ${JSON.stringify(v)}`)
+    .join("\n");
+
+  const newBlock =
+    `${sectionHeader}\n` +
+    `command = ${JSON.stringify(launch.command)}\n` +
+    `args = [${launch.args.map((a) => JSON.stringify(a)).join(", ")}]\n\n` +
+    `${envHeader}\n` +
+    `${envLines}\n`;
+
+  if (!content.includes(sectionHeader)) {
+    const trailingNewline = content.endsWith("\n") ? "" : "\n";
+    return { content: `${content}${trailingNewline}\n${newBlock}`, changed: true };
+  }
+
+  const regex = new RegExp(
+    `\\[mcp_servers\\.${serverName}\\][\\s\\S]*?(?=\\n\\[(?!mcp_servers\\.${serverName}(?:\\.|$))|\\s*$)`
+  );
+
+  const existingBlock = content.match(regex)?.[0] ?? "";
+  if (existingBlock.trim() === newBlock.trim()) {
+    return { content, changed: false };
+  }
+
+  const updated = content.replace(regex, newBlock.trimEnd());
+  return { content: updated, changed: true };
+}
+
+async function registerTomlClient(
+  definition: McpClientDefinition,
+  serverName: string,
+  launch: McpLaunchConfig
+): Promise<void> {
+  if (!definition.configPath) return;
+  const configDir = path.dirname(definition.configPath);
+  if (!(await exists(configDir))) return;
+
+  let raw = "";
+  try {
+    raw = await readFile(definition.configPath, "utf8");
+  } catch {
+    raw = "";
+  }
+
+  const { content, changed } = upsertTomlMcpSection(raw, serverName, launch);
+  if (changed) {
+    const temporary = `${definition.configPath}.${process.pid}.tmp`;
+    await writeFile(temporary, content, "utf8");
+    await rename(temporary, definition.configPath);
+  }
+}
+
+async function removeTomlServer(
+  definition: McpClientDefinition,
+  serverName: string
+): Promise<void> {
+  if (!definition.configPath || !(await exists(definition.configPath))) return;
+  try {
+    const raw = await readFile(definition.configPath, "utf8");
+    const regex = new RegExp(
+      `\n*\\[mcp_servers\\.${serverName}\\][\\s\\S]*?(?=\\n\\[(?!mcp_servers\\.${serverName}(?:\\.|$))|\\s*$)`
+    );
+    if (regex.test(raw)) {
+      const updated = raw.replace(regex, "");
+      const temporary = `${definition.configPath}.${process.pid}.tmp`;
+      await writeFile(temporary, updated, "utf8");
+      await rename(temporary, definition.configPath);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 async function migrateTomlFile(configPath: string, launch: McpLaunchConfig): Promise<boolean> {
   if (!(await exists(configPath))) return false;
   const raw = await readFile(configPath, "utf8");
@@ -834,7 +932,8 @@ export async function migrateLegacyAgentResumeRegistrations(
 
   const tomlTargets = [
     { label: "codex", path: path.join(homedir(), ".codex", "config.toml") },
-    { label: "grok", path: path.join(homedir(), ".grok", "config.toml") }
+    { label: "grok", path: path.join(homedir(), ".grok", "config.toml") },
+    { label: "thunder", path: path.join(homedir(), ".thunder", "config.toml") }
   ];
   for (const target of tomlTargets) {
     try {

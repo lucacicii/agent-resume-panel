@@ -1,8 +1,8 @@
-import React, { StrictMode, useEffect, useRef, useState } from "react";
+import React, { StrictMode, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nProvider } from "./i18n";
 import { AppChrome } from "./components/AppChrome";
-import { AppSidebar, type BoardView } from "./components/AppSidebar";
+import { type BoardView } from "./components/AppSidebar";
 import { StartupMask } from "./components/StartupMask";
 import { Notifications } from "./components/Notifications";
 import { SelectionSendHost } from "./selection/SelectionSendHost";
@@ -26,6 +26,8 @@ import { startMenuCommandBridge } from "./menuCommands";
 import { updateConfig } from "./components/notificationStore";
 import type { PanelSettings } from "@agent-resume/core";
 import { applyDesktopAppearance, appearanceStateFromSettings, startSystemAccentSync, type DesktopAppearanceState } from "./themes";
+import { StageProvider, useStage } from "./features/stage/StageContext";
+import { StageHost } from "./features/stage/StageHost";
 
 export function applyTheme(settings: Parameters<typeof appearanceStateFromSettings>[0]): DesktopAppearanceState {
   const state = appearanceStateFromSettings(settings);
@@ -217,7 +219,9 @@ function MainDesktopRuntime(): React.JSX.Element {
       <StartupMask />
       <MainRuntimeBootstrap />
       <WindowChromeRuntime />
-      <MainRendererRuntime />
+      <StageProvider>
+        <MainRendererRuntime />
+      </StageProvider>
     </I18nProvider>
   );
 }
@@ -243,81 +247,14 @@ function storedBoardView(): BoardView {
   }
 }
 
-function storedNavCollapsed(): boolean {
-  try {
-    return localStorage.getItem(NAV_COLLAPSED_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
 function MainRendererRuntime(): React.JSX.Element {
-  const [view, setView] = useState<BoardView>(storedBoardView);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(storedNavCollapsed);
-  // The chat pane owns the whole conversation in its hook state (active session,
-  // transcript, live stream, queued input). Mounting it only while it is the
-  // current board view threw that away on every switch, so a run that was
-  // mid-answer came back as an empty new chat. Latch it on first visit, then hide
-  // it with the `active` prop, the way `GtdView` is handled.
-  const [chatVisited, setChatVisited] = useState(false);
-  useEffect(() => {
-    if (view === "chat") setChatVisited(true);
-  }, [view]);
-
-  // The stylesheet keys host visibility off this attribute, the same way it
-  // does for `data-fullscreen`; both views stay mounted-capable, only one shows.
-  useEffect(() => {
-    document.documentElement.dataset.boardView = view;
-    try {
-      localStorage.setItem(BOARD_VIEW_KEY, view);
-    } catch {
-      /* persistence is optional */
-    }
-  }, [view]);
-
-  // ⌘1/⌘2 arrive as menu IPC (macOS eats registered accelerators); the quick
-  // access palette dispatches the same switch as a window event.
-  useEffect(() => {
-    const api = window.agentResume;
-    const stopMenu = typeof api?.onNavShow === "function"
-      ? api.onNavShow((next) => setView(next))
-      : undefined;
-    const onPaletteView = (event: Event) => {
-      const detail = (event as CustomEvent<BoardView>).detail;
-      if (detail === "gtd" || detail === "notes" || detail === "schedule" || detail === "archive" || detail === "sessions") setView(detail);
-    };
-    window.addEventListener("agent-resume:board-view", onPaletteView);
-    return () => {
-      stopMenu?.();
-      window.removeEventListener("agent-resume:board-view", onPaletteView);
-    };
-  }, []);
-
-  // The sidebar collapse is owned here: the toggle lives in the header, the
-  // rail width lives in the sidebar, and both read this one state.
-  useEffect(() => {
-    try {
-      localStorage.setItem(NAV_COLLAPSED_KEY, sidebarCollapsed ? "1" : "0");
-    } catch {
-      /* persistence is optional */
-    }
-  }, [sidebarCollapsed]);
-
   return (
     <>
-      <AppSidebar view={view} onViewChange={setView} collapsed={sidebarCollapsed} />
-      <AppChrome sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)} />
-      <GtdView active={view === "gtd"} />
-      {view === "notes" ? <NotesView active /> : null}
-      {view === "schedule" ? <ScheduleView active /> : null}
-      {chatVisited ? (
-        <ErrorBoundary>
-          <ChatView active={view === "chat"} />
-        </ErrorBoundary>
-      ) : null}
-      {view === "archive" ? <ArchiveView active /> : null}
-      {view === "sessions" ? <SessionsView active /> : null}
-      <BoardQuickAccess />
+      <AppChrome />
+      <ErrorBoundary>
+        <ChatView active={true} />
+      </ErrorBoundary>
+      <StageHost />
       <SelectionSendHost />
       <Notifications />
     </>

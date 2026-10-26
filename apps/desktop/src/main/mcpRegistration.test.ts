@@ -12,6 +12,7 @@ import {
   isLegacyAgentResumeLaunch,
   manualMcpConfig,
   migrateTomlAgentResumeSection,
+  upsertTomlMcpSection,
   parseMcpJsonConfig,
   readMcpJsonConfig,
   resolveExecutableOnPath,
@@ -187,6 +188,33 @@ approval_mode = "approve"
     expect(content).toContain('command = "keep-me"');
 
     const second = migrateTomlAgentResumeSection(content, launch);
+    expect(second.changed).toBe(false);
+  });
+
+  it("upserts agent-resume sections in Thunder TOML config", () => {
+    const launch = createExternalMcpLaunchConfig({
+      executablePath: "/Applications/Agent Resume.app/Contents/MacOS/Agent Resume",
+      cliPath: "/app/packages/core/dist/mcp/cli.js",
+      panelHome: "/Users/test/.agent-resume-panel"
+    });
+
+    const initial = `
+[agent]
+model = "gpt-4o"
+
+[mcp_servers.thunder-memory]
+command = "/Users/test/.cargo/bin/thunder-memory"
+args = ["mcp"]
+`;
+
+    const { content, changed } = upsertTomlMcpSection(initial, "agent-resume", launch);
+    expect(changed).toBe(true);
+    expect(content).toContain("[mcp_servers.agent-resume]");
+    expect(content).toContain('command = "/Applications/Agent Resume.app/Contents/MacOS/Agent Resume"');
+    expect(content).toContain('ELECTRON_RUN_AS_NODE = "1"');
+    expect(content).toContain("[mcp_servers.thunder-memory]");
+
+    const second = upsertTomlMcpSection(content, "agent-resume", launch);
     expect(second.changed).toBe(false);
   });
 });

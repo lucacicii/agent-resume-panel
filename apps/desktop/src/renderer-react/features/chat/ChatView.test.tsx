@@ -31,6 +31,11 @@ const mockConversations: ThunderConversationSummary[] = [
 
 describe("ChatView", () => {
   beforeEach(() => {
+    try {
+      localStorage.setItem("agent-resume:chat-sidebar-open", "1");
+    } catch {
+      /* ignore */
+    }
     const host = document.createElement("div");
     host.id = "react-chat";
     document.body.appendChild(host);

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useTextSearchHighlight } from "../../components/useTextSearch";
 import { desktopApi } from "../../bridge";
@@ -55,6 +56,8 @@ interface ChatMainProps {
   ) => void;
   /** The in-flight turn as ordered runs, so the feed stays in true time order. */
   liveSegments: LiveSegment[];
+  /** All segments across all turns in the active run. */
+  allLiveSegments?: LiveSegment[];
   /** Every turn of the in-flight run, for the dots row. */
   liveTurns?: LiveTurn[];
   models: ThunderModelInfo[];
@@ -122,6 +125,7 @@ export function ChatMain({
   messages,
   isStreaming,
   liveSegments,
+  allLiveSegments,
   liveTurns = [],
   queuedCount,
   onSteerMessage,
@@ -475,44 +479,21 @@ export function ChatMain({
     return () => window.clearTimeout(timer);
   }, [noticeKind, notice?.text, onDismissNotice]);
 
-  return (
-    <div className={hasDialog ? "tb-chat-main has-question" : "tb-chat-main"}>
-      {notice ? (
-        <div
-          className={`tb-chat-title-notice ${notice.kind}`}
-          role="status"
-          onClick={onDismissNotice}
-        >
-          <span className="tb-chat-title-notice-text">{notice.text}</span>
-          {onDismissNotice ? (
-            <button
-              type="button"
-              className="tb-chat-title-notice-close"
-              aria-label="Close"
-              onClick={(event) => {
-                event.stopPropagation();
-                onDismissNotice();
-              }}
-            >
-              ×
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-      {/* Chat Header */}
-      <header className="tb-chat-header">
-        <div className="tb-chat-header-title-box">
-          <span className="tb-header-icon">
-            <ThemeIcon name="sparkles" size={ICON_SIZE.dense} />
-          </span>
-          <span className="tb-header-title">{sessionTitle || "New Conversation"}</span>
-        </div>
+  const titlebarSlot = typeof document !== "undefined" ? document.getElementById("chat-titlebar-slot") : null;
 
-        <div className="tb-chat-header-actions">
-          {headerExtra ? <div className="tb-chat-header-extra">{headerExtra}</div> : null}
+  const headerElement = (
+    <header className="tb-chat-header">
+      <div className="tb-chat-header-title-box">
+        {headerExtra ? <div className="tb-chat-header-extra">{headerExtra}</div> : null}
+        <span className="tb-header-icon">
+          <ThemeIcon name="sparkles" size={ICON_SIZE.dense} />
+        </span>
+        <span className="tb-header-title">{sessionTitle || "New Conversation"}</span>
+      </div>
 
-          {/* Find in conversation (opened via Cmd/Ctrl+F) */}
-          {searchOpen ? (
+      <div className="tb-chat-header-actions">
+        {/* Find in conversation (opened via Cmd/Ctrl+F) */}
+        {searchOpen ? (
           <div className="tb-chat-search">
             <ThemeIcon name="search" size={ICON_SIZE.inline} className="tb-chat-search-icon" aria-hidden="true" />
             <input
@@ -568,39 +549,69 @@ export function ChatMain({
               </div>
             ) : null}
           </div>
+        ) : null}
+
+        {showRunActions ? (
+          <>
+            {/* Trace Popover Trigger */}
+            <button
+              type="button"
+              className={`tb-header-action-btn${isTraceOpen ? " is-active" : ""}`}
+              onClick={() => setIsTraceOpen(!isTraceOpen)}
+              title="View the run's spans"
+            >
+              <ThemeIcon name="activity" size={ICON_SIZE.dense} />
+              <span>Trace</span>
+              {traceSpans.some((span) => span.status === "running") ? (
+                <span className="tb-header-pulse" />
+              ) : null}
+            </button>
+
+            {/* Changes Popover Trigger (single entry for diff + footprint) */}
+            <button
+              type="button"
+              className={`tb-header-action-btn${isChangesOpen ? " is-active" : ""}`}
+              onClick={() => setIsChangesOpen(!isChangesOpen)}
+              title={t("desktop.chat.changes.tooltip")}
+            >
+              <ThemeIcon name="git-branch" size={ICON_SIZE.dense} />
+              <span>{t("desktop.chat.changes.label")}</span>
+              {changes.badgeCount > 0 && (
+                <span className="tb-header-badge">{changes.badgeCount}</span>
+              )}
+            </button>
+          </>
+        ) : null}
+      </div>
+    </header>
+  );
+
+  return (
+    <div className={hasDialog ? "tb-chat-main has-question" : "tb-chat-main"}>
+      {notice ? (
+        <div
+          className={`tb-chat-title-notice ${notice.kind}`}
+          role="status"
+          onClick={onDismissNotice}
+        >
+          <span className="tb-chat-title-notice-text">{notice.text}</span>
+          {onDismissNotice ? (
+            <button
+              type="button"
+              className="tb-chat-title-notice-close"
+              aria-label="Close"
+              onClick={(event) => {
+                event.stopPropagation();
+                onDismissNotice();
+              }}
+            >
+              ×
+            </button>
           ) : null}
-
-          {showRunActions ? <>
-          {/* Trace Popover Trigger */}
-          <button
-            type="button"
-            className={`tb-header-action-btn${isTraceOpen ? " is-active" : ""}`}
-            onClick={() => setIsTraceOpen(!isTraceOpen)}
-            title="View the run's spans"
-          >
-            <ThemeIcon name="activity" size={ICON_SIZE.dense} />
-            <span>Trace</span>
-            {traceSpans.some((span) => span.status === "running") ? (
-              <span className="tb-header-pulse" />
-            ) : null}
-          </button>
-
-          {/* Changes Popover Trigger (single entry for diff + footprint) */}
-          <button
-            type="button"
-            className={`tb-header-action-btn${isChangesOpen ? " is-active" : ""}`}
-            onClick={() => setIsChangesOpen(!isChangesOpen)}
-            title={t("desktop.chat.changes.tooltip")}
-          >
-            <ThemeIcon name="git-branch" size={ICON_SIZE.dense} />
-            <span>{t("desktop.chat.changes.label")}</span>
-            {changes.badgeCount > 0 && (
-              <span className="tb-header-badge">{changes.badgeCount}</span>
-            )}
-          </button>
-          </> : null}
         </div>
-      </header>
+      ) : null}
+      {/* Chat Header: portaled into window chrome if titlebarSlot exists */}
+      {titlebarSlot ? createPortal(headerElement, titlebarSlot) : headerElement}
 
       {/* Popovers */}
       <TracePopover isOpen={isTraceOpen} onClose={() => setIsTraceOpen(false)} spans={traceSpans} />
@@ -662,7 +673,7 @@ export function ChatMain({
                   index={messages.length}
                   anchorIndex={messages.length}
                   isStreaming={true}
-                  segments={liveSegments}
+                  segments={allLiveSegments && allLiveSegments.length > 0 ? allLiveSegments : liveSegments}
                   turnDots={pileOf("live")}
                 />
               )}

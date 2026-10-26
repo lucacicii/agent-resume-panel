@@ -18,6 +18,7 @@ import type {
 } from "@agent-resume/core";
 import { useTraceCollector } from "./useTraceCollector";
 import { stripMachineContext } from "./promptEnvelope";
+import { handleToolExecutionForStage } from "../stage/toolStageRouter";
 
 export interface ChatRunMetrics {
   tps?: number;
@@ -105,6 +106,7 @@ export interface LiveTurn {
 interface SessionStream {
   taskId: string;
   streamingText: string;
+  accumulatedText: string;
   streamingReasoning: string;
   streamingTools: ActiveToolInfo[];
   segments: LiveSegment[];
@@ -183,6 +185,7 @@ function createSessionStream(taskId: string): SessionStream {
   return {
     taskId,
     streamingText: "",
+    accumulatedText: "",
     streamingReasoning: "",
     streamingTools: [],
     segments: [],
@@ -301,6 +304,9 @@ function ensureTurn(stream: SessionStream, turn: number): LiveTurn {
   const turnNo = Number.isFinite(turn) && turn > 0 ? turn : (current?.turn ?? 1);
   if (current && current.turn === turnNo) return current;
   if (current) current.status = "done";
+  if (current && stream.accumulatedText && !stream.accumulatedText.endsWith("\n\n")) {
+    stream.accumulatedText = stream.accumulatedText.trimEnd() + "\n\n";
+  }
   const next: LiveTurn = {
     turn: turnNo,
     segments: [],
@@ -317,14 +323,26 @@ function ensureTurn(stream: SessionStream, turn: number): LiveTurn {
 /**
  * Every segment of a run, turn by turn.
  *
- * `stream.segments` now points at the *running* turn only, so anything that wants
- * the whole run (freezing a finished message, salvaging a cancelled one) has to
- * concatenate the turns instead.
+ * Concatenates all turns' segments so that live stream rendering and finalized
+ * messages preserve the full conversational trail across multiple turns (e.g.
+ * before and after `ask_user_question`).
  */
 function runSegmentsOf(stream: SessionStream | undefined): LiveSegment[] | undefined {
   if (!stream) return undefined;
   if (stream.turns.length === 0) return stream.segments;
   return stream.turns.flatMap((turn) => turn.segments);
+}
+
+/** Extract full text generated across all turns of a run. */
+function runTextOf(stream: SessionStream | undefined): string {
+  if (!stream) return "";
+  if (stream.accumulatedText) return stream.accumulatedText;
+  if (stream.turns.length === 0) return stream.streamingText;
+  const turnTexts = stream.turns.flatMap((turn) =>
+    turn.segments.filter((s) => s.kind === "text").map((s) => s.text)
+  );
+  if (turnTexts.length > 0) return turnTexts.join("\n\n");
+  return stream.streamingText;
 }
 
 /** Settle a turn's bookkeeping from its `turn_end` stats (or from the clock). */
@@ -683,6 +701,12 @@ export function useThunderChat() {
   const [liveSegments, setLiveSegments] = useState<LiveSegment[]>([]);
 
   /**
+   * All segments across all turns in the active run, so the UI feed preserves
+   * preceding turns (e.g. before ask_user_question) during live streaming.
+   */
+  const [allLiveSegments, setAllLiveSegments] = useState<LiveSegment[]>([]);
+
+  /**
    * Every turn of the in-flight run, for the dots row above the feed. Like
    * `liveSegments` this mirrors only the visible session; the real per-session
    * state lives on the session stream.
@@ -1018,14 +1042,23 @@ export function useThunderChat() {
             snapshot.startedAtMs ||
             Date.now();
           const rebuilt = rebuildTurns(snapshot.events);
+          const restoredSegments = rebuildSegments(snapshot.events);
+          const currentTurn = rebuilt.currentTurn || (rebuilt.turns.length > 0 ? rebuilt.turns[rebuilt.turns.length - 1] : null);
+          if (currentTurn) {
+            currentTurn.segments = restoredSegments;
+          }
+          if (rebuilt.turns.length === 1 && currentTurn) {
+            rebuilt.turns[0] = currentTurn;
+          }
           stream = {
             ...createSessionStream(snapshot.taskId),
             streamingText: snapshot.streamingText,
+            accumulatedText: snapshot.streamingText,
             streamingReasoning: snapshot.streamingReasoning,
             streamingTools: snapshot.streamingTools,
-            segments: rebuildSegments(snapshot.events),
+            segments: restoredSegments,
             turns: rebuilt.turns,
-            currentTurn: rebuilt.currentTurn,
+            currentTurn,
             runStartedAtMs: snapshot.startedAtMs || Date.now(),
             turnFirstTokenAt: textTok + reasonTok > 0 ? firstTs : null,
             turnTextTokens: textTok,
@@ -1051,6 +1084,7 @@ export function useThunderChat() {
         // carry it, so start clean rather than show another session's banner.
         setPausedTask(null);
         setLiveSegments(stream.segments);
+        setAllLiveSegments(runSegmentsOf(stream) ?? stream.segments);
         setLiveTurns(stream.turns.map((turn) => ({ ...turn })));
         setStreamTokensCount(snapMetrics ? snapMetrics.live_tokens : live.tokensCount);
         setStreamReasoningCount(snapMetrics ? snapMetrics.live_reasoning_tokens : live.reasoningCount);
@@ -1319,7 +1353,19 @@ export function useThunderChat() {
       // belonged to this task.
       setPausedTask((prev) => (!prev || prev.taskId === effectiveTaskId ? null : prev));
 
-      const streamed = opts.finalContent ?? streamState?.streamingText ?? "";
+      const fullRunText = runTextOf(streamState);
+      let streamed = streamState?.streamingText ?? "";
+      if (opts.finalContent) {
+        if (!fullRunText || opts.finalContent.includes(fullRunText) || opts.finalContent === fullRunText) {
+          streamed = opts.finalContent;
+        } else if (fullRunText.includes(opts.finalContent)) {
+          streamed = fullRunText;
+        } else {
+          streamed = `${fullRunText}\n\n${opts.finalContent}`;
+        }
+      } else if (fullRunText) {
+        streamed = fullRunText;
+      }
       // Partial text still belongs to the transcript: show it under the failure.
       const content = opts.failureNotice
         ? `${opts.failureNotice}${streamed ? `\n\n${streamed}` : ""}`
@@ -1393,6 +1439,7 @@ export function useThunderChat() {
         });
         setPendingQuestion(null);
         setLiveSegments([]);
+        setAllLiveSegments([]);
         // Kept, not cleared: a drawer left open on the running turn holds an
         // index into these, and re-publishing the settled copies is what flips a
         // last turn that never saw `turn_end` from "running" to done. The row
@@ -1785,7 +1832,7 @@ export function useThunderChat() {
       finalizeSessionTurn({
         sessionId: curSessId,
         taskId: targetTaskId || stream.taskId,
-        finalContent: stream.streamingText || "(Cancelled)",
+        finalContent: runTextOf(stream) || stream.streamingText || "(Cancelled)",
         finalReasoning: stream.streamingReasoning || undefined,
         finalTools: stream.streamingTools.length > 0 ? stream.streamingTools : undefined,
         // Read only when the run opened no turn at all — there is no pile to
@@ -1798,6 +1845,7 @@ export function useThunderChat() {
       setIsStreaming(false);
       setActiveTaskId(null);
       setLiveSegments([]);
+      setAllLiveSegments([]);
       setLiveTurns([]);
       setStreamTokensCount(0);
       setStreamReasoningCount(0);
@@ -1859,11 +1907,11 @@ export function useThunderChat() {
       }
       const activeStream = stream;
 
-      // One state write per event keeps the transcript in true time order: the
-      // segments are mutated in place and a shallow copy is published, so React
-      // re-renders the live turn without the hook rebuilding the array itself.
       const publishSegments = () => {
-        if (isCurrentSession) setLiveSegments([...activeStream.segments]);
+        if (!isCurrentSession) return;
+        setLiveSegments([...activeStream.segments]);
+        const all = runSegmentsOf(activeStream) ?? activeStream.segments;
+        setAllLiveSegments([...all]);
       };
 
       // A shallow copy per turn: the turn objects are mutated in place as the
@@ -1949,6 +1997,7 @@ export function useThunderChat() {
             stream.turnFirstTokenAt = nowMs;
           }
           stream.streamingText += delta;
+          stream.accumulatedText += delta;
           stream.turnTextTokens = estimateTokenCount(stream.streamingText);
           appendDelta(stream.segments, "text", delta);
           if (isCurrentSession) {
@@ -2000,6 +2049,10 @@ export function useThunderChat() {
           openTurn(turnNo);
           const toolCallId = (ev as any).tool_call_id;
           const result = (ev as any).result;
+          const matchedTool = stream.streamingTools.find((t) => t.toolCallId === toolCallId);
+          if (matchedTool?.name && !result?.is_error) {
+            handleToolExecutionForStage(matchedTool.name, matchedTool.arguments, result?.output);
+          }
           stream.streamingTools = stream.streamingTools.map((t) => {
             if (t.toolCallId === toolCallId) {
               return {
@@ -2248,6 +2301,7 @@ export function useThunderChat() {
     steerRunningTask,
     followUpRunningTask,
     liveSegments,
+    allLiveSegments,
     models,
     selectedModel,
     thinkingLevel,

@@ -223,9 +223,6 @@ export interface DesktopApi {
   onTaskWindowLimit(callback: (payload: { limit: number }) => void): () => void;
   /** Run a template script in this window's workbench (sent while it was open). */
   onTaskWindowRunScript(callback: (payload: { name: string; command: string; cwd: string }) => void): () => void;
-  /** The host asked this window to close; answer with `taskWindowCloseReady`. */
-  onTaskWindowCloseRequested(callback: () => void): () => void;
-  taskWindowCloseReady(args: { ok: boolean }): Promise<{ ok: boolean }>;
   browserCreate(args: {
     projectPath: string;
     startUrl?: string;
@@ -1704,12 +1701,6 @@ const api: DesktopApi = {
     ipcRenderer.on("task-window:run-script", handler);
     return () => ipcRenderer.removeListener("task-window:run-script", handler);
   },
-  onTaskWindowCloseRequested: (callback) => {
-    const handler = () => callback();
-    ipcRenderer.on("task-window:requestClose", handler);
-    return () => ipcRenderer.removeListener("task-window:requestClose", handler);
-  },
-  taskWindowCloseReady: (args) => ipcRenderer.invoke("task-window:closeReady", args),
   browserCreate: (args) => ipcRenderer.invoke("browser:create", args),
   browserDestroy: (args) => ipcRenderer.invoke("browser:destroy", args),
   browserList: () => ipcRenderer.invoke("browser:list"),

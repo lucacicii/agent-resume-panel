@@ -21,7 +21,8 @@ const AUTO_MCP_CLIENTS: McpClientId[] = [
   "codex",
   "gemini",
   "antigravity",
-  "opencode"
+  "opencode",
+  "thunder"
 ];
 
 interface ExternalMcpSyncResult {

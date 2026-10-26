@@ -39,9 +39,9 @@ export function parseSkillFrontmatter(content: string): {
     const cleanKey = currentKey.trim().toLowerCase();
     const cleanVal = currentValue.trim();
     if (cleanKey === "name") {
-      name = cleanVal.replace(/^["']|["']$/g, "");
+      name = cleanVal.replace(/^["']|["']$/g, "").trim();
     } else if (cleanKey === "description") {
-      description = cleanVal.replace(/^["']|["']$/g, "");
+      description = cleanVal.replace(/^[>|][+-]?\s*/, "").replace(/^["']|["']$/g, "").trim();
     } else if (cleanKey === "trigger" || cleanKey === "triggers") {
       if (cleanVal) {
         triggers.push(cleanVal.replace(/^["']|["']$/g, ""));
@@ -105,7 +105,7 @@ export function parseSkillMarkdownFallback(content: string, fallbackName: string
     }
 
     if (descLines.length < 5) {
-      descLines.push(trimmed);
+      descLines.push(trimmed.replace(/^[>|][+-]?\s*/, "").trim());
     }
   }
 

@@ -214,6 +214,28 @@ export const ArtifactCard = memo(function ArtifactCard({
             <button
               type="button"
               className="artifact-action-btn"
+              onClick={() => {
+                window.dispatchEvent(
+                  new CustomEvent("agent-resume:stage-artifact", {
+                    detail: {
+                      id: `art-${displayTitle.replace(/\s+/g, "-").toLowerCase()}`,
+                      version: "1.0",
+                      title: displayTitle,
+                      target: "stage",
+                      kind: normalizedLang === "mermaid" ? "graph:mermaid" : "custom:app",
+                      payload: code
+                    }
+                  })
+                );
+              }}
+              title="Open in Stage"
+              aria-label="Open in Stage"
+            >
+              <ThemeIcon name="panel-right" size={ICON_SIZE.dense} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="artifact-action-btn"
               onClick={() => setIsFullscreen(true)}
               title={t("desktop.artifact.fullscreen")}
               aria-label={t("desktop.artifact.fullscreen")}

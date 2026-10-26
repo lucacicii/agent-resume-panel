@@ -814,6 +814,15 @@ export class ThunderClient {
             effectivePrompt = `${options.roleContext.trim()}\n\n${effectivePrompt}`;
           }
 
+          const systemArtifactHint =
+            `[System UI Capabilities]\n` +
+            `- When the user asks to view or manage tasks, call 'task_list', 'task_create', or 'task_write' MCP tools. The desktop UI automatically visualizes these as a high-fidelity native Kanban board artifact on the stage. DO NOT manually generate raw HTML/CSS code mockups for tasks when these native tools are available.\n` +
+            `- When the user asks to read notes or documentation, call 'note_read' MCP tool to project the native note viewer.\n` +
+            `- For open-ended interactive tools, calculators, or custom visual charts, output clean codeblocks (\`\`\`html, \`\`\`mermaid, \`\`\`svg) which the user can view inline or project to the Stage.\n` +
+            `[End System UI Capabilities]\n\n`;
+
+          effectivePrompt = `${systemArtifactHint}${effectivePrompt}`;
+
           // Send run_task request (acknowledged synchronously)
           await this.sendCommand(
             "run_task",

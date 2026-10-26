@@ -553,6 +553,79 @@ export function ChatComposer({
 
   const handleDrop = useCallback(
     async (e: React.DragEvent) => {
+      // 1. Dropped Kanban task card
+      const rawTask = e.dataTransfer.getData("application/x-agent-resume-task");
+      if (rawTask) {
+        e.preventDefault();
+        try {
+          const taskData = JSON.parse(rawTask) as { noteId?: string; id?: string; title?: string; gtdStatus?: string };
+          const noteId = taskData.noteId || taskData.id;
+          const title = taskData.title || noteId || "任务";
+          const mentionText = `@task:${title} `;
+          setText((prev) => {
+            const trimmed = prev ? prev.trimEnd() : "";
+            return trimmed ? `${trimmed} ${mentionText}` : mentionText;
+          });
+          if (noteId) {
+            setReferencedMentions((prev) => {
+              if (prev.some((m) => m.id === noteId)) return prev;
+              return [
+                ...prev,
+                {
+                  kind: "task",
+                  id: noteId,
+                  title,
+                  badge: "Task",
+                  gtdStatus: taskData.gtdStatus
+                }
+              ];
+            });
+          }
+          requestAnimationFrame(() => {
+            textareaRef.current?.focus();
+          });
+          return;
+        } catch {
+          /* continue */
+        }
+      }
+
+      // 2. Dropped Note document
+      const rawNote = e.dataTransfer.getData("application/x-agent-resume-note");
+      if (rawNote) {
+        e.preventDefault();
+        try {
+          const noteData = JSON.parse(rawNote) as { noteId?: string; title?: string };
+          const noteId = noteData.noteId;
+          const title = noteData.title || noteId || "笔记";
+          const mentionText = `@note:${title} `;
+          setText((prev) => {
+            const trimmed = prev ? prev.trimEnd() : "";
+            return trimmed ? `${trimmed} ${mentionText}` : mentionText;
+          });
+          if (noteId) {
+            setReferencedMentions((prev) => {
+              if (prev.some((m) => m.id === noteId)) return prev;
+              return [
+                ...prev,
+                {
+                  kind: "note",
+                  id: noteId,
+                  title,
+                  badge: "Note"
+                }
+              ];
+            });
+          }
+          requestAnimationFrame(() => {
+            textareaRef.current?.focus();
+          });
+          return;
+        } catch {
+          /* continue */
+        }
+      }
+
       const directory = droppedDirectoryPath(e.dataTransfer);
       if (directory) {
         e.preventDefault();
@@ -779,9 +852,28 @@ export function ChatComposer({
         out.push({
           kind: "skill",
           name: s.name,
-          description: s.description || "Skill",
+          description: (s.description || "Skill").replace(/^[>|][+-]?\s*/, "").trim(),
           location: s.location
         });
+      }
+    }
+
+    const nativeCommands: ChatSlashSuggestion[] = [
+      {
+        kind: "mcp",
+        name: "gtd",
+        description: "在右侧舞台打开原生 GTD 任务看板 (Native Kanban)"
+      },
+      {
+        kind: "mcp",
+        name: "tasks",
+        description: "查看当前工程的任务看板 (Native Tasks)"
+      }
+    ];
+
+    for (const nc of nativeCommands) {
+      if (!q || nc.name.includes(q) || nc.description?.toLowerCase().includes(q)) {
+        out.push(nc);
       }
     }
 
@@ -1102,6 +1194,83 @@ export function ChatComposer({
     [enterDirectory, hashToken, cursor, text]
   );
 
+  const triggerKanbanArtifact = useCallback(() => {
+    void desktopApi().notesListTasks?.().then((res) => {
+      const tasks = Array.isArray(res) ? res : (res as any)?.tasks || [];
+      window.dispatchEvent(
+        new CustomEvent("agent-resume:stage-artifact", {
+          detail: {
+            id: "artifact-task-kanban",
+            version: "1.0",
+            title: "任务看板",
+            target: "stage",
+            kind: "native:gtd",
+            payload: tasks
+          }
+        })
+      );
+    });
+  }, []);
+
+  const triggerNotesArtifact = useCallback(() => {
+    void desktopApi().notesList?.().then((res) => {
+      const notes = Array.isArray(res) ? res : [];
+      window.dispatchEvent(
+        new CustomEvent("agent-resume:stage-artifact", {
+          detail: {
+            id: "artifact-notes-tree",
+            version: "1.0",
+            title: "知识库笔记",
+            target: "stage",
+            kind: "native:notes",
+            payload: notes
+          }
+        })
+      );
+    });
+  }, []);
+
+  // Listen for cross-artifact append events
+  useEffect(() => {
+    const onAppend = (event: Event) => {
+      const detail = (event as CustomEvent<{ text: string; mention?: ChatMentionSuggestion }>).detail;
+      if (detail && detail.text) {
+        setText((prev) => {
+          const trimmed = prev ? prev.trimEnd() : "";
+          return trimmed ? `${trimmed} ${detail.text}` : detail.text;
+        });
+        if (detail.mention) {
+          setReferencedMentions((prev) => {
+            if (prev.some((m) => m.id === detail.mention!.id)) return prev;
+            return [...prev, detail.mention!];
+          });
+        }
+        requestAnimationFrame(() => {
+          textareaRef.current?.focus();
+        });
+      }
+    };
+    window.addEventListener("agent-resume:composer-append", onAppend);
+    return () => window.removeEventListener("agent-resume:composer-append", onAppend);
+  }, []);
+
+  // ⌘1 for Kanban, ⌘2 for Notes (pure client-side stage toggle)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        if (e.key === "1") {
+          e.preventDefault();
+          triggerKanbanArtifact();
+        } else if (e.key === "2") {
+          e.preventDefault();
+          triggerNotesArtifact();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [triggerKanbanArtifact, triggerNotesArtifact]);
+
   const doSend = async () => {
     if (isStreaming) {
       onCancel();
@@ -1109,6 +1278,23 @@ export function ChatComposer({
     }
     const currentText = text.trim();
     if (!currentText && pendingImages.length === 0) return;
+
+    // Pure local client-side commands: intercept /gtd, /tasks, /kanban, /notes
+    // Immediately open the native artifact on the Stage, clear text, and NEVER send to LLM
+    const localCmdMatch = currentText.match(/^\/([a-zA-Z0-9_-]+)\s*$/);
+    if (localCmdMatch) {
+      const cmd = localCmdMatch[1].toLowerCase();
+      if (cmd === "gtd" || cmd === "tasks" || cmd === "kanban") {
+        setText("");
+        triggerKanbanArtifact();
+        return;
+      }
+      if (cmd === "notes") {
+        setText("");
+        triggerNotesArtifact();
+        return;
+      }
+    }
 
     setText("");
     const mentionsToCompile = [...referencedMentions];
@@ -1545,6 +1731,32 @@ export function ChatComposer({
           <span>Enter steers · ⌥Enter follows up</span>
         </div>
       )}
+
+      {/* Built-in Artifact Stage Plain Capsules above composer box */}
+      <div className="tb-composer-stage-plain-capsules" aria-label="Artifact Stage Shortcuts">
+        <button
+          type="button"
+          className="tb-composer-plain-capsule"
+          onClick={triggerKanbanArtifact}
+          title="切换任务看板 (⌘1)"
+          aria-label="切换任务看板"
+        >
+          <ThemeIcon name="square-kanban" size={ICON_SIZE.dense} />
+          <span>看板</span>
+        </button>
+
+        <button
+          type="button"
+          className="tb-composer-plain-capsule"
+          onClick={triggerNotesArtifact}
+          title="切换知识库笔记 (⌘2)"
+          aria-label="切换知识库笔记"
+        >
+          <ThemeIcon name="notebook" size={ICON_SIZE.dense} />
+          <span>笔记</span>
+        </button>
+      </div>
+
       <div className={`tb-composer-box${isStreaming ? " is-active" : ""}`}>
         {pendingImages.length > 0 && (
           <div className="wb-terminal-composer-pending-images" aria-label="Attached images">

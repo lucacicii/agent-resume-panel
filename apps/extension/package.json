@@ -1,9 +1,9 @@
 {
   "name": "agent-resume-panel",
   "displayName": "Agent Resume Panel",
-  "publisher": "lucacicii",
-  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, Prime Agent, and Cursor CLI sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Cursor IDE composer metadata is indexed too. Companion macOS Desktop app (shared ~/.agent-resume-panel data) adds calendar digests, Agent Q&A, and embedded Workbench.",
-  "version": "2.11.1",
+  "publisher": "wuzhengzhe",
+  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, Prime Agent, OMP, and Cursor CLI sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Cursor IDE composer metadata is indexed too. Companion macOS Desktop app (shared ~/.agent-resume-panel data) adds calendar digests, Agent Q&A, and embedded Workbench.",
+  "version": "2.12.0",
   "icon": "resources/icon.png",
   "private": true,
   "author": "lucacicii",
@@ -83,6 +83,7 @@
     "onCommand:agentResume.newOpenCodeSession",
     "onCommand:agentResume.newPiSession",
     "onCommand:agentResume.newPrimeSession",
+    "onCommand:agentResume.newOmpSession",
     "onCommand:agentResume.newCodexAppSession",
     "onCommand:agentResume.favoriteProject",
     "onCommand:agentResume.unfavoriteProject",
@@ -103,7 +104,8 @@
     "onCommand:agentResume.handoffTo.grok",
     "onCommand:agentResume.handoffTo.opencode",
     "onCommand:agentResume.handoffTo.pi",
-    "onCommand:agentResume.handoffTo.prime"
+    "onCommand:agentResume.handoffTo.prime",
+    "onCommand:agentResume.handoffTo.omp"
   ],
   "main": "./out/extension.js",
   "scripts": {
@@ -177,6 +179,11 @@
           "type": "string",
           "default": "~/.prime/agent",
           "description": "Prime Agent home directory containing sessions."
+        },
+        "agentResume.ompHome": {
+          "type": "string",
+          "default": "~/.omp/agent",
+          "description": "OMP home directory containing sessions."
         },
         "agentResume.cursorHome": {
           "type": "string",
@@ -329,6 +336,21 @@
           ],
           "description": "Launch arguments for Prime Agent ACP agent."
         },
+        "agentResume.acp.agents.omp.command": {
+          "type": "string",
+          "default": "omp",
+          "description": "Launch command for OMP ACP agent."
+        },
+        "agentResume.acp.agents.omp.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "acp"
+          ],
+          "description": "Launch arguments for OMP ACP agent."
+        },
         "agentResume.uiLanguage": {
           "type": "string",
           "enum": [
@@ -438,6 +460,7 @@
             "opencode",
             "pi",
             "prime",
+            "omp",
             "cursor"
           ],
           "default": "codex",
@@ -526,6 +549,7 @@
               "newOpenCodeSession",
               "newPiSession",
               "newPrimeSession",
+              "newOmpSession",
               "newCodexAppSession",
               "openProjectNote",
               "deleteProjectNote"
@@ -553,6 +577,7 @@
               "newOpenCodeSession",
               "newPiSession",
               "newPrimeSession",
+              "newOmpSession",
               "newCodexAppSession",
               "openProjectNote",
               "deleteProjectNote"
@@ -570,6 +595,7 @@
             "newOpenCodeSession",
             "newPiSession",
             "newPrimeSession",
+            "newOmpSession",
             "newCodexAppSession",
             "openProjectNote",
             "deleteProjectNote"
@@ -822,6 +848,11 @@
       {
         "command": "agentResume.handoffTo.prime",
         "title": "Hand Off to Prime Agent",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.omp",
+        "title": "Hand Off to OMP",
         "category": "Agent Resume"
       },
       {
@@ -2494,6 +2525,11 @@
       {
         "command": "agentResume.newPrimeSession",
         "title": "New Prime Agent Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newOmpSession",
+        "title": "New OMP Session",
         "category": "Agent Resume"
       },
       {

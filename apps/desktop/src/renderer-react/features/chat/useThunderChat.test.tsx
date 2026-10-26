@@ -792,6 +792,68 @@ describe("useThunderChat turn splitting", () => {
     expect(reasoning).toEqual(["轮一思考", "轮二思考"]);
     expect(result.current.messages.at(-1)?.segments).toBeUndefined();
   });
+
+  it("preserves preceding turn output and allLiveSegments across ask_user_question multi-turn cycles", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    // Turn 1: Assistant outputs some preliminary text and triggers ask_user_question
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 1, delta: "这是问题前的分析" })));
+    act(() =>
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "tool_exec_start",
+          turn: 1,
+          name: "ask_user_question",
+          tool_call_id: "q_call_1",
+          arguments: { question: "请选择方案" }
+        })
+      )
+    );
+    act(() =>
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "user_question",
+          question_id: "q_1",
+          questions: [{ id: "opt", question: "选哪个?", options: ["A", "B"] }]
+        })
+      )
+    );
+    act(() =>
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "turn_end",
+          turn: 1,
+          stats: { turn: 1, duration_ms: 50, tool_calls_count: 1 }
+        })
+      )
+    );
+
+    // Turn 1 output is parked on question; allLiveSegments retains Turn 1 text & tools
+    expect(result.current.allLiveSegments.map((s) => s.kind)).toContain("text");
+    expect(result.current.allLiveSegments.map((s) => s.kind)).toContain("tools");
+    expect(result.current.pendingQuestion?.questionId).toBe("q_1");
+
+    // Turn 2: User answers, agent resumes and outputs subsequent text
+    act(() => harness.emit(observed(taskId, sessionId, { type: "turn_start", turn: 2, timestamp: 2 })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 2, delta: "这是选项A后的最终回答" })));
+
+    // While streaming turn 2, allLiveSegments still contains BOTH Turn 1 and Turn 2 segments!
+    const textSegments = result.current.allLiveSegments.filter((s) => s.kind === "text");
+    expect(textSegments.map((s) => s.text)).toEqual(["这是问题前的分析", "这是选项A后的最终回答"]);
+
+    // Turn 2 completes via loop_complete without finalContent specified
+    await act(async () => {
+      harness.resolveRun({ finishReason: "done" });
+    });
+
+    // The finalized message content preserves BOTH Turn 1 and Turn 2 text!
+    const answer = result.current.messages.at(-1);
+    expect(answer?.content).toContain("这是问题前的分析");
+    expect(answer?.content).toContain("这是选项A后的最终回答");
+    expect(answer?.turns).toHaveLength(2);
+  });
 });
 
 describe("buildConversationRows", () => {
