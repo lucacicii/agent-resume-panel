@@ -5,6 +5,10 @@ import { ArtifactMermaidViewer } from "../../components/artifact/ArtifactMermaid
 import { ArtifactSvgViewer } from "../../components/artifact/ArtifactSvgViewer";
 import { ArtifactKanbanViewer } from "./artifacts/ArtifactKanbanViewer";
 import { ArtifactNoteViewer } from "./artifacts/ArtifactNoteViewer";
+import { ArtifactDiffViewer } from "./artifacts/ArtifactDiffViewer";
+import { ArtifactBrowserViewer } from "./artifacts/ArtifactBrowserViewer";
+import { ArtifactMemoryViewer } from "./artifacts/ArtifactMemoryViewer";
+import { ArtifactScriptsViewer } from "./artifacts/ArtifactScriptsViewer";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 
 interface StageArtifactViewProps {
@@ -40,6 +44,38 @@ export function StageArtifactView({ artifact }: StageArtifactViewProps): React.J
     );
   }
 
+  if (kind === "native:diff") {
+    return (
+      <div className="stage-artifact-body art-diff-wrap">
+        <ArtifactDiffViewer payload={rawPayload as any} />
+      </div>
+    );
+  }
+
+  if (kind === "native:browser") {
+    return (
+      <div className="stage-artifact-body art-browser-wrap">
+        <ArtifactBrowserViewer />
+      </div>
+    );
+  }
+
+  if (kind === "native:memory") {
+    return (
+      <div className="stage-artifact-body art-memory-wrap">
+        <ArtifactMemoryViewer />
+      </div>
+    );
+  }
+
+  if (kind === "native:scripts" || kind === "native:workbench") {
+    return (
+      <div className="stage-artifact-body art-scripts-wrap">
+        <ArtifactScriptsViewer />
+      </div>
+    );
+  }
+
   if (kind === "graph:mermaid") {
     const code = typeof rawPayload === "string" ? rawPayload : JSON.stringify(rawPayload, null, 2);
     return (
@@ -62,7 +98,7 @@ export function StageArtifactView({ artifact }: StageArtifactViewProps): React.J
 
   // Fallback string / JSON
   const content = typeof rawPayload === "string" ? rawPayload : JSON.stringify(rawPayload, null, 2);
-  if (content.trim().startsWith("<svg") || kind === "native:diff") {
+  if (content.trim().startsWith("<svg")) {
     return (
       <div className="stage-artifact-body">
         <ArtifactSvgViewer code={content} minHeight={400} />

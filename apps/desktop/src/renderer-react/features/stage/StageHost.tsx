@@ -4,11 +4,11 @@ import { useStage } from "./StageContext";
 import { StageArtifactView } from "./StageArtifactView";
 import { ICON_SIZE, ThemeIcon, type ThemeIconName } from "../../components/ThemeIcon";
 import { useI18n } from "../../i18n";
-import type { StageView } from "@agent-resume/core";
+import type { StageView, UIArtifactEnvelope } from "@agent-resume/core";
 
 function getActiveViewInfo(
   view: StageView,
-  activeArtifactTitle?: string,
+  activeArtifact?: UIArtifactEnvelope | null,
   t?: (k: string, ...args: (string | number)[]) => string
 ): { icon: ThemeIconName; title: string } {
   const tr = (k: string, f: string) => {
@@ -19,6 +19,15 @@ function getActiveViewInfo(
       return f;
     }
   };
+  const artKind = activeArtifact?.kind;
+  let artIcon: ThemeIconName = "layout-dashboard";
+  if (artKind === "native:gtd") artIcon = "square-kanban";
+  else if (artKind === "native:notes") artIcon = "notebook";
+  else if (artKind === "native:diff") artIcon = "git-branch";
+  else if (artKind === "native:browser") artIcon = "globe";
+  else if (artKind === "native:memory") artIcon = "sparkles";
+  else if (artKind === "native:scripts" || artKind === "native:workbench") artIcon = "terminal";
+
   switch (view) {
     case "gtd":
       return { icon: "square-kanban", title: tr("desktop.gtd.title", "Tasks") };
@@ -32,7 +41,7 @@ function getActiveViewInfo(
       return { icon: "archive", title: tr("desktop.archive.title", "Archive") };
     case "artifact":
     default:
-      return { icon: "layout-dashboard", title: activeArtifactTitle || tr("desktop.artifact.title", "Artifact") };
+      return { icon: artIcon, title: activeArtifact?.title || tr("desktop.artifact.title", "Artifact") };
   }
 }
 
@@ -96,7 +105,7 @@ function StageHeader(): React.JSX.Element | null {
 
   if (!host || !isOpen) return null;
 
-  const currentInfo = getActiveViewInfo(view, activeArtifact?.title, t);
+  const currentInfo = getActiveViewInfo(view, activeArtifact, t);
 
   return createPortal(
     <header className="stage-header" aria-label="Adaptive Stage Header">

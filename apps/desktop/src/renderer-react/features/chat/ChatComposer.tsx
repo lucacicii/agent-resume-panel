@@ -1230,6 +1230,66 @@ export function ChatComposer({
     });
   }, []);
 
+  const triggerDiffArtifact = useCallback(() => {
+    window.dispatchEvent(
+      new CustomEvent("agent-resume:stage-artifact", {
+        detail: {
+          id: "artifact-git-diff",
+          version: "1.0",
+          title: "代码改动",
+          target: "stage",
+          kind: "native:diff",
+          payload: { workspaceDir }
+        }
+      })
+    );
+  }, [workspaceDir]);
+
+  const triggerBrowserArtifact = useCallback(() => {
+    window.dispatchEvent(
+      new CustomEvent("agent-resume:stage-artifact", {
+        detail: {
+          id: "artifact-browser",
+          version: "1.0",
+          title: "内置浏览器",
+          target: "stage",
+          kind: "native:browser",
+          payload: {}
+        }
+      })
+    );
+  }, []);
+
+  const triggerMemoryArtifact = useCallback(() => {
+    window.dispatchEvent(
+      new CustomEvent("agent-resume:stage-artifact", {
+        detail: {
+          id: "artifact-memory",
+          version: "1.0",
+          title: "认知与记忆",
+          target: "stage",
+          kind: "native:memory",
+          payload: {}
+        }
+      })
+    );
+  }, []);
+
+  const triggerScriptsArtifact = useCallback(() => {
+    window.dispatchEvent(
+      new CustomEvent("agent-resume:stage-artifact", {
+        detail: {
+          id: "artifact-scripts",
+          version: "1.0",
+          title: "可执行脚本",
+          target: "stage",
+          kind: "native:scripts",
+          payload: {}
+        }
+      })
+    );
+  }, []);
+
   // Listen for cross-artifact append events
   useEffect(() => {
     const onAppend = (event: Event) => {
@@ -1254,7 +1314,7 @@ export function ChatComposer({
     return () => window.removeEventListener("agent-resume:composer-append", onAppend);
   }, []);
 
-  // ⌘1 for Kanban, ⌘2 for Notes (pure client-side stage toggle)
+  // Global shortcuts for Artifact Stage (pure client-side stage toggle)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
@@ -1264,12 +1324,31 @@ export function ChatComposer({
         } else if (e.key === "2") {
           e.preventDefault();
           triggerNotesArtifact();
+        } else if (e.key === "3") {
+          e.preventDefault();
+          triggerBrowserArtifact();
+        } else if (e.key === "4") {
+          e.preventDefault();
+          triggerMemoryArtifact();
+        } else if (e.key === "5") {
+          e.preventDefault();
+          triggerScriptsArtifact();
+        } else if (e.key.toLowerCase() === "d") {
+          e.preventDefault();
+          triggerDiffArtifact();
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [triggerKanbanArtifact, triggerNotesArtifact]);
+  }, [
+    triggerKanbanArtifact,
+    triggerNotesArtifact,
+    triggerDiffArtifact,
+    triggerBrowserArtifact,
+    triggerMemoryArtifact,
+    triggerScriptsArtifact
+  ]);
 
   const doSend = async () => {
     if (isStreaming) {
@@ -1279,7 +1358,7 @@ export function ChatComposer({
     const currentText = text.trim();
     if (!currentText && pendingImages.length === 0) return;
 
-    // Pure local client-side commands: intercept /gtd, /tasks, /kanban, /notes
+    // Pure local client-side commands: intercept /gtd, /tasks, /kanban, /notes, /diff, /browser, /memory, /scripts
     // Immediately open the native artifact on the Stage, clear text, and NEVER send to LLM
     const localCmdMatch = currentText.match(/^\/([a-zA-Z0-9_-]+)\s*$/);
     if (localCmdMatch) {
@@ -1292,6 +1371,26 @@ export function ChatComposer({
       if (cmd === "notes") {
         setText("");
         triggerNotesArtifact();
+        return;
+      }
+      if (cmd === "diff" || cmd === "changes") {
+        setText("");
+        triggerDiffArtifact();
+        return;
+      }
+      if (cmd === "browser") {
+        setText("");
+        triggerBrowserArtifact();
+        return;
+      }
+      if (cmd === "memory") {
+        setText("");
+        triggerMemoryArtifact();
+        return;
+      }
+      if (cmd === "scripts") {
+        setText("");
+        triggerScriptsArtifact();
         return;
       }
     }
@@ -1754,6 +1853,50 @@ export function ChatComposer({
         >
           <ThemeIcon name="notebook" size={ICON_SIZE.dense} />
           <span>笔记</span>
+        </button>
+
+        <button
+          type="button"
+          className="tb-composer-plain-capsule"
+          onClick={triggerDiffArtifact}
+          title="查看代码改动 (⌘D)"
+          aria-label="查看代码改动"
+        >
+          <ThemeIcon name="git-branch" size={ICON_SIZE.dense} />
+          <span>改动</span>
+        </button>
+
+        <button
+          type="button"
+          className="tb-composer-plain-capsule"
+          onClick={triggerBrowserArtifact}
+          title="打开内置浏览器 (⌘3)"
+          aria-label="打开内置浏览器"
+        >
+          <ThemeIcon name="globe" size={ICON_SIZE.dense} />
+          <span>浏览器</span>
+        </button>
+
+        <button
+          type="button"
+          className="tb-composer-plain-capsule"
+          onClick={triggerMemoryArtifact}
+          title="查看长期记忆与规则 (⌘4)"
+          aria-label="查看长期记忆"
+        >
+          <ThemeIcon name="sparkles" size={ICON_SIZE.dense} />
+          <span>记忆</span>
+        </button>
+
+        <button
+          type="button"
+          className="tb-composer-plain-capsule"
+          onClick={triggerScriptsArtifact}
+          title="工程可执行脚本 (⌘5)"
+          aria-label="可执行脚本"
+        >
+          <ThemeIcon name="terminal" size={ICON_SIZE.dense} />
+          <span>脚本</span>
         </button>
       </div>
 

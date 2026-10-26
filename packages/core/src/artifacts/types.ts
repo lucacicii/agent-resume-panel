@@ -10,6 +10,8 @@ export type ArtifactKind =
   | "native:workbench"
   | "native:schedule"
   | "native:sessions"
+  | "native:memory"
+  | "native:scripts"
   | "chart"
   | "graph:mermaid"
   | "stats:kpi"
