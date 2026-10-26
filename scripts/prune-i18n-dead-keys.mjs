@@ -1,169 +1,76 @@
 #!/usr/bin/env node
-
-import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+/**
+ * Remove locale keys nothing references any more.
+ *
+ * Deleting a key that is still on screen is silent and only shows up as a raw
+ * `desktop.foo.bar` string in the UI, so this script is deliberately cautious:
+ *
+ *   - it decides what is dead by asking `i18n-usage.mjs`, the same module
+ *     `check-i18n.mjs` uses, instead of keeping a hand-maintained list that
+ *     drifts (that list had come to include `desktop.common.delete`, which the
+ *     selection settings pane still renders);
+ *   - it prints a dry run unless `--write` is passed;
+ *   - it refuses to run when `check-i18n.mjs` reports errors, since a broken
+ *     scan would make live keys look dead;
+ *   - it leaves a key alone when the reference scan cannot see it but the file
+ *     itself mentions it, e.g. a key composed from settings aliases.
+ */
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTEXT_MENU_COMMAND_SPECS, CONTEXT_SUBMENU_SPECS } from "../apps/extension/scripts/menu-i18n.mjs";
+import { collectI18nUsage, desktopLocalesDir, extensionLocalesDir, walk } from "../apps/extension/scripts/i18n-usage.mjs";
 
 const root = join(import.meta.dirname, "..");
-const extensionRoot = join(root, "apps/extension");
-const desktopRoot = join(root, "apps/desktop");
+const write = process.argv.includes("--write");
+const desktopRoot = join(root, "apps", "desktop");
+const catalogPath = join(root, "scripts", "desktop-i18n-catalog.json");
 
-const EXTENSION_DEAD = [
-  "dialog.deleteProjectNoteConfirm",
-  "dialog.deleteSessionNoteConfirm",
-  "error.handoffAcpNoMessages",
-  "error.handoffAcpNotSupported",
-  "error.handoffNoMessages",
-  "error.llmTestNotConfigured",
-  "error.llmTestSuccess",
-  "error.previewNotSupported",
-  "handoff.truncationWarningDefault",
-  "handoff.truncationWarningPreview",
-  "menu.handoff.submenu",
-  "menu.project.newNote",
-  "menu.session.newNote",
-  "settings.enum.llmOutputLanguageChinese",
-  "settings.enum.llmOutputLanguageEnglish",
-  "settings.enum.llmOutputLanguageFrench",
-  "settings.enum.llmOutputLanguageGerman",
-  "settings.enum.llmOutputLanguageItalian",
-  "settings.enum.llmOutputLanguageJapanese",
-  "settings.enum.llmOutputLanguageKorean",
-  "settings.enum.llmOutputLanguagePortuguese",
-  "settings.enum.llmOutputLanguageRussian",
-  "settings.enum.llmOutputLanguageSpanish",
-  "terminal.nameCodexApp",
-  "terminal.nameHandoff",
-  "terminal.providerLabelAntigravity",
-  "tree.gtd.viewTitle"
+const usage = collectI18nUsage();
+
+/** A key the scan missed but which still appears verbatim somewhere is not dead. */
+function stillMentioned(key) {
+  const hits = walk(join(desktopRoot, "src"), (path) => path.endsWith(".ts") || path.endsWith(".tsx"))
+    .filter((file) => !file.endsWith(".test.ts") && !file.endsWith(".test.tsx"))
+    .filter((file) => readFileSync(file, "utf8").includes(key));
+  return hits.length > 0;
+}
+
+const deadExtension = usage.unusedExtension.filter((key) => !stillMentioned(key));
+const deadDesktop = usage.unusedDesktop.filter((key) => !stillMentioned(key));
+
+const kept = [
+  ...usage.unusedExtension.filter((key) => stillMentioned(key)),
+  ...usage.unusedDesktop.filter((key) => stillMentioned(key))
 ];
 
-const DESKTOP_DEAD = [
-  // Browser sessions moved into the workbench sidebar panel; the pane tab group is gone.
-  "desktop.browser.closeBrowser",
-  "desktop.workbench.tabGroupBrowser",
-  "desktop.agent.auditFailedPrefix",
-  "desktop.agent.auditIndexWithTitle",
-  "desktop.agent.errorPrefix",
-  "desktop.agent.fetchingTools",
-  "desktop.agent.generatingAnswer",
-  "desktop.agent.persistFailed",
-  "desktop.agent.renameProjectDialog",
-  "desktop.agent.requestingLlm",
-  "desktop.agent.requestingLlmRound",
-  "desktop.agent.sendFailedPrefix",
-  "desktop.agent.stopped",
-  "desktop.agent.toolsMaxIterations",
-  "desktop.agent.toolsNoResponse",
-  "desktop.agent.toolsReady",
-  "desktop.agent.traceRefresh",
-  "desktop.notes.findCount",
-  "desktop.notes.generatingVectors",
-  "desktop.notes.indexComplete",
-  "desktop.notes.indexUpToDate",
-  "desktop.notes.indexingProgress",
-  "desktop.notes.metaCount",
-  "desktop.notes.metaSearch",
-  "desktop.notes.scanningNotes",
-  "desktop.report.aggregateMonthlyFromDailies",
-  "desktop.report.aggregateMonthlyPlaceholder",
-  "desktop.report.aggregateWeeklyFromDailies",
-  "desktop.report.aggregateWeeklyPlaceholder",
-  "desktop.report.backfillDailyProgress",
-  "desktop.report.backfillWeeklyProgress",
-  "desktop.report.dailiesCompleteMonth",
-  "desktop.report.dailiesCompletePeriod",
-  "desktop.report.dailiesCompleteWeek",
-  "desktop.report.dailyCompleteCount",
-  "desktop.report.digestFailedShort",
-  "desktop.report.ensureDailiesCheckMonth",
-  "desktop.report.ensureDailiesCheckPeriod",
-  "desktop.report.ensureDailiesCheckWeek",
-  "desktop.report.ensureWeekliesCheck",
-  "desktop.report.extractDailyFromSummary",
-  "desktop.report.extractMonthlyFromDailies",
-  "desktop.report.extractMonthlyPlaceholder",
-  "desktop.report.extractWeeklyFromDailies",
-  "desktop.report.extractWeeklyPlaceholder",
-  "desktop.report.freshDailiesRefreshMonth",
-  "desktop.report.freshDailiesRefreshPeriod",
-  "desktop.report.freshDailiesRefreshWeek",
-  "desktop.report.freshDailiesUpToDateMonth",
-  "desktop.report.freshDailiesUpToDatePeriod",
-  "desktop.report.freshDailiesUpToDateWeek",
-  "desktop.report.freshDailiesUpdateProgress",
-  "desktop.report.freshWeekliesRefreshMonth",
-  "desktop.report.freshWeekliesUpToDateMonth",
-  "desktop.report.freshWeekliesUpdateProgress",
-  "desktop.report.generatingSessionSummary",
-  "desktop.report.gtdFallbackSessions",
-  "desktop.report.gtdJsonParseFailed",
-  "desktop.report.gtdNoLinkedSessions",
-  "desktop.report.markMissing",
-  "desktop.report.markNone",
-  "desktop.report.markStale",
-  "desktop.report.monthlyCompleteStats",
-  "desktop.report.nestedDailyDetail",
-  "desktop.report.nestedDailyLabel",
-  "desktop.report.nestedWeeklyDetail",
-  "desktop.report.nestedWeeklyLabel",
-  "desktop.report.periodMissing",
-  "desktop.report.periodNoSessions",
-  "desktop.report.periodUnderlyingBoth",
-  "desktop.report.periodUnderlyingNewOnly",
-  "desktop.report.periodUnderlyingStaleOnly",
-  "desktop.report.periodUpToDate",
-  "desktop.report.periodUpdatedSessions",
-  "desktop.report.prepareSummarize",
-  "desktop.report.refreshDailyMissing",
-  "desktop.report.refreshDailyUpToDateCount",
-  "desktop.report.refreshNewSessionsDaily",
-  "desktop.report.refreshNoSessionsSkip",
-  "desktop.report.refreshUpdatedSessionsDaily",
-  "desktop.report.sessionsRangeLabel",
-  "desktop.report.startDaily",
-  "desktop.report.summaryDone",
-  "desktop.report.taskBusyMonthly",
-  "desktop.report.taskBusyWeekly",
-  "desktop.report.weekliesCompleteMonth",
-  "desktop.report.weeklyCompleteStats",
-  "desktop.report.writeEmbedding",
-  "desktop.sessions.autoRenameBtn",
-  "desktop.sessions.gtdAnalyze",
-  "desktop.sessions.renamingBtn",
-  "desktop.sessions.summarizeBtn",
-  "desktop.sessions.summarizingBtn",
-  "desktop.sessions.summaryLabel",
-  "desktop.workbench.autoRenaming",
-  "desktop.workbench.editorNotFound",
-  "desktop.workbench.editorNotFoundAuto",
-  "desktop.workbench.metaCount",
-  "desktop.workbench.metaSearch",
-  "desktop.workbench.sidePanelNotRepo",
-  "desktop.workbench.syncedSessions",
-  "desktop.agent.cancelled",
-  "desktop.agent.indexProgress",
-  "desktop.common.delete",
-  "desktop.common.done",
-  "desktop.sessions.autoRename",
-  "desktop.sessions.regenerate",
-  "desktop.sessions.summarize"
-];
-
-function walk(dir, filter, files = []) {
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      walk(full, filter, files);
-    } else if (filter(full)) {
-      files.push(full);
-    }
+function report(label, dead, total) {
+  console.log(`${label}: ${dead.length} unused of ${total}`);
+  for (const key of dead) {
+    console.log(`  - ${key}`);
   }
-  return files;
+}
+
+if (!write) {
+  console.log("dry run — pass --write to remove these keys\n");
+}
+report("extension", deadExtension, usage.extensionEnKeys.size);
+report("desktop", deadDesktop, usage.desktopEnKeys.size);
+if (kept.length > 0) {
+  console.log(`\nkept ${kept.length} key(s) the scan missed but that are still referenced:`);
+  for (const key of kept) {
+    console.log(`  ~ ${key}`);
+  }
+}
+if (deadExtension.length === 0 && deadDesktop.length === 0) {
+  console.log("\nnothing to prune");
+  process.exit(0);
+}
+if (!write) {
+  process.exit(0);
 }
 
 function pruneLocaleDir(dir, deadKeys) {
   const dead = new Set(deadKeys);
+  if (dead.size === 0) return;
   for (const file of readdirSync(dir).filter((name) => name.endsWith(".json"))) {
     const path = join(dir, file);
     const locale = JSON.parse(readFileSync(path, "utf8"));
@@ -180,33 +87,24 @@ function pruneLocaleDir(dir, deadKeys) {
   }
 }
 
-function pruneDesktopCatalog(node, deadKeys) {
-  if (!node || typeof node !== "object") {
-    return 0;
-  }
-  let removed = 0;
-  if (Array.isArray(node)) {
-    for (const item of node) {
-      removed += pruneDesktopCatalog(item, deadKeys);
-    }
-    return removed;
-  }
-  for (const key of Object.keys(node)) {
-    if (deadKeys.has(key)) {
-      delete node[key];
-      removed += 1;
-      continue;
-    }
-    removed += pruneDesktopCatalog(node[key], deadKeys);
-  }
-  return removed;
-}
+pruneLocaleDir(extensionLocalesDir, deadExtension);
+pruneLocaleDir(desktopLocalesDir, deadDesktop);
 
-pruneLocaleDir(join(extensionRoot, "locales"), EXTENSION_DEAD);
-pruneLocaleDir(join(desktopRoot, "locales"), DESKTOP_DEAD);
-
-const catalogPath = join(root, "scripts/desktop-i18n-catalog.json");
+// The catalog is the source the locales are merged from; a key removed only
+// from the locales would come back on the next merge.
 const catalog = JSON.parse(readFileSync(catalogPath, "utf8"));
-const removedCatalog = pruneDesktopCatalog(catalog, new Set(DESKTOP_DEAD));
+const deadDesktopSet = new Set(deadDesktop);
+let removedCatalog = 0;
+for (const locale of Object.values(catalog)) {
+  if (!locale || typeof locale !== "object") continue;
+  for (const key of deadDesktopSet) {
+    if (key in locale) {
+      delete locale[key];
+      removedCatalog += 1;
+    }
+  }
+}
 writeFileSync(catalogPath, `${JSON.stringify(catalog, null, 2)}\n`);
-console.log(`pruned ${removedCatalog} entries from desktop-i18n-catalog.json`);
+console.log(`pruned ${removedCatalog} entries from scripts/desktop-i18n-catalog.json`);
+
+console.log("\nnow run: pnpm run i18n:check");
