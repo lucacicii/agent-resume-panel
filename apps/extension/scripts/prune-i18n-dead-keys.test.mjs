@@ -48,9 +48,22 @@ const offered = output
   .map((line) => line.trim())
   .filter((line) => line.startsWith("- desktop."))
   .map((line) => line.slice(2));
-assert.ok(offered.length > 0, "the desktop locale has unused keys, so the pruner should list some");
 for (const key of offered) {
   assert.ok(!usage.desktopUsedKeys.has(key), `${key} is used but the pruner offered to delete it`);
 }
 
-console.log(`prune-i18n-dead-keys: ok (${offered.length} offered, ${usage.desktopUsedKeys.size} protected)`);
+// The invariant that matters, independent of how many dead keys exist today:
+// nothing offered may be used, and every offered key may only come from the
+// unused set the scan produced.
+assert.equal(
+  offered.length,
+  usage.unusedDesktop.length,
+  "the pruner should offer exactly the keys the scan called unused"
+);
+for (const key of offered) {
+  assert.ok(usage.unusedDesktop.includes(key), `${key} was offered but is not in the unused set`);
+}
+
+console.log(
+  `prune-i18n-dead-keys: ok (${offered.length} offered, ${usage.desktopUsedKeys.size} protected)`
+);
