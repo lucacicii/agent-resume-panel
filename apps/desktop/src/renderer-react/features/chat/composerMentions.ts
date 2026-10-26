@@ -99,9 +99,14 @@ export function useMentionSources(): MentionSources {
     enabled: DEFAULT_WORKBENCH_MENTION_SOURCES
   });
 
+  /**
+   * Settings is where packs and the per-kind switches are edited, so re-read
+   * whenever that panel closes. Without it a pack added while the workbench
+   * terminal (or a reference picker) is mounted would never appear.
+   */
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    const load = async () => {
       const next: MentionSources = {
         packs: [],
         tasks: [],
@@ -168,9 +173,15 @@ export function useMentionSources(): MentionSources {
         // daemon offline
       }
       if (!cancelled) setSources(next);
-    })();
+    };
+    void load();
+    const handleSettingsClosed = () => {
+      void load();
+    };
+    window.addEventListener("agent-resume:settings-closed", handleSettingsClosed);
     return () => {
       cancelled = true;
+      window.removeEventListener("agent-resume:settings-closed", handleSettingsClosed);
     };
   }, []);
 

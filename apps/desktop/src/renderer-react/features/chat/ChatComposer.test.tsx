@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, cleanup, act } from "@testing-library/react";
 import { ChatComposer, compileChatPrompt } from "./ChatComposer";
 import { stripMachineContext } from "./promptEnvelope";
 import type { SkillDescriptor, AgentToolDescriptor } from "@agent-resume/core";
@@ -505,6 +505,43 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
 
     await waitFor(() => {
       expect((textarea as HTMLTextAreaElement).value).toBe("@anfeng ");
+    });
+  });
+
+  /**
+   * Regression: the pack list was read once on mount, so a pack added in
+   * Settings while a chat stayed open never reached the `@` menu.
+   */
+  it("re-reads workspace packs when the settings panel closes", async () => {
+    render(<ChatComposer {...defaultProps} />);
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
+    fireEvent.change(textarea, { target: { value: "@", selectionStart: 1 } });
+
+    await waitFor(() => {
+      expect(screen.getByText("@anfeng")).toBeTruthy();
+    });
+
+    (window as any).agentResume.getSettings = vi.fn().mockResolvedValue({
+      workbench: {
+        composerMentions: [
+          { id: "anfeng", cwd: "/Users/lucas/wb/wlgk/anfeng" },
+          { id: "duanxin", cwd: "/Users/lucas/wb/duanxin" }
+        ],
+        composerMentionSources: {
+          workspaces: true,
+          tasks: true,
+          notes: true,
+          sessions: true,
+          projects: false
+        }
+      }
+    });
+    act(() => {
+      window.dispatchEvent(new Event("agent-resume:settings-closed"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("@duanxin")).toBeTruthy();
     });
   });
 

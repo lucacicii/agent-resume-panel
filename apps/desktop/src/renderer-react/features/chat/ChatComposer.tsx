@@ -425,9 +425,15 @@ export function ChatComposer({
     DEFAULT_WORKBENCH_MENTION_SOURCES
   );
 
+  /**
+   * Packs and their switches live in Settings, so an open composer has to hear
+   * about edits: without this, a pack added while a chat is on screen would stay
+   * invisible until the composer remounted. `settings-closed` is the event the
+   * settings panel already dispatches, and it covers every pane.
+   */
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    const loadMentionSettings = async () => {
       try {
         const settings = await desktopApi().getSettings();
         if (cancelled) return;
@@ -438,9 +444,15 @@ export function ChatComposer({
       } catch (err) {
         console.warn("Failed to read workspace packs:", err);
       }
-    })();
+    };
+    void loadMentionSettings();
+    const handleSettingsClosed = () => {
+      void loadMentionSettings();
+    };
+    window.addEventListener("agent-resume:settings-closed", handleSettingsClosed);
     return () => {
       cancelled = true;
+      window.removeEventListener("agent-resume:settings-closed", handleSettingsClosed);
     };
   }, []);
   const [referencedFiles, setReferencedFiles] = useState<string[]>([]);
