@@ -14,6 +14,14 @@ export interface RunnableScript {
   };
 }
 
+export interface ScriptPackageGroup {
+  id: string;
+  label: string;
+  kind: string;
+  packageRoot: string;
+  scripts: RunnableScript[];
+}
+
 interface ScriptsViewerProps {
   payload?: {
     workspaceDir?: string;
@@ -31,7 +39,7 @@ export function ArtifactScriptsViewer({ payload }: ScriptsViewerProps = {}): Rea
     );
   }, [payload?.workspaceDir]);
 
-  const [scripts, setScripts] = useState<RunnableScript[]>([]);
+  const [packages, setPackages] = useState<ScriptPackageGroup[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [runningScriptId, setRunningScriptId] = useState<string | null>(null);
@@ -45,7 +53,7 @@ export function ArtifactScriptsViewer({ payload }: ScriptsViewerProps = {}): Rea
           : [];
 
     if (!roots.length) {
-      setScripts([]);
+      setPackages([]);
       return;
     }
 
@@ -57,28 +65,33 @@ export function ArtifactScriptsViewer({ payload }: ScriptsViewerProps = {}): Rea
         )
       );
 
-      const all: RunnableScript[] = [];
+      const groups: ScriptPackageGroup[] = [];
       for (const res of results) {
         if (!res) continue;
         const pkgs = (res as any).packages;
         if (Array.isArray(pkgs)) {
           for (const pkg of pkgs) {
-            const pkgScripts = pkg.scripts || [];
-            const pkgLabel = pkg.label || pkg.kind || "";
-            for (const s of pkgScripts) {
-              all.push({
-                ...s,
-                packageLabel: pkgLabel,
-                kind: pkg.kind
-              });
-            }
+            const rawScripts = pkg.scripts || [];
+            if (!rawScripts.length) continue;
+            const mappedScripts: RunnableScript[] = rawScripts.map((s: any) => ({
+              ...s,
+              packageLabel: pkg.label || pkg.kind || "",
+              kind: pkg.kind
+            }));
+            groups.push({
+              id: pkg.id || `pkg-${pkg.packageRoot}`,
+              label: pkg.label || pkg.packageRoot.split("/").filter(Boolean).pop() || "project",
+              kind: pkg.kind || "npm",
+              packageRoot: pkg.packageRoot,
+              scripts: mappedScripts
+            });
           }
         }
       }
-      setScripts(all);
+      setPackages(groups);
     } catch (err) {
       console.warn("Failed to list scripts:", err);
-      setScripts([]);
+      setPackages([]);
     } finally {
       setLoading(false);
     }
@@ -88,16 +101,29 @@ export function ArtifactScriptsViewer({ payload }: ScriptsViewerProps = {}): Rea
     void loadScripts();
   }, [loadScripts]);
 
-  const filteredScripts = useMemo(() => {
+  const filteredPackages = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return scripts;
-    return scripts.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.run.command.toLowerCase().includes(q) ||
-        (s.packageLabel && s.packageLabel.toLowerCase().includes(q))
-    );
-  }, [scripts, query]);
+    if (!q) return packages;
+    return packages
+      .map((pkg) => {
+        const matchesPkg = pkg.label.toLowerCase().includes(q) || pkg.kind.toLowerCase().includes(q);
+        const matchingScripts = pkg.scripts.filter(
+          (s) =>
+            matchesPkg ||
+            s.name.toLowerCase().includes(q) ||
+            s.run.command.toLowerCase().includes(q)
+        );
+        return {
+          ...pkg,
+          scripts: matchingScripts
+        };
+      })
+      .filter((pkg) => pkg.scripts.length > 0);
+  }, [packages, query]);
+
+  const totalCount = useMemo(() => {
+    return filteredPackages.reduce((acc, p) => acc + p.scripts.length, 0);
+  }, [filteredPackages]);
 
   const handleAskAgent = (script: RunnableScript) => {
     window.dispatchEvent(
@@ -120,15 +146,15 @@ export function ArtifactScriptsViewer({ payload }: ScriptsViewerProps = {}): Rea
       <div className="art-scripts-header">
         <div className="art-scripts-title-box">
           <ThemeIcon name="terminal" size={ICON_SIZE.default} />
-          <span className="art-scripts-title">工程可执行脚本 ({filteredScripts.length})</span>
+          <span className="art-scripts-title">工程可执行脚本 ({totalCount})</span>
         </div>
         <div className="art-scripts-header-actions">
           <input
             type="search"
             className="art-scripts-search-input"
             value={query}
-            placeholder="搜索脚本..."
-            aria-label="搜索脚本"
+            placeholder="搜索脚本或项目..."
+            aria-label="搜索脚本或项目"
             onChange={(e) => setQuery(e.target.value)}
           />
           <button
@@ -148,7 +174,7 @@ export function ArtifactScriptsViewer({ payload }: ScriptsViewerProps = {}): Rea
             <ThemeIcon name="loader" size={ICON_SIZE.hero} className="spin" />
             <p className="stage-artifact-empty-text">正在扫描工程脚本...</p>
           </div>
-        ) : filteredScripts.length === 0 ? (
+        ) : filteredPackages.length === 0 ? (
           <div className="stage-artifact-empty">
             <ThemeIcon name="terminal" size={ICON_SIZE.hero} />
             <p className="stage-artifact-empty-text">未匹配到可执行脚本</p>
@@ -157,51 +183,60 @@ export function ArtifactScriptsViewer({ payload }: ScriptsViewerProps = {}): Rea
             </p>
           </div>
         ) : (
-          <div className="art-scripts-list">
-            {filteredScripts.map((script) => {
-              const isRunning = runningScriptId === script.id;
-              return (
-                <div key={script.id} className="art-script-card">
-                  <div className="art-script-head">
-                    <div className="art-script-title-group">
-                      <span className="art-script-name">{script.name}</span>
-                      {script.packageLabel ? (
-                        <span className="art-script-pkg-badge">{script.packageLabel}</span>
-                      ) : null}
-                    </div>
-                    <div className="art-script-actions">
-                      <button
-                        type="button"
-                        className="art-note-action-btn art-note-cite-btn"
-                        onClick={() => handleAskAgent(script)}
-                        title="带入对话提问 Agent"
-                      >
-                        <ThemeIcon name="message-square-plus" size={ICON_SIZE.inline} />
-                        <span>提问</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="art-script-run-btn"
-                        onClick={() => void handleRunScript(script)}
-                        disabled={isRunning}
-                        title="在后台执行此脚本"
-                      >
-                        <ThemeIcon
-                          name={isRunning ? "loader" : "play"}
-                          size={ICON_SIZE.inline}
-                          className={isRunning ? "spin" : undefined}
-                        />
-                        <span>{isRunning ? "执行中" : "运行"}</span>
-                      </button>
-                    </div>
+          <div className="art-scripts-groups-container">
+            {filteredPackages.map((pkg) => (
+              <div key={pkg.id} className="art-script-group-card">
+                <div className="art-script-group-head">
+                  <div className="art-script-group-title-box">
+                    <ThemeIcon name="folder" size={ICON_SIZE.dense} />
+                    <span className="art-script-group-name">{pkg.label}</span>
+                    <span className="art-script-group-kind-badge">{pkg.kind}</span>
                   </div>
-                  <pre className="art-script-cmd">{script.run.command}</pre>
-                  <div className="art-script-foot">
-                    <span>工作目录: {script.run.cwd.split("/").filter(Boolean).pop()}</span>
-                  </div>
+                  <span className="art-script-group-count">{pkg.scripts.length} 个脚本</span>
                 </div>
-              );
-            })}
+                <div className="art-script-group-items">
+                  {pkg.scripts.map((script) => {
+                    const isRunning = runningScriptId === script.id;
+                    return (
+                      <div key={script.id} className="art-script-card">
+                        <div className="art-script-head">
+                          <span className="art-script-name">{script.name}</span>
+                          <div className="art-script-actions">
+                            <button
+                              type="button"
+                              className="art-note-action-btn art-note-cite-btn"
+                              onClick={() => handleAskAgent(script)}
+                              title="带入对话提问 Agent"
+                            >
+                              <ThemeIcon name="message-square-plus" size={ICON_SIZE.inline} />
+                              <span>提问</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="art-script-run-btn"
+                              onClick={() => void handleRunScript(script)}
+                              disabled={isRunning}
+                              title="在后台执行此脚本"
+                            >
+                              <ThemeIcon
+                                name={isRunning ? "loader" : "play"}
+                                size={ICON_SIZE.inline}
+                                className={isRunning ? "spin" : undefined}
+                              />
+                              <span>{isRunning ? "执行中" : "运行"}</span>
+                            </button>
+                          </div>
+                        </div>
+                        <pre className="art-script-cmd">{script.run.command}</pre>
+                        <div className="art-script-foot">
+                          <span>工作目录: {script.run.cwd.split("/").filter(Boolean).pop()}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
