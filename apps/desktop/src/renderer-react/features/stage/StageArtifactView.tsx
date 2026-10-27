@@ -71,7 +71,7 @@ export function StageArtifactView({ artifact }: StageArtifactViewProps): React.J
   if (kind === "native:scripts" || kind === "native:workbench") {
     return (
       <div className="stage-artifact-body art-scripts-wrap">
-        <ArtifactScriptsViewer />
+        <ArtifactScriptsViewer payload={rawPayload as any} />
       </div>
     );
   }

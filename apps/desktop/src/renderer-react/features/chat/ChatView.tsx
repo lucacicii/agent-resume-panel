@@ -164,7 +164,7 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         active={active}
         notice={titleNotice}
         onDismissNotice={dismissTitleNotice}
-        showWorkspacePicker={false}
+        showWorkspacePicker={true}
         sessionId={activeSessionId}
         sessionTitle={activeSession?.title}
         messages={messages}

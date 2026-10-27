@@ -12,9 +12,16 @@ export interface RunnableScript {
   };
 }
 
-export function ArtifactScriptsViewer(): React.JSX.Element {
+interface ScriptsViewerProps {
+  payload?: {
+    workspaceDir?: string;
+  } | null;
+}
+
+export function ArtifactScriptsViewer({ payload }: ScriptsViewerProps = {}): React.JSX.Element {
   const [workspaceDir] = useState<string>(() => {
     return (
+      payload?.workspaceDir ||
       localStorage.getItem("chat-selected-workspace") ||
       localStorage.getItem("workbench-selected-project") ||
       ""
