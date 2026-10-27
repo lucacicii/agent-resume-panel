@@ -43,6 +43,16 @@ export function ArtifactScriptsViewer({ payload }: ScriptsViewerProps = {}): Rea
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [runningScriptId, setRunningScriptId] = useState<string | null>(null);
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(new Set());
+
+  const toggleGroupCollapse = useCallback((pkgId: string) => {
+    setCollapsedGroupIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(pkgId)) next.delete(pkgId);
+      else next.add(pkgId);
+      return next;
+    });
+  }, []);
 
   const loadScripts = useCallback(async () => {
     const roots =
@@ -184,59 +194,76 @@ export function ArtifactScriptsViewer({ payload }: ScriptsViewerProps = {}): Rea
           </div>
         ) : (
           <div className="art-scripts-groups-container">
-            {filteredPackages.map((pkg) => (
-              <div key={pkg.id} className="art-script-group-card">
-                <div className="art-script-group-head">
-                  <div className="art-script-group-title-box">
-                    <ThemeIcon name="folder" size={ICON_SIZE.dense} />
-                    <span className="art-script-group-name">{pkg.label}</span>
-                    <span className="art-script-group-kind-badge">{pkg.kind}</span>
+            {filteredPackages.map((pkg) => {
+              const isCollapsed = collapsedGroupIds.has(pkg.id);
+              return (
+                <div key={pkg.id} className="art-script-group-card">
+                  <div
+                    className="art-script-group-head"
+                    onClick={() => toggleGroupCollapse(pkg.id)}
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={!isCollapsed}
+                    title={isCollapsed ? "点击展开项目脚本" : "点击折叠项目脚本"}
+                  >
+                    <div className="art-script-group-title-box">
+                      <ThemeIcon
+                        name="chevron-down"
+                        size={ICON_SIZE.inline}
+                        className={`art-script-collapse-icon${isCollapsed ? " is-collapsed" : ""}`}
+                      />
+                      <ThemeIcon name="folder" size={ICON_SIZE.dense} />
+                      <span className="art-script-group-name">{pkg.label}</span>
+                      <span className="art-script-group-kind-badge">{pkg.kind}</span>
+                    </div>
+                    <span className="art-script-group-count">{pkg.scripts.length} 个脚本</span>
                   </div>
-                  <span className="art-script-group-count">{pkg.scripts.length} 个脚本</span>
-                </div>
-                <div className="art-script-group-items">
-                  {pkg.scripts.map((script) => {
-                    const isRunning = runningScriptId === script.id;
-                    return (
-                      <div key={script.id} className="art-script-card">
-                        <div className="art-script-head">
-                          <span className="art-script-name">{script.name}</span>
-                          <div className="art-script-actions">
-                            <button
-                              type="button"
-                              className="art-note-action-btn art-note-cite-btn"
-                              onClick={() => handleAskAgent(script)}
-                              title="带入对话提问 Agent"
-                            >
-                              <ThemeIcon name="message-square-plus" size={ICON_SIZE.inline} />
-                              <span>提问</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="art-script-run-btn"
-                              onClick={() => void handleRunScript(script)}
-                              disabled={isRunning}
-                              title="在后台执行此脚本"
-                            >
-                              <ThemeIcon
-                                name={isRunning ? "loader" : "play"}
-                                size={ICON_SIZE.inline}
-                                className={isRunning ? "spin" : undefined}
-                              />
-                              <span>{isRunning ? "执行中" : "运行"}</span>
-                            </button>
+                  {!isCollapsed && (
+                    <div className="art-script-group-items">
+                      {pkg.scripts.map((script) => {
+                        const isRunning = runningScriptId === script.id;
+                        return (
+                          <div key={script.id} className="art-script-card">
+                            <div className="art-script-head">
+                              <span className="art-script-name">{script.name}</span>
+                              <div className="art-script-actions">
+                                <button
+                                  type="button"
+                                  className="art-note-action-btn art-note-cite-btn"
+                                  onClick={() => handleAskAgent(script)}
+                                  title="带入对话提问 Agent"
+                                >
+                                  <ThemeIcon name="message-square-plus" size={ICON_SIZE.inline} />
+                                  <span>提问</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="art-script-run-btn"
+                                  onClick={() => void handleRunScript(script)}
+                                  disabled={isRunning}
+                                  title="在后台执行此脚本"
+                                >
+                                  <ThemeIcon
+                                    name={isRunning ? "loader" : "play"}
+                                    size={ICON_SIZE.inline}
+                                    className={isRunning ? "spin" : undefined}
+                                  />
+                                  <span>{isRunning ? "执行中" : "运行"}</span>
+                                </button>
+                              </div>
+                            </div>
+                            <pre className="art-script-cmd">{script.run.command}</pre>
+                            <div className="art-script-foot">
+                              <span>工作目录: {script.run.cwd.split("/").filter(Boolean).pop()}</span>
+                            </div>
                           </div>
-                        </div>
-                        <pre className="art-script-cmd">{script.run.command}</pre>
-                        <div className="art-script-foot">
-                          <span>工作目录: {script.run.cwd.split("/").filter(Boolean).pop()}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

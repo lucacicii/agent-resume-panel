@@ -23935,6 +23935,23 @@ html[data-window-mode="main"][data-stage-open="true"] #react-stage-host {
   padding: var(--space-2) var(--space-3);
   background: var(--color-window-bg);
   border-bottom: 0.5px solid var(--color-separator);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.12s ease;
+}
+
+.art-script-group-head:hover {
+  background: var(--color-fill-secondary);
+}
+
+.art-script-collapse-icon {
+  color: var(--color-label-tertiary);
+  transition: transform 0.18s ease;
+  flex-shrink: 0;
+}
+
+.art-script-collapse-icon.is-collapsed {
+  transform: rotate(-90deg);
 }
 
 .art-script-group-title-box {
