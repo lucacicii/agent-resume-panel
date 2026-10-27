@@ -1276,6 +1276,7 @@ export function ChatComposer({
   }, []);
 
   const triggerScriptsArtifact = useCallback(() => {
+    const projects = workspaceProjects.length > 0 ? workspaceProjects : (workspaceDir ? [workspaceDir] : []);
     window.dispatchEvent(
       new CustomEvent("agent-resume:stage-artifact", {
         detail: {
@@ -1284,11 +1285,14 @@ export function ChatComposer({
           title: "可执行脚本",
           target: "stage",
           kind: "native:scripts",
-          payload: {}
+          payload: {
+            workspaceDir,
+            projects
+          }
         }
       })
     );
-  }, []);
+  }, [workspaceDir, workspaceProjects]);
 
   // Listen for cross-artifact append events
   useEffect(() => {
