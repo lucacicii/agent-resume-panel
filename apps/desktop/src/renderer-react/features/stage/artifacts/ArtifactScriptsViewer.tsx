@@ -145,10 +145,20 @@ export function ArtifactScriptsViewer({ payload }: ScriptsViewerProps = {}): Rea
     );
   };
 
-  const handleRunScript = (script: RunnableScript) => {
+  const handleRunScript = async (script: RunnableScript) => {
     setRunningScriptId(script.id);
-    handleAskAgent(script);
-    setTimeout(() => setRunningScriptId(null), 1000);
+    try {
+      if (typeof desktopApi().terminalRunCommand === "function") {
+        await desktopApi().terminalRunCommand({
+          cwd: script.run.cwd,
+          command: script.run.command
+        });
+      }
+    } catch (err) {
+      console.warn("Failed to run script in terminal:", err);
+    } finally {
+      setTimeout(() => setRunningScriptId(null), 1200);
+    }
   };
 
   return (
@@ -248,7 +258,7 @@ export function ArtifactScriptsViewer({ payload }: ScriptsViewerProps = {}): Rea
                                     size={ICON_SIZE.inline}
                                     className={isRunning ? "spin" : undefined}
                                   />
-                                  <span>{isRunning ? "执行中" : "运行"}</span>
+                                  <span>{isRunning ? "已发送终端" : "运行"}</span>
                                 </button>
                               </div>
                             </div>

@@ -3319,6 +3319,23 @@ function registerIpc(): void {
   );
 
   safeHandle(
+    "terminal:runCommand",
+    async (_event, args: { cwd: string; command: string }) => {
+      const cwd = expandHome(args.cwd?.trim() || process.cwd());
+      const command = args.command?.trim();
+      if (!command) throw new Error("Command is required.");
+      const settings = await loadSettings();
+      await openCommandInSystemTerminal(
+        cwd,
+        command,
+        systemTerminalSettings(settings),
+        { writeText: (text) => Promise.resolve(clipboard.writeText(text)) }
+      );
+      return { ok: true as const };
+    }
+  );
+
+  safeHandle(
     "workbench:listSessionFolders",
     async (_event, args: { projectId: string }) => {
       const paths = await loadPanelDbPaths();

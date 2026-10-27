@@ -922,6 +922,7 @@ export interface DesktopApi {
   terminalGitReset(args: { repoRoot: string; hash: string; mode: "soft" | "mixed" | "hard" }): Promise<{ ok: boolean }>;
   terminalGitCheckoutCommit(args: { repoRoot: string; hash: string }): Promise<{ ok: boolean }>;
   terminalGitBranchFromCommit(args: { repoRoot: string; hash: string; branch: string }): Promise<{ ok: boolean }>;
+  terminalRunCommand(args: { cwd: string; command: string }): Promise<{ ok: boolean }>;
   workbenchListDirectory(args: {
     rootPath: string;
     dirPath: string;
@@ -1971,6 +1972,7 @@ const api: DesktopApi = {
   terminalGitReset: (args) => ipcRenderer.invoke("terminal:gitReset", args),
   terminalGitCheckoutCommit: (args) => ipcRenderer.invoke("terminal:gitCheckoutCommit", args),
   terminalGitBranchFromCommit: (args) => ipcRenderer.invoke("terminal:gitBranchFromCommit", args),
+  terminalRunCommand: (args) => ipcRenderer.invoke("terminal:runCommand", args),
   onTerminalData: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: number; data: string }) =>
       callback(payload);
