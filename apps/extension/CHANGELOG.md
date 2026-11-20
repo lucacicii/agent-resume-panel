@@ -8,6 +8,16 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.13.0]
+
+#### 变更
+
+- **聚焦 VS Code 扩展**：移除已退役的 Desktop 桌面端及相关代码、文档与核心依赖，`@agent-resume/core` 收敛为零第三方运行时依赖，显著减小扩展体积与维护复杂度。
+
+#### 移除
+
+- **只读 Reports 日历面板**：移除原依赖 Desktop 日报数据库的 `Reports (read-only)` 命令与面板。
+
 ### [2.12.0]
 
 #### 新增
@@ -522,6 +532,16 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.13.0]
+
+#### Changed
+
+- **VS Code extension focus**: Removed the retired Desktop client, its docs, and Desktop-only core modules; `@agent-resume/core` now has zero third-party runtime dependencies, reducing extension bundle size and complexity.
+
+#### Removed
+
+- **Read-only Reports calendar panel**: Removed the `Reports (read-only)` command and viewer panel that previously depended on the Desktop report database.
 
 ### [2.12.0]
 
