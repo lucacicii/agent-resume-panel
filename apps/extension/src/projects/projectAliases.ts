@@ -15,7 +15,6 @@ export function formatProjectLabel(projectPath: string, alias?: string): string 
 
 /**
  * Group key for sidebar projects: prefer catalog project_id, else portable_key.
- * Aligns extension tree with Desktop logical projects.
  */
 export function projectGroupKey(session: Pick<AgentSession, "projectPath" | "projectId">): string {
   const id = session.projectId?.trim();

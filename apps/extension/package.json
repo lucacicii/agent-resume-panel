@@ -2,7 +2,7 @@
   "name": "agent-resume-panel",
   "displayName": "Agent Resume Panel",
   "publisher": "wuzhengzhe",
-  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, Prime Agent, OMP, and Cursor CLI sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Cursor IDE composer metadata is indexed too. Companion macOS Desktop app (shared ~/.agent-resume-panel data) adds calendar digests, Agent Q&A, and embedded Workbench.",
+  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, Prime Agent, OMP, and Cursor CLI sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Cursor IDE composer metadata is indexed too.",
   "version": "2.12.0",
   "icon": "resources/icon.png",
   "private": true,
@@ -44,7 +44,6 @@
     "chat",
     "acp",
     "sidebar",
-    "desktop",
     "session os",
     "preview",
     "search",
@@ -68,7 +67,6 @@
     "onCommand:agentResume.setNoteGtdStatus",
     "onCommand:agentResume.search",
     "onCommand:agentResume.openSessionManager",
-    "onCommand:agentResume.openReport",
     "onCommand:agentResume.newSession",
     "onCommand:agentResume.openFolder",
     "onCommand:agentResume.openProject",
@@ -728,12 +726,6 @@
         "title": "Session Manager",
         "category": "Agent Resume",
         "icon": "$(database)"
-      },
-      {
-        "command": "agentResume.openReport",
-        "title": "Reports (read-only)",
-        "category": "Agent Resume",
-        "icon": "$(calendar)"
       },
       {
         "command": "agentResume.newSession",
@@ -3433,11 +3425,6 @@
           "command": "agentResume.search",
           "when": "view == agentResume.sessions",
           "group": "navigation@1"
-        },
-        {
-          "command": "agentResume.openReport",
-          "when": "view == agentResume.sessions",
-          "group": "navigation@2"
         },
         {
           "command": "agentResume.openSessionManager",

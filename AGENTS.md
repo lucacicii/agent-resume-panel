@@ -1,8 +1,6 @@
 # AI Task Router
 
-This repository is a pnpm workspace monorepo with **two independent products** — the Agent Resume Panel VS Code extension and the Agent Resume Desktop Electron app — plus shared `@agent-resume/core`. It requires Node.js `>=22.13` and pnpm `11.13.1` for development. The products share panel-home data contracts but have separate codebases, locales, versions, UI stacks, and release pipelines.
-
-Read [`.agents/extended/product-independence.md`](.agents/extended/product-independence.md) when a task might touch both products, shared core, i18n, settings, or release tooling.
+This repository is a pnpm workspace monorepo for the **Agent Resume Panel** VS Code extension (`apps/extension/`) and its shared core library (`@agent-resume/core` in `packages/core/`). It requires Node.js `>=22.13` and pnpm `11.13.1` for development.
 
 ## Boundaries
 
@@ -29,23 +27,19 @@ Skip the menu index when the user supplies a concrete path, a searchable identif
 
 Load these references only when relevant:
 
-- Product boundaries (extension vs desktop vs core): [`.agents/extended/product-independence.md`](.agents/extended/product-independence.md)
-- TypeScript, VS Code extension, Electron, workspace, or build work: [`.agents/extended/dev-rules.md`](.agents/extended/dev-rules.md)
-- UI or renderer work: [`.agents/extended/ui-policy.md`](.agents/extended/ui-policy.md) (desktop + extension UI rules; desktop follows [Apple macOS HIG](https://developer.apple.com/design/human-interface-guidelines/designing-for-macos))
+- TypeScript, VS Code extension, workspace, or build work: [`.agents/extended/dev-rules.md`](.agents/extended/dev-rules.md)
+- UI or webview work: [`.agents/extended/ui-policy.md`](.agents/extended/ui-policy.md)
 - Filesystem, process, database, authentication, network, or secret handling: [`.agents/extended/security.md`](.agents/extended/security.md)
 
 ## Verification
 
-Run checks for the product you changed:
+Run checks after source changes:
 
-- **Shared / extension TypeScript** — `pnpm run compile` after source changes.
-- **Desktop TypeScript (main, preload, renderer)** — `pnpm run typecheck:desktop` after any desktop source change. `pnpm run compile` does **not** cover desktop, and `pnpm run test:renderer` does not type-check; `pnpm run build:desktop` does, but only runs before distribution.
-- **Desktop renderer tests** — `pnpm --filter @agent-resume/desktop run test:renderer`; root `test:desktop` does not run them.
+- **Core & extension TypeScript** — `pnpm run compile` after source changes.
+- **Core unit tests** — `pnpm run test:core` after `packages/core` changes.
 - **Extension strings** — `pnpm run i18n:check` after `apps/extension/locales/*.json` or `t()` / webview string changes.
-- **Desktop strings** — update `scripts/desktop-i18n-catalog.json`, run `pnpm run merge:desktop-i18n`, then `pnpm run i18n:check`.
-- **Translation coverage** — `pnpm run i18n:check:translations` after locale work in either product.
+- **Translation coverage** — `pnpm run i18n:check:translations` after locale work.
 - **Extension menus** — `pnpm run test:menus` after menu contribution generators change.
 - **Extension contributions** — `pnpm run install:local` (all detected editors) or `pnpm run install:local-vscode` (VS Code only), then **Developer: Reload Window**.
-- **Desktop build** — `pnpm run build:desktop` or `pnpm run pack:desktop` before distribution. `build:desktop` already runs the desktop type checks.
 
 Use `/qa` and `/review` for their respective quality workflows when available.

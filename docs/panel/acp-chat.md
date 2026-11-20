@@ -10,9 +10,7 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 ### What it is
 
-**ACP Chat** is an **extension-only** surface for chatting with agents in the editor via the [Agent Client Protocol (ACP)](https://agentclientprotocol.com). It is separate from CLI session history in **Sessions**.
-
-Desktop does **not** include ACP Chat.
+**ACP Chat** lets you chat with agents in the editor via the [Agent Client Protocol (ACP)](https://agentclientprotocol.com). It is separate from CLI session history in **Sessions**.
 
 ### Supported agents (ACP)
 
@@ -67,9 +65,7 @@ See also [Settings & data](settings-and-data.md) and [LLM Assist / Handoff](llm-
 
 ### 是什么
 
-**ACP Chat** 是 **仅扩展提供** 的能力：通过 [Agent Client Protocol (ACP)](https://agentclientprotocol.com) 在编辑器旁与 Agent 对话。它与 **Sessions** 里的 CLI 历史会话是两套数据。
-
-Desktop **没有** ACP Chat。
+**ACP Chat** 通过 [Agent Client Protocol (ACP)](https://agentclientprotocol.com) 在编辑器旁与 Agent 对话。它与 **Sessions** 里的 CLI 历史会话是两套数据。
 
 ### 支持的 ACP Agent
 

@@ -6,20 +6,19 @@
 
 | Feature keywords | Code path | Notes |
 | --- | --- | --- |
-| sidebar sessions and projects | `src/tree/sessionTree.ts`, `src/extension.ts` | Project grouping, favorites, session ordering, and refresh wiring. |
-| provider history loading | `src/history/` | Provider-specific local session readers and types. |
-| session catalog | `src/catalog/` | SQLite sync, query, mutation, aliases, GTD, notes flags, and transcript export. |
-| preview and session assistant actions | `src/preview/` | Read-only transcript preview, summary, auto rename, handoff actions. |
-| search and session manager | `src/search/sessionSearch.ts`, `src/manager/sessionManagerPanel.ts` | Search filters and bulk export. |
-| resume targets | `src/terminal/` | Integrated terminal, Ghostty, Claude/Codex panels, Codex App. |
+| sidebar sessions and projects | `apps/extension/src/tree/sessionTree.ts`, `apps/extension/src/extension.ts` | Project grouping, favorites, session ordering, and refresh wiring. |
+| provider history loading | `apps/extension/src/history/` | Provider-specific local session readers and types. |
+| session catalog | `apps/extension/src/catalog/` | SQLite sync, query, mutation, aliases, GTD, notes flags, and transcript export. |
+| preview and session assistant actions | `apps/extension/src/preview/` | Read-only transcript preview, summary, auto rename, handoff actions. |
+| search and session manager | `apps/extension/src/search/sessionSearch.ts`, `apps/extension/src/manager/sessionManagerPanel.ts` | Search filters and bulk export. |
+| resume targets | `apps/extension/src/terminal/` | Integrated terminal, Ghostty, Claude/Codex panels, Codex App. |
 
-## Shared Core And Desktop
+## Shared Core
 
 | Feature keywords | Code path | Notes |
 | --- | --- | --- |
-| session synchronization | `packages/core/src/sessionSync.ts`, `packages/core/src/session/` | Shared provider-to-catalog synchronization and reusable session actions. |
-| catalog and transcripts | `packages/core/src/catalog/`, `packages/core/src/transcript/` | Shared schema, queries, native transcript previews, and provider homes. |
-| desktop session flows | `apps/desktop/src/main/main.ts`, `apps/desktop/src/renderer-react/features/workbench/WorkbenchPanel.tsx` | Sync, list, preview, rename, hide, and resume are IPC-mediated; Workbench is the session browser. |
+| session synchronization | `packages/core/src/sessionSync.ts` | Provider-to-catalog synchronization. |
+| catalog and transcripts | `packages/core/src/catalog/`, `packages/core/src/transcript/` | Schema, mutations, projects, preview text helpers, and provider homes. |
 
 ## Constraints
 

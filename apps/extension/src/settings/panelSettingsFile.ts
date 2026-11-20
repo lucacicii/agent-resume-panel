@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import { sanitizeAgentHomes } from "@agent-resume/core/extension";
 import { expandHome } from "../history/pathUtils";
 
-/** Mirrors packages/core PanelSettings LLM fields used by Desktop. */
+/** Local panelHome settings.json LLM bridge fields. */
 interface PanelSettingsFile {
   panelHome?: string;
   llm: {
@@ -38,7 +38,6 @@ interface PanelSettingsFile {
     cursorHome?: string;
     cursorIdeUserDataHome?: string;
   };
-  desktop?: Record<string, unknown>;
 }
 
 const DEFAULT_PANEL_HOME = "~/.agent-resume-panel";
@@ -81,8 +80,7 @@ function mergeFile(partial: Partial<PanelSettingsFile> | null | undefined): Pane
         ? { ...(base.chatLlm || {}), ...(partial.chatLlm || {}) }
         : undefined,
     embedding: { ...base.embedding, ...(partial.embedding || {}) },
-    agentHomes: { ...base.agentHomes, ...(partial.agentHomes || {}) },
-    desktop: { ...base.desktop, ...(partial.desktop || {}) }
+    agentHomes: { ...base.agentHomes, ...(partial.agentHomes || {}) }
   };
 }
 

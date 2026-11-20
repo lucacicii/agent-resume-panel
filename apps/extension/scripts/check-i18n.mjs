@@ -5,7 +5,6 @@ import { join } from "node:path";
 import {
   collectI18nUsage,
   extensionLocalesDir,
-  desktopLocalesDir,
   mediaScanFiles
 } from "./i18n-usage.mjs";
 
@@ -14,9 +13,7 @@ const extensionSrcDir = join(extensionRoot, "src");
 
 const usage = collectI18nUsage();
 const extensionEnKeys = usage.extensionEnKeys;
-const desktopEnKeys = usage.desktopEnKeys;
 const extensionUsedKeys = usage.extensionUsedKeys;
-const desktopUsedKeys = usage.desktopUsedKeys;
 
 function assertLocaleShape(label, locale, predicate, errors) {
   for (const key of Object.keys(locale)) {
@@ -43,24 +40,14 @@ let failed = false;
 const errors = [];
 
 assertLocaleShape("extension locale", usage.extensionEn, (key) => !key.startsWith("desktop."), errors);
-assertLocaleShape("desktop locale", usage.desktopEn, (key) => key.startsWith("desktop."), errors);
 
 for (const key of extensionUsedKeys) {
-  if (key.startsWith("desktop.")) continue;
   if (!extensionEnKeys.has(key)) {
     errors.push(`Missing extension key in locales/en.json: ${key}`);
   }
 }
 
-for (const key of desktopUsedKeys) {
-  if (!key.startsWith("desktop.")) continue;
-  if (!desktopEnKeys.has(key)) {
-    errors.push(`Missing desktop key in apps/desktop/locales/en.json: ${key}`);
-  }
-}
-
 checkLocaleParity(extensionEnKeys, extensionLocalesDir, "extension", errors);
-checkLocaleParity(desktopEnKeys, desktopLocalesDir, "desktop", errors);
 
 const uiStringsPath = join(extensionSrcDir, "webview", "uiStrings.ts");
 const uiStringsSource = readFileSync(uiStringsPath, "utf8");
@@ -85,9 +72,6 @@ for (const key of exportedUiKeys) {
 if (usage.unusedExtension.length > 0) {
   console.warn(`Warning: ${usage.unusedExtension.length} unused keys in apps/extension/locales/en.json`);
 }
-if (usage.unusedDesktop.length > 0) {
-  console.warn(`Warning: ${usage.unusedDesktop.length} unused keys in apps/desktop/locales/en.json`);
-}
 
 if (errors.length > 0) {
   failed = true;
@@ -102,5 +86,5 @@ if (failed) {
 }
 
 console.log(
-  `i18n check passed (extension: ${extensionUsedKeys.size} used / ${extensionEnKeys.size} catalog; desktop: ${desktopUsedKeys.size} used / ${desktopEnKeys.size} catalog).`
+  `i18n check passed (extension: ${extensionUsedKeys.size} used / ${extensionEnKeys.size} catalog).`
 );

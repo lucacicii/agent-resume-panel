@@ -217,7 +217,7 @@ export async function applySettingsPatch(
     }
   }
 
-  // Keep ~/.agent-resume-panel/settings.json in sync for Desktop + core.
+  // Keep ~/.agent-resume-panel/settings.json in sync.
   if (
     llmPanelPatch.baseUrl !== undefined ||
     llmPanelPatch.model !== undefined ||

@@ -15,55 +15,38 @@ import { collectI18nUsage } from "./i18n-usage.mjs";
 
 const root = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..");
 const pruner = join(root, "scripts", "prune-i18n-dead-keys.mjs");
-const desktopEnPath = join(root, "apps", "desktop", "locales", "en.json");
+const extensionEnPath = join(root, "apps", "extension", "locales", "en.json");
 
 const usage = collectI18nUsage();
 
-// Keys that are on screen but which the reference scan has missed in the past:
-// the pruner's old hand-written list included both, and removing them silently
-// blanked the selection settings pane and the session detail sheet.
-const KNOWN_LIVE = ["desktop.common.delete", "desktop.sessions.autoRename"];
-for (const key of KNOWN_LIVE) {
-  assert.ok(usage.desktopEnKeys.has(key), `${key} should exist in the desktop locale`);
-  assert.ok(usage.desktopUsedKeys.has(key), `${key} is referenced in source and must count as used`);
-  assert.ok(!usage.unusedDesktop.includes(key), `${key} must never be reported as unused`);
-}
-
-// Guard the rule rather than the two examples: anything the scan collected is
-// out of the pruner's reach by construction.
-for (const key of usage.desktopUsedKeys) {
-  assert.ok(!usage.unusedDesktop.includes(key), `${key} is used but was reported as unused`);
+for (const key of usage.extensionUsedKeys) {
+  assert.ok(!usage.unusedExtension.includes(key), `${key} is used but was reported as unused`);
 }
 
 // A dry run must be the default, and must not touch the locale files.
-const before = readFileSync(desktopEnPath, "utf8");
+const before = readFileSync(extensionEnPath, "utf8");
 const output = execFileSync(process.execPath, [pruner], { encoding: "utf8" });
 assert.ok(output.includes("dry run"), "running without --write should announce a dry run");
-assert.equal(readFileSync(desktopEnPath, "utf8"), before, "a dry run must not rewrite the locale");
+assert.equal(readFileSync(extensionEnPath, "utf8"), before, "a dry run must not rewrite the locale");
 
-// Every key the pruner offers to delete has to be absent from the used set, so
-// the printed list is the only thing an operator can approve.
 const offered = output
   .split("\n")
   .map((line) => line.trim())
-  .filter((line) => line.startsWith("- desktop."))
+  .filter((line) => line.startsWith("- "))
   .map((line) => line.slice(2));
 for (const key of offered) {
-  assert.ok(!usage.desktopUsedKeys.has(key), `${key} is used but the pruner offered to delete it`);
+  assert.ok(!usage.extensionUsedKeys.has(key), `${key} is used but the pruner offered to delete it`);
 }
 
-// The invariant that matters, independent of how many dead keys exist today:
-// nothing offered may be used, and every offered key may only come from the
-// unused set the scan produced.
 assert.equal(
   offered.length,
-  usage.unusedDesktop.length,
+  usage.unusedExtension.length,
   "the pruner should offer exactly the keys the scan called unused"
 );
 for (const key of offered) {
-  assert.ok(usage.unusedDesktop.includes(key), `${key} was offered but is not in the unused set`);
+  assert.ok(usage.unusedExtension.includes(key), `${key} was offered but is not in the unused set`);
 }
 
 console.log(
-  `prune-i18n-dead-keys: ok (${offered.length} offered, ${usage.desktopUsedKeys.size} protected)`
+  `prune-i18n-dead-keys: ok (${offered.length} offered, ${usage.extensionUsedKeys.size} protected)`
 );

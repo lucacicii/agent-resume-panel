@@ -1,4 +1,0 @@
-  Applying migration 0042 to the local database.
-
-  Retry the statement? [y/n]
-  yes (y)

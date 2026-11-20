@@ -5,13 +5,64 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  listSessions,
+  DEFAULT_AGENT_HOMES,
+  catalogDbPath,
+  defaultCursorIdeUserDataHome,
+  expandHome,
   loadAllAgentSessions,
   moveSessionToProjectInCatalog,
+  resolvePanelHome,
   runSqliteJson,
-  sessionSyncOptionsFromSettings,
   syncAgentSessions
 } from "../dist/index.js";
+
+function buildSyncOptions(settings, overrides = {}) {
+  const homes = settings.agentHomes || {};
+  const panelHome = resolvePanelHome(settings.panelHome);
+  const sync = settings.sessionSync || {};
+  return {
+    dbPath: catalogDbPath(panelHome),
+    panelHome,
+    codexHome: expandHome(homes.codexHome || DEFAULT_AGENT_HOMES.codexHome),
+    claudeHome: expandHome(homes.claudeHome || DEFAULT_AGENT_HOMES.claudeHome),
+    antigravityHome: expandHome(homes.antigravityHome || DEFAULT_AGENT_HOMES.antigravityHome),
+    grokHome: expandHome(homes.grokHome || DEFAULT_AGENT_HOMES.grokHome),
+    opencodeHome: expandHome(homes.opencodeHome || DEFAULT_AGENT_HOMES.opencodeHome),
+    piHome: expandHome(homes.piHome || DEFAULT_AGENT_HOMES.piHome),
+    primeHome: expandHome(homes.primeHome || DEFAULT_AGENT_HOMES.primeHome),
+    ompHome: expandHome(homes.ompHome || DEFAULT_AGENT_HOMES.ompHome),
+    cursorHome: expandHome(homes.cursorHome || DEFAULT_AGENT_HOMES.cursorHome),
+    cursorIdeUserDataHome: expandHome(homes.cursorIdeUserDataHome || defaultCursorIdeUserDataHome()),
+    configuredAgentHomes: settings.agentHomes,
+    maxItems: sync.maxItems ?? 10_000,
+    stalePolicy: sync.stalePolicy || "off",
+    showArchivedCodex: sync.showArchivedCodex === true,
+    showArchivedOpenCode: sync.showArchivedOpenCode === true,
+    showSubagentCodex: sync.showSubagentCodex === true,
+    showSubagentGrok: sync.showSubagentGrok === true,
+    showArchivedCursorIde: sync.showArchivedCursorIde === true,
+    showSubagentCursorIde: sync.showSubagentCursorIde === true,
+    ...overrides
+  };
+}
+
+async function listVisibleSessions(dbPath, limit = 100) {
+  const rows = await runSqliteJson(
+    dbPath,
+    `SELECT provider, agent_session_id, COALESCE(NULLIF(TRIM(user_title), ''), title) AS display_title,
+            project_path, native_project_path, session_summary
+     FROM sessions WHERE hidden = 0 ORDER BY updated_at_ms DESC LIMIT ${limit};`
+  );
+  return rows.map((row) => ({
+    provider: row.provider,
+    id: row.agent_session_id,
+    title: row.display_title,
+    projectPath: row.project_path,
+    nativeProjectPath: row.native_project_path || undefined,
+    projectOverridden: Boolean(row.native_project_path && row.native_project_path !== row.project_path),
+    sessionSummary: row.session_summary || undefined
+  }));
+}
 
 function sqlite(dbPath, sql) {
   execFileSync("sqlite3", [dbPath, sql]);
@@ -37,7 +88,7 @@ test("fresh install with default agent homes does not warn about missing directo
       piHome: "~/.pi/agent"
     }
   };
-  const result = await loadAllAgentSessions(sessionSyncOptionsFromSettings(settings));
+  const result = await loadAllAgentSessions(buildSyncOptions(settings));
   assert.equal(result.warnings.length, 0);
   assert.equal(result.providers.every((provider) => provider.status === "ok"), true);
 });
@@ -53,7 +104,7 @@ test("explicit missing agent home still warns", async () => {
       claudeHome: missing
     }
   };
-  const result = await loadAllAgentSessions(sessionSyncOptionsFromSettings(settings));
+  const result = await loadAllAgentSessions(buildSyncOptions(settings));
   assert.ok(result.warnings.some((warning) => warning.includes("Claude data directory not found")));
 });
 
@@ -130,7 +181,7 @@ test("syncs ten providers, preserves local enhancements, and isolates provider f
     agentHomes: homes,
     sessionSync: { maxItems: 10000, stalePolicy: "off" }
   };
-  const options = sessionSyncOptionsFromSettings(settings);
+  const options = buildSyncOptions(settings);
   const firstPromise = syncAgentSessions(options);
   assert.equal(syncAgentSessions(options), firstPromise, "concurrent calls share one task");
   const first = await firstPromise;
@@ -154,7 +205,7 @@ test("syncs ten providers, preserves local enhancements, and isolates provider f
   sqlite(options.dbPath, "UPDATE sessions SET user_title='Pinned title',session_summary='Keep summary',session_summary_language='English' WHERE provider='codex' AND agent_session_id='codex-1'; INSERT INTO session_gtd(provider,agent_session_id,status,updated_at_ms) VALUES('codex','codex-1','doing',1);");
   sqlite(codexDb, "UPDATE threads SET title='Codex native updated' WHERE id='codex-1';");
   await syncAgentSessions(options);
-  const visible = await listSessions(options.dbPath, 100);
+  const visible = await listVisibleSessions(options.dbPath, 100);
   const codex = visible.find((item) => item.provider === "codex");
   assert.equal(codex?.title, "Pinned title");
   assert.equal(codex?.sessionSummary, "Keep summary");
@@ -173,7 +224,7 @@ test("syncs ten providers, preserves local enhancements, and isolates provider f
 
   sqlite(options.dbPath, "UPDATE sessions SET hidden=1 WHERE provider='codex' AND agent_session_id='codex-1';");
   await syncAgentSessions(options);
-  assert.ok(!(await listSessions(options.dbPath, 100)).some((item) => item.id === "codex-1"));
+  assert.ok(!(await listVisibleSessions(options.dbPath, 100)).some((item) => item.id === "codex-1"));
   const hiddenRows = await runSqliteJson(options.dbPath, "SELECT hidden FROM sessions WHERE provider='codex' AND agent_session_id='codex-1';");
   assert.equal(hiddenRows[0].hidden, 1);
 
@@ -182,7 +233,7 @@ test("syncs ten providers, preserves local enhancements, and isolates provider f
   assert.equal(moved.moved, true);
   assert.equal(moved.newPath, "/tmp/moved-project");
   await syncAgentSessions(options);
-  const afterMove = await listSessions(options.dbPath, 100);
+  const afterMove = await listVisibleSessions(options.dbPath, 100);
   const movedCodex = afterMove.find((item) => item.provider === "codex" && item.id === "codex-1");
   assert.equal(movedCodex?.projectPath, "/tmp/moved-project");
   const overrideRows = await runSqliteJson(options.dbPath, "SELECT project_path, native_project_path FROM sessions WHERE provider='codex' AND agent_session_id='codex-1';");
@@ -202,7 +253,7 @@ test("syncs ten providers, preserves local enhancements, and isolates provider f
   await writeFile(opencodeDb, "not a sqlite database", "utf8");
   const failed = await syncAgentSessions(options);
   assert.equal(failed.providers.find((item) => item.provider === "opencode")?.status, "error");
-  assert.ok((await listSessions(options.dbPath, 100)).some((item) => item.id === "opencode-1"), "failed provider keeps old catalog rows");
+  assert.ok((await listVisibleSessions(options.dbPath, 100)).some((item) => item.id === "opencode-1"), "failed provider keeps old catalog rows");
 });
 
 test("Claude project_path uses first transcript cwd, not later Bash cd drift", async () => {
@@ -248,7 +299,7 @@ test("Claude project_path uses first transcript cwd, not later Bash cd drift", a
     agentHomes: { claudeHome },
     sessionSync: { maxItems: 10000, stalePolicy: "off" }
   };
-  const options = sessionSyncOptionsFromSettings(settings);
+  const options = buildSyncOptions(settings);
   const result = await syncAgentSessions(options);
   const session = result.sessions.find((item) => item.id === "claude-drift");
   assert.equal(session?.projectPath, "/tmp/monorepo");
@@ -317,7 +368,7 @@ test("keeps Codex ACP threads out of CLI sessions and removes existing catalog d
     agentHomes: homes,
     sessionSync: { maxItems: 10000, stalePolicy: "off" }
   };
-  const options = sessionSyncOptionsFromSettings(settings);
+  const options = buildSyncOptions(settings);
   const first = await syncAgentSessions(options);
   const codexIds = first.sessions.filter((item) => item.provider === "codex").map((item) => item.id);
   assert.deepEqual(new Set(codexIds), new Set([vscodeId, malformedId]));
@@ -343,7 +394,7 @@ test("keeps Codex ACP threads out of CLI sessions and removes existing catalog d
 });
 
 test("purgeRetiredAlmaCatalog deletes Alma sessions and Alma-only projects", async () => {
-  const { purgeRetiredAlmaCatalog, listSessions } = await import("../dist/index.js");
+  const { purgeRetiredAlmaCatalog } = await import("../dist/index.js");
   const root = await mkdtemp(path.join(os.tmpdir(), "agent-resume-alma-purge-"));
   const dbPath = path.join(root, "catalog.db");
   // Minimal schema used by purge + list
@@ -380,7 +431,7 @@ test("purgeRetiredAlmaCatalog deletes Alma sessions and Alma-only projects", asy
   assert.equal(Number(almaProject[0].c), 0);
   const mixed = await runSqliteJson(dbPath, "SELECT COUNT(*) AS c FROM projects WHERE project_id='proj-mixed';");
   assert.equal(Number(mixed[0].c), 1);
-  const codex = await listSessions(dbPath, 10);
+  const codex = await listVisibleSessions(dbPath, 10);
   assert.equal(codex.length, 1);
   assert.equal(codex[0].provider, "codex");
   const gtd = await runSqliteJson(dbPath, "SELECT COUNT(*) AS c FROM session_gtd WHERE provider='alma';");

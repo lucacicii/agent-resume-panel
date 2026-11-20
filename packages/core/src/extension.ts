@@ -1,4 +1,4 @@
-export { resolvePanelHome } from "./panelHome";
+export { resolvePanelHome, catalogDbPath } from "./panelHome";
 export {
   UI_LANGUAGE_SETTING,
   UI_LANGUAGE_AUTO,
@@ -130,44 +130,6 @@ export {
   fileMtimeMs
 } from "./notes/fs";
 
-/** Panel home + desktop-private paths (read-only consumers). */
-export {
-  catalogDbPath,
-  desktopDbPath,
-  desktopDataDir
-} from "./panelHome";
-
-/** Report digest types and read-only store APIs (no write / generate). */
-export type { ReportLevel, ReportEntry, ReportLink } from "./report/schema";
-export {
-  desktopReportDbExists,
-  readReportEntries,
-  readReportEntriesInRange,
-  readReportEntryById
-} from "./report/store";
-export type {
-  ReportPeriodType,
-  CalendarPeriodRange,
-  CalendarCell
-} from "./report/calendar";
-export {
-  dayKeyFromDate,
-  dayKeyFromMs,
-  isoWeekLabelFromDate,
-  viewMonthKey,
-  parseDayRange,
-  parseWeekRange,
-  parseMonthRange,
-  rangeForPeriod,
-  paddedMonthRange,
-  calendarCells,
-  periodKeyFromEntry,
-  digestIndex,
-  isFuturePeriod
-} from "./report/calendar";
-
-/** Session range queries against shared catalog.db. */
-export { listSessionsInRange, listSessions, getSessionById } from "./catalog/query";
 export type { AgentSession, AgentProvider } from "./catalog/types";
 
 /** SQLite runner and catalog schema functions */
@@ -182,4 +144,3 @@ export {
   ensureExtensionCatalogSchema,
   resetCatalogSchemaCache
 } from "./catalog/db";
-

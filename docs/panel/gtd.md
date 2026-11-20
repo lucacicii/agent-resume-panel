@@ -10,7 +10,7 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 ### What it is
 
-**GTD** status labels on **CLI sessions** help you triage work without leaving the IDE. Labels are stored in the shared catalog (`catalog.db` under panel home) and stay in sync with Desktop when both use the same panel home.
+**GTD** status labels on **CLI sessions** help you triage work without leaving the IDE. Labels are stored in the local catalog (`catalog.db` under panel home).
 
 ACP chats are **not** GTD-tagged.
 
@@ -32,15 +32,6 @@ ACP chats are **not** GTD-tagged.
 3. **Refresh** the GTD view after bulk changes.  
 4. Filter by GTD in **Search** / Session Manager when hunting a queue of work.
 
-### With Desktop
-
-- Desktop **Report** can propose GTD updates from weekly/monthly digests (preview → apply).  
-- Labels applied on Desktop appear in the extension GTD tree after sync/refresh, and vice versa.  
-- Desktop may also maintain project `todolist.md` content as part of the report GTD workflow — the extension focuses on session-level GTD in the sidebar.
-- Desktop **Workbench** has its own GTD view. It keeps Done sessions in a collapsed **Completed** group; right-click a session to set its GTD state from colored tags.
-- Desktop surfaces **four** GTD columns/tags — **To do** (`inbox`), **In progress** (`next`), **Waiting**, and **Done**. The `someday`/`reference` states are not shown on Desktop; existing marks fold into **To do** until re-triaged. Extension labels are unchanged.
-- **Done is explicit**: it is a completion archive, while **Clear** removes the GTD status and returns the session to an untriaged state. Report/digest workflows never infer Done; the AI/MCP tools set it only when explicitly asked.
-
 ### Tips
 
 1. Use GTD on **sessions**, Notes for longer prose.  
@@ -50,7 +41,6 @@ ACP chats are **not** GTD-tagged.
 ### Related
 
 - [Sessions](sessions.md) · [Notes](notes.md)  
-- [Desktop Report docs](../desktop/README.md) (digests → GTD)  
 - [Settings & data](settings-and-data.md)
 
 ---
@@ -59,7 +49,7 @@ ACP chats are **not** GTD-tagged.
 
 ### 是什么
 
-**GTD** 状态标签打在 **CLI 会话**上，便于在 IDE 内分流任务。标签保存在共用目录数据库（面板数据目录下的 `catalog.db`），与 Desktop 在同一 `panel home` 时会同步。
+**GTD** 状态标签打在 **CLI 会话**上，便于在 IDE 内分流任务。标签保存在本机目录数据库（面板数据目录下的 `catalog.db`）。
 
 ACP 聊天 **不会** 打 GTD 标签。
 
@@ -81,15 +71,6 @@ ACP 聊天 **不会** 打 GTD 标签。
 3. 批量修改后 **Refresh** GTD 视图。  
 4. 在 **Search** / Session Manager 中按 GTD 筛选。
 
-### 与 Desktop 配合
-
-- Desktop **Report** 可从周报/月报生成 GTD 建议（预览 → 应用）。  
-- Desktop 上的标签在扩展刷新后可见，反之亦然。  
-- Desktop 还可能维护项目 `todolist.md`；扩展侧重点是侧边栏会话级 GTD。
-- Desktop **Workbench** 也有 GTD 视图：Done 会话收纳在默认折叠的 **已完成** 分组；右键会话可通过带状态色的标签设置 GTD 状态。
-- Desktop 只展示**四列/四态**：**待办**（`inbox`）、**进行中**（`next`）、**等待**、**完成**。`someday`/`reference` 不再在 Desktop 展示，已有标记在重新分流前归入**待办**；扩展侧标签不变。
-- **Done 为显式设置**：它表示完成归档；**清除状态** 则删除 GTD 标记并回到未分流。报告/digest 流程不会推断 Done；AI/MCP 工具仅在明确要求时设置。
-
 ### 提示
 
 1. 会话用 GTD，长文用 Notes。  
@@ -99,5 +80,4 @@ ACP 聊天 **不会** 打 GTD 标签。
 ### 相关文档
 
 - [会话 Sessions](sessions.md) · [Notes](notes.md)  
-- [Desktop Report 文档](../desktop/README.md)（报告 → GTD）  
 - [设置与数据](settings-and-data.md)

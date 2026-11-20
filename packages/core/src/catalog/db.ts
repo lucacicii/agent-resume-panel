@@ -1,27 +1,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { runSqlite, runSqliteJson } from "../sqlite";
-import { REPORT_SCHEMA_SQL } from "../report/schema";
-import {
-  DESKTOP_ONLY_SCHEMA_SQL,
-  SYNC_STATE_DESKTOP_MIGRATION_SQL,
-  TASK_TEMPLATE_COLOR_MIGRATION_SQL,
-  TASK_TEMPLATE_CUSTOM_COLOR_MIGRATION_SQL,
-  TASK_TEMPLATE_PROJECT_PATHS_MIGRATION_SQL,
-  TASK_TEMPLATE_SCRIPTS_MIGRATION_SQL,
-  SCHEDULE_CATCH_UP_MIGRATION_SQL,
-  SCHEDULE_SESSION_MODE_MIGRATION_SQL
-} from "./desktopSchema";
+import { runSqlite } from "../sqlite";
 import { EXTENSION_MIGRATION_SQL, EXTENSION_SCHEMA_SQL, NOTE_ARCHIVE_SCHEMA_SQL } from "./extensionSchema";
 import { ensureProjectsCatalogSchema } from "./projects";
-
-async function tableExists(dbPath: string, tableName: string): Promise<boolean> {
-  const rows = await runSqliteJson(
-    dbPath,
-    `SELECT name FROM sqlite_master WHERE type='table' AND name='${tableName}';`
-  );
-  return rows.length > 0;
-}
 
 async function runIdempotentStatements(dbPath: string, sql: string): Promise<void> {
   for (const statement of sql.split(";").map((item) => item.trim()).filter(Boolean)) {
@@ -52,17 +33,13 @@ async function ensureWalMode(dbPath: string): Promise<void> {
 
 const extensionCatalogInFlight = new Map<string, Promise<void>>();
 const verifiedExtensionCatalogPaths = new Set<string>();
-const desktopDbInFlight = new Map<string, Promise<void>>();
-const verifiedDesktopDbPaths = new Set<string>();
 
 export function resetCatalogSchemaCache(): void {
   extensionCatalogInFlight.clear();
   verifiedExtensionCatalogPaths.clear();
-  desktopDbInFlight.clear();
-  verifiedDesktopDbPaths.clear();
 }
 
-/** VS Code extension frozen catalog tables only. */
+/** VS Code extension catalog tables. */
 export async function ensureExtensionCatalogSchema(dbPath: string): Promise<void> {
   const target = path.resolve(dbPath);
   if (verifiedExtensionCatalogPaths.has(target)) {
@@ -87,48 +64,4 @@ export async function ensureExtensionCatalogSchema(dbPath: string): Promise<void
 
   extensionCatalogInFlight.set(target, task);
   return task;
-}
-
-/** Additive sync_state columns on the shared catalog (Desktop sync status). */
-export async function ensureCatalogSyncStateDesktop(catalogDb: string): Promise<void> {
-  await runIdempotentStatements(catalogDb, SYNC_STATE_DESKTOP_MIGRATION_SQL);
-}
-
-/** Desktop-private tables in panelHome/.desktop/desktop.db. */
-export async function ensureDesktopDbSchema(desktopDb: string): Promise<void> {
-  const target = path.resolve(desktopDb);
-  if (verifiedDesktopDbPaths.has(target)) {
-    return;
-  }
-  const existing = desktopDbInFlight.get(target);
-  if (existing) {
-    return existing;
-  }
-
-  const task = (async () => {
-    await fs.mkdir(path.dirname(target), { recursive: true });
-    await ensureWalMode(target);
-    await runSqlite(target, REPORT_SCHEMA_SQL);
-    await runSqlite(target, DESKTOP_ONLY_SCHEMA_SQL);
-    await runIdempotentStatements(target, TASK_TEMPLATE_PROJECT_PATHS_MIGRATION_SQL);
-    await runIdempotentStatements(target, TASK_TEMPLATE_COLOR_MIGRATION_SQL);
-    await runIdempotentStatements(target, TASK_TEMPLATE_CUSTOM_COLOR_MIGRATION_SQL);
-    await runIdempotentStatements(target, TASK_TEMPLATE_SCRIPTS_MIGRATION_SQL);
-    await runIdempotentStatements(target, SCHEDULE_CATCH_UP_MIGRATION_SQL);
-    await runIdempotentStatements(target, SCHEDULE_SESSION_MODE_MIGRATION_SQL);
-    verifiedDesktopDbPaths.add(target);
-  })().finally(() => {
-    desktopDbInFlight.delete(target);
-  });
-
-  desktopDbInFlight.set(target, task);
-  return task;
-}
-
-export async function syncStateHasExtendedColumns(dbPath: string): Promise<boolean> {
-  if (!(await tableExists(dbPath, "sync_state"))) {
-    return false;
-  }
-  const columns = (await runSqliteJson(dbPath, "PRAGMA table_info(sync_state);")) as Array<{ name: string }>;
-  return columns.some((column) => column.name === "status");
 }

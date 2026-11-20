@@ -15,7 +15,7 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 VS Code also exposes many keys under `agentResume.*` in Settings UI. After an **in-place extension upgrade**, if menus look wrong, run **Developer: Reload Window** (sidebar Refresh does not reload package contributions).
 
-### Panel home (shared data)
+### Panel home (local data)
 
 Default directory:
 
@@ -23,15 +23,14 @@ Default directory:
 ~/.agent-resume-panel
 ```
 
-Shared with **Agent Resume Desktop** when both use the same path:
+Local files stored under panel home:
 
 | Content | Role |
 |---------|------|
 | `catalog.db` | Session index, GTD, note flags, etc. |
 | Notes files / assets | Markdown notes |
-| `settings.json` (and related) | Shared LLM / panel settings where applicable |
+| `settings.json` | Local LLM / panel settings bridge |
 | ACP chat records | Extension ACP data |
-| Desktop extras | Under `panelHome/.desktop/` (Desktop-only) |
 
 CLI **transcripts** remain in each agent’s native home (`~/.codex`, `~/.claude`, …). Back those up separately when migrating machines.
 
@@ -69,8 +68,7 @@ UI language can follow VS Code or be forced via `agentResume.uiLanguage` (Englis
 
 ### Related
 
-- [Sessions](sessions.md) · [Resume & targets](resume-and-targets.md) · [ACP Chat](acp-chat.md) · [LLM Assist](llm-assist.md)  
-- [Desktop settings & data](../desktop/README.md)
+- [Sessions](sessions.md) · [Resume & targets](resume-and-targets.md) · [ACP Chat](acp-chat.md) · [LLM Assist](llm-assist.md)
 
 ---
 
@@ -83,7 +81,7 @@ UI language can follow VS Code or be forced via `agentResume.uiLanguage` (Englis
 
 许多项也在 VS Code 设置 UI 的 `agentResume.*` 下。若 **就地升级扩展** 后菜单异常，请执行 **Developer: Reload Window**（侧边栏 Refresh 不会重载贡献点）。
 
-### 面板数据目录（共用）
+### 面板数据目录（本机）
 
 默认路径：
 
@@ -91,15 +89,14 @@ UI language can follow VS Code or be forced via `agentResume.uiLanguage` (Englis
 ~/.agent-resume-panel
 ```
 
-与 **Agent Resume Desktop** 在同一路径时共用：
+面板数据目录下保存的本机内容：
 
 | 内容 | 作用 |
 |------|------|
 | `catalog.db` | 会话索引、GTD、笔记标记等 |
 | 笔记文件 / 资源 | Markdown 笔记 |
-| `settings.json` 等 | 共用 LLM / 面板相关设置 |
+| `settings.json` | 本机 LLM / 面板设置桥接 |
 | ACP 聊天记录 | 扩展 ACP 数据 |
-| Desktop 私有 | `panelHome/.desktop/`（仅 Desktop） |
 
 CLI **对话原文** 仍在各 Agent 原生目录（`~/.codex`、`~/.claude` 等），换机请单独备份。
 
@@ -137,5 +134,4 @@ CLI **对话原文** 仍在各 Agent 原生目录（`~/.codex`、`~/.claude` 等
 
 ### 相关文档
 
-- [会话 Sessions](sessions.md) · [恢复与目标](resume-and-targets.md) · [ACP Chat](acp-chat.md) · [LLM 辅助](llm-assist.md)  
-- [Desktop 设置与数据](../desktop/README.md)
+- [会话 Sessions](sessions.md) · [恢复与目标](resume-and-targets.md) · [ACP Chat](acp-chat.md) · [LLM 辅助](llm-assist.md)

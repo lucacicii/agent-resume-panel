@@ -12,8 +12,6 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 **Notes** are Markdown files you attach to a **session** or **project**. Bodies and image assets live on disk under panel home; the catalog only indexes them so the sidebar can show note presence and open the right file.
 
-The same note files are shared with **Desktop** Notes when both use the same panel home.
-
 ### Main workflows
 
 1. Open the **Notes** sidebar view.  
@@ -32,13 +30,11 @@ The same note files are shared with **Desktop** Notes when both use the same pan
 
 1. Prefer short operational notes on sessions; longer project docs on the project node.  
 2. Markdown is rendered with sanitization where preview exists — treat notes as your content, not executable HTML.  
-3. Back up panel home (including notes) when moving machines — see [Settings & data](settings-and-data.md).  
-4. Desktop offers a fuller Notes editor UI; the extension optimizes for IDE-side quick capture.
+3. Back up panel home (including notes) when moving machines — see [Settings & data](settings-and-data.md).
 
 ### Related
 
 - [Sessions](sessions.md) · [GTD](gtd.md)  
-- [Desktop Notes](../desktop/README.md)  
 - [Settings & data](settings-and-data.md)
 
 ---
@@ -48,8 +44,6 @@ The same note files are shared with **Desktop** Notes when both use the same pan
 ### 是什么
 
 **Notes** 是挂在 **会话** 或 **项目** 上的 Markdown 文件。正文与图片资源保存在面板数据目录磁盘上；目录索引只负责侧边栏显示与打开正确文件。
-
-与 Desktop **Notes** 在同一 `panel home` 时共用同一批笔记文件。
 
 ### 主要流程
 
@@ -69,11 +63,9 @@ The same note files are shared with **Desktop** Notes when both use the same pan
 
 1. 会话上记简短操作说明；项目上放较长文档。  
 2. 预览会对 Markdown 做安全处理——笔记是你的内容，不要当可信 HTML 注入。  
-3. 换机请备份整个面板数据目录（含笔记）— 见 [设置与数据](settings-and-data.md)。  
-4. Desktop 笔记编辑体验更完整；扩展侧重 IDE 内快速记录。
+3. 换机请备份整个面板数据目录（含笔记）— 见 [设置与数据](settings-and-data.md)。
 
 ### 相关文档
 
 - [会话 Sessions](sessions.md) · [GTD](gtd.md)  
-- [Desktop Notes](../desktop/README.md)  
 - [设置与数据](settings-and-data.md)

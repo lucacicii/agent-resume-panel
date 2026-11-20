@@ -1,16 +1,14 @@
 #!/usr/bin/env node
 
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const extensionRoot = join(import.meta.dirname, "..");
-const desktopRoot = join(extensionRoot, "..", "desktop");
 const allowlist = new Set(
   JSON.parse(readFileSync(join(import.meta.dirname, "i18n-translation-allowlist.json"), "utf8")).keys
 );
 
 const hasHan = (value) => /[\u4e00-\u9fff]/.test(value);
-const hasKana = (value) => /[\u3040-\u30ff]/.test(value);
 
 function loadLocale(path) {
   return JSON.parse(readFileSync(path, "utf8"));
@@ -47,20 +45,12 @@ function checkBundle(label, zhPath, enPath, jaPath) {
   return errors;
 }
 
-const errors = [
-  ...checkBundle(
-    "extension",
-    join(extensionRoot, "locales", "zh-cn.json"),
-    join(extensionRoot, "locales", "en.json"),
-    join(extensionRoot, "locales", "ja.json")
-  ),
-  ...checkBundle(
-    "desktop",
-    join(desktopRoot, "locales", "zh-cn.json"),
-    join(desktopRoot, "locales", "en.json"),
-    join(desktopRoot, "locales", "ja.json")
-  )
-];
+const errors = checkBundle(
+  "extension",
+  join(extensionRoot, "locales", "zh-cn.json"),
+  join(extensionRoot, "locales", "en.json"),
+  join(extensionRoot, "locales", "ja.json")
+);
 
 if (errors.length > 0) {
   console.error(`i18n translation check failed (${errors.length} issues):`);

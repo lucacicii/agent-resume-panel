@@ -72,7 +72,7 @@ export function isOutputLanguageFollowingUi(): boolean {
  * API key resolution order:
  * 1) overrides
  * 2) VS Code SecretStorage
- * 3) panelHome settings.json (shared with Desktop)
+ * 3) panelHome settings.json
  * 4) env AGENT_RESUME_LLM_API_KEY
  */
 async function getLlmApiKey(context: vscode.ExtensionContext): Promise<string | undefined> {

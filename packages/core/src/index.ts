@@ -12,90 +12,16 @@ export {
   DEFAULT_PANEL_HOME,
   resolvePanelHome,
   catalogDbPath,
-  settingsPath,
-  desktopSettingsPath,
-  desktopDataDir,
-  desktopDbPath,
-  defaultScratchDir,
-  desktopLogsDir,
-  agentStatusDir,
-  agentDetectionDir,
-  browserMcpEndpointPath
+  settingsPath
 } from "./panelHome";
-export { resolveScratchBaseDir, migrateLegacyScratchDir } from "./scratchDir";
-export type { PanelDbPaths } from "./dbPaths";
 export {
-  resolvePanelDbPaths,
-  resolvePanelDbPathsFromSettings,
-  ensurePanelDatabases,
-  preparePanelDatabases,
-  preparePanelDatabasesFromSettings
-} from "./dbPaths";
-export { escapeSqlLiteral, runSqlite, runSqliteJson, runSqliteReadOnlyJson } from "./sqlite";
+  escapeSqlLiteral,
+  runSqlite,
+  runSqliteJson,
+  runSqliteReadOnlyJson,
+  runSqliteTransaction
+} from "./sqlite";
 
-export type {
-  PanelSettings,
-  LlmSettings,
-  ChatLlmSettings,
-  EmbeddingSettings,
-  SessionSummaryAutoSettings,
-  SessionTranscriptIndexSettings,
-  SessionEmbeddingIndexSettings,
-  DesktopSettings,
-  DesktopBackupSettings,
-  WebdavBackupSettings,
-  DesktopBrowserSettings,
-  DesktopBrowserPolicy,
-  DesktopBrowserPartitionMode,
-  DesktopBrowserDefaultSurface,
-  NotesSettings,
-  DesktopTheme,
-  WorkbenchSettings,
-  WorkbenchEditorSettings,
-  WorkbenchEditorTabSize,
-  WorkbenchEditorAutoSaveDelayMs,
-  WorkbenchComposerSlashPhrase,
-  WorkbenchComposerMention,
-  WorkbenchMentionSources,
-  WorkbenchNewSessionTarget,
-  AcpAgentProvider,
-  AcpAutoApprovePermissions,
-  AcpAgentLaunchConfig,
-  AcpSettings,
-  CommitMessageStyle,
-  WorkbenchProjectEditor,
-  WorkbenchTerminalMode,
-  WorkbenchTerminalThemeId,
-  WorkbenchTerminalRenderer,
-  GhosttyLaunchMode,
-  AgentHomesSettings,
-  AgentSessionSyncSettings,
-  AgentSessionSyncFilters,
-  SessionSyncStalePolicy,
-  NotificationsSettings,
-  ThunderSettings
-} from "./settings/types";
-export {
-  DEFAULT_SETTINGS,
-  DEFAULT_DESKTOP_BROWSER_SETTINGS,
-  WORKBENCH_TERMINAL_THEME_IDS,
-  WORKBENCH_TERMINAL_RENDERERS,
-  ACP_AGENT_PROVIDERS
-} from "./settings/types";
-export {
-  normalizeWorkbenchComposerSlashPhrases,
-  normalizeWorkbenchTerminalTheme,
-  normalizeWorkbenchTerminalRenderer,
-  normalizeDesktopTheme,
-  normalizeWorkbenchEditorTheme
-} from "./settings/store";
-export {
-  formatCliNewSessionTarget,
-  formatAcpNewSessionTarget,
-  parseWorkbenchNewSessionTarget,
-  isAcpAgentProvider
-} from "./settings/newSessionTarget";
-export type { ParsedWorkbenchNewSessionTarget } from "./settings/newSessionTarget";
 export {
   loadNoteGtdMap,
   getNoteGtdStatus,
@@ -108,14 +34,7 @@ export {
   archiveNotes,
   unarchiveNotes
 } from "./notes/archive";
-export {
-  TASK_GTD_LADDER,
-  emptyTaskGtdCounts,
-  rollupTaskGtdStatuses,
-  resolveTaskGtdRollup,
-  listTaskGtdRollups
-} from "./notes/gtdRollup";
-export type { TaskGtdCounts, TaskGtdRollup } from "./notes/gtdRollup";
+
 export type { UiLocale, UiLanguagePreference } from "./i18n/locales";
 export {
   UI_LANGUAGE_SETTING,
@@ -139,54 +58,15 @@ export {
   normalizeOutputLanguagePreference,
   resolveEffectiveOutputLanguage,
   normalizeSummaryLanguageTag,
-  summaryLanguagesMatch,
-  createUiText
+  summaryLanguagesMatch
 } from "./i18n";
-export type { UiText } from "./i18n/uiText";
-export {
-  loadSettings,
-  saveSettings,
-  effectivePanelHome,
-  catalogDbFromSettings
-} from "./settings/store";
-export { DEFAULT_WORKBENCH_MENTION_SOURCES } from "./settings/types";
-export {
-  COMPOSER_MENTION_ID,
-  COMPOSER_MENTIONS_MAX,
-  matchMentionForCwd,
-  normalizeWorkbenchComposerMentions,
-  normalizeWorkbenchMentionSources,
-  resolveMention
-} from "./settings/mentions";
 
 export type { AgentProvider, AgentSession, CatalogSessionRow } from "./catalog/types";
 export { toAgentSession } from "./catalog/types";
-export { cleanupRemovedSessionExecutionNotes } from "./catalog/legacyCleanup";
-export type { RemovedExecutionNotesCleanupOptions } from "./catalog/legacyCleanup";
 export {
-  ensureDesktopDbSchema,
   ensureExtensionCatalogSchema,
-  ensureCatalogSyncStateDesktop,
-  syncStateHasExtendedColumns,
   resetCatalogSchemaCache
 } from "./catalog/db";
-
-export { listSessions, listSessionsInRange, listSessionsInRangePage, listAllSessionsInRange, getSessionById, countSessions, querySessionsPage, sessionFacetCounts, type SessionFacetCounts } from "./catalog/query";
-export { setSessionLastExitWaiting, recordLastExitWaitingSessions, clearSessionLastExitWaiting } from "./catalog/lastExitWaiting";
-export type { SessionRangeCursor, SessionQueryCursor, SessionQueryRequest, SessionQueryPage } from "./catalog/query";
-export type { SessionCatalogCounts } from "./catalog/query";
-export {
-  searchCatalogSessions,
-  mergeSessionSearchHits,
-  clampSessionSearchLimit,
-  clampSessionListLimit,
-  sanitizeLikeFragment
-} from "./catalog/search";
-export type {
-  SessionSearchFilters,
-  SessionSearchHit,
-  SessionSearchMatch
-} from "./catalog/search";
 export {
   setUserTitleInCatalog,
   setSessionSummaryInCatalog,
@@ -244,256 +124,28 @@ export {
   moveSessionToProjectInCatalog
 } from "./catalog/projects";
 export type { ProjectRow, ResolveProjectCwdResult } from "./catalog/projects";
-export {
-  listWorkbenchSessionFolders,
-  listWorkbenchSessionFolderAssignments,
-  listAllWorkbenchSessionFolders,
-  listAllWorkbenchSessionFolderAssignments,
-  createWorkbenchSessionFolder,
-  renameWorkbenchSessionFolder,
-  deleteWorkbenchSessionFolder,
-  assignWorkbenchSessionToFolder,
-  removeWorkbenchSessionFromFolder,
-  mergeWorkbenchSessionFolders
-} from "./catalog/workbenchFolders";
-export type {
-  WorkbenchSessionFolder,
-  WorkbenchSessionFolderAssignment
-} from "./catalog/workbenchFolders";
-export {
-  listTaskWorkbenches,
-  listAllTaskWorkbenches,
-  getTaskWorkbench,
-  createTaskWorkbench,
-  ensureTaskWorkbench,
-  renameTaskWorkbench,
-  setTaskWorkbenchProject,
-  setTaskWorkbenchLayout,
-  reorderTaskWorkbenches,
-  deleteTaskWorkbench,
-  listTaskWorkbenchSessionLinks,
-  assignSessionToTaskWorkbench,
-  removeSessionFromTaskWorkbench
-} from "./catalog/taskWorkbenches";
-export type {
-  TaskWorkbench,
-  TaskWorkbenchSessionLink
-} from "./catalog/taskWorkbenches";
+
 export {
   loadAllAgentSessions,
-  syncAgentSessions,
-  sessionSyncOptionsFromSettings
+  syncAgentSessions
 } from "./sessionSync";
 export type {
   AgentSessionSyncOptions,
   AgentSessionSyncResult,
   AgentSessionProviderSyncResult,
+  SessionSyncStalePolicy,
   SyncableAgentProvider
 } from "./sessionSync";
 
-export type { ChatMessage, LlmRuntimeConfig, EmbeddingRuntimeConfig, ToolCall, ToolDefinition } from "./llm/types";
-export {
-  normalizeBaseUrl,
-  buildChatCompletionsUrl,
-  buildEmbeddingsUrl
-} from "./llm/types";
-export { chatCompletion, chatCompletionDetailed, chatCompletionStream, chatCompletionWithTools } from "./llm/chat";
-export type { ChatStreamCallbacks, LlmToolCallResult } from "./llm/chat";
-export type { LlmCallResult } from "./llm/chat";
-export { embedTexts, embedTextsDetailed } from "./llm/embeddings";
-export type { EmbedCallResult } from "./llm/embeddings";
-export { testChatLlmConnection, testEmbeddingConnection } from "./llm/testConnection";
-export {
-  llmConfigFromSettings,
-  chatLlmConfigFromSettings,
-  gitCommitLlmConfigFromSettings,
-  sessionRenameLlmConfigFromSettings,
-  sessionSummaryLlmConfigFromSettings,
-  reportLlmConfigFromSettings,
-  translateLlmConfigFromSettings,
-  isSpecializedModelUse,
-  SPECIALIZED_MODEL_USES,
-  llmConfigForUse,
-  type SpecializedModelUse,
-  embeddingConfigFromSettings,
-  listProviderModels,
-  resolveSelectedModel,
-  toolOutputLanguagePreference,
-  type PoolModelRef
-} from "./llm/fromSettings";
-export {
-  fetchProviderModels,
-  buildModelsUrl
-} from "./providers/fetch";
-export { classifyModelKind } from "./providers/classify";
-export { migrateLegacyModelSettings, normalizeProviderPool } from "./providers/migrate";
-export {
-  isModelKind,
-  isModelUse,
-  MODEL_KINDS,
-  MODEL_USES,
-  normalizeProvider,
-  normalizeProviderModel,
-  normalizeSelection,
-  selectionIsEmpty,
-  type AiProvider,
-  type LlmUseOptions,
-  type ModelKind,
-  type ModelSelection,
-  type ModelUse,
-  type ProviderModel
-} from "./providers/types";
-export {
-  recordLlmUsage,
-  listLlmUsageEvents,
-  listScheduleRuns,
-  getUsageSummary,
-  startScheduleRun,
-  finishScheduleRun
-} from "./usage/store";
-export {
-  appendComposerSend,
-  listComposerSends,
-  listComposerSendsForImport,
-  listSessionsMissingComposerImport,
-  COMPOSER_SEND_TEXT_MAX,
-  COMPOSER_SEND_LIST_MAX
-} from "./workbench/composerSends";
-export {
-  cleanupImportedComposerSends,
-  importComposerSendsForSession,
-  shouldImportComposerSendText
-} from "./workbench/composerSendsImport";
-export {
-  filterComposerImportCandidates,
-  isComposerSendNoise
-} from "./workbench/composerSendNoise";
-export type {
-  CleanupComposerSendsResult,
-  ImportComposerSendsResult
-} from "./workbench/composerSendsImport";
-export type {
-  ComposerImportCandidate
-} from "./workbench/composerSendNoise";
-export type { FinalizePreviewOptions } from "./transcript/text";
-export type {
-  ComposerSendRecord,
-  ComposerSendAppendInput
-} from "./workbench/composerSends";
-export type {
-  LlmUsageEvent,
-  LlmUsageKind,
-  LlmUsageSource,
-  ScheduleRunLog,
-  TokenUsage,
-  UsageSummary
-} from "./usage/types";
-
-export type { ReportLevel, ReportEntry, ReportLink } from "./report/schema";
-export { REPORT_SCHEMA_SQL } from "./report/schema";
-export {
-  listReportEntries,
-  listReportEntriesInRange,
-  listReportEntriesForSessions,
-  insertReportEntry,
-  upsertReportJob,
-  getReportJobStatus,
-  clearReportJobsByStatus,
-  listReportLinks,
-  getReportEntryById,
-  desktopReportDbExists,
-  readReportEntries,
-  readReportEntriesInRange,
-  readReportEntryById
-} from "./report/store";
-export type { ReportLinkRow } from "./report/store";
-export type {
-  ReportPeriodType,
-  CalendarPeriodRange,
-  CalendarCell
-} from "./report/calendar";
-export {
-  dayKeyFromDate,
-  dayKeyFromMs,
-  isoWeekLabelFromDate,
-  viewMonthKey,
-  parseDayRange,
-  parseWeekRange,
-  parseMonthRange,
-  rangeForPeriod,
-  paddedMonthRange,
-  calendarCells,
-  periodKeyFromEntry,
-  digestIndex,
-  isFuturePeriod
-} from "./report/calendar";
-export {
-  estimateDigestRun,
-  estimateDailyForSessions,
-  estimateHierarchicalCallCount,
-  digestCallBudget,
-  assertDigestCallBudget,
-  DigestBudgetExceededError
-} from "./report/digestBudget";
-export type {
-  DigestGenerationEstimate,
-  DigestRunLevel,
-  DigestRunTrigger
-} from "./report/digestBudget";
-export { runDailyDigest, localDayRange, needsDailyDigestRefresh } from "./report/daily";
-export type { PeriodDigestRefreshCheck } from "./report/digestRefresh";
-export { needsWeeklyDigestRefresh, needsMonthlyDigestRefresh } from "./report/digestRefresh";
-export { normalizeDigestMarkdown, digestLanguageLabels } from "./report/prompts";
-export type {
-  RunDailyDigestOptions,
-  RunDailyDigestResult,
-  DailyDigestRefreshCheck,
-  DailyDigestRefreshReason
-} from "./report/daily";
-export type {
-  DigestLevel,
-  DigestProgressPhase,
-  DigestProgressEvent,
-  DigestProgressCallback,
-  DigestProgressSession
-} from "./report/progress";
-export {
-  localDayRange as localDayRangePeriod,
-  localWeekRange,
-  localMonthRange,
-  previousCompleteWeekRange,
-  previousCompleteMonthRange,
-  listDayLabelsInRange,
-  listWeekLabelsInRange
-} from "./report/period";
-export type { PeriodRange } from "./report/period";
-export { ensureDailiesForPeriod } from "./report/ensureDailies";
-export type { EnsureDailiesOptions, EnsureLevelStats } from "./report/ensureDailies";
-export { ensureWeekliesForPeriod } from "./report/ensureWeeklies";
-export type { EnsureWeekliesOptions } from "./report/ensureWeeklies";
-export { runWeeklyDigest } from "./report/weekly";
-export type { RunWeeklyDigestOptions, RunWeeklyDigestResult } from "./report/weekly";
-export { runMonthlyDigest } from "./report/monthly";
-export type { RunMonthlyDigestOptions, RunMonthlyDigestResult } from "./report/monthly";
-export { searchReportsByEmbedding } from "./report/search";
-export type { SearchReportsOptions, ReportSearchHit } from "./report/search";
-export { cosineSimilarity, parseEmbeddingJson } from "./report/cosine";
-
 export type { PreviewHomes, PreviewMessage, SessionPreviewResult } from "./transcript/types";
 export {
-  resolvePreviewHomes,
   DEFAULT_AGENT_HOMES,
   defaultAgentHomeValue,
+  defaultCursorIdeUserDataHome,
   agentHomeDiffersFromDefault,
   sanitizeAgentHomes
 } from "./transcript/homes";
-export type { AgentHomeKey } from "./transcript/homes";
-export {
-  loadSessionPreview,
-  loadSessionSnippet,
-  formatTranscript,
-  truncateTranscript
-} from "./transcript/load";
+export type { AgentHomeKey, AgentHomesSettings } from "./transcript/homes";
 export {
   extractPreviewContent,
   extractTextFromContent,
@@ -502,17 +154,9 @@ export {
   isUserOrAssistantRole,
   normalizePreviewText
 } from "./transcript/text";
-export type { ExtractedPreviewContent } from "./transcript/text";
-export { previewThunderConversation } from "./transcript/thunder";
+export type { ExtractedPreviewContent, FinalizePreviewOptions } from "./transcript/text";
 
-export type { AgentCitation } from "./agent/types";
-export { retrieveAgentContext } from "./agent/retrieve";
-export type { RetrieveAgentContextResult, RetrievedDigest } from "./agent/retrieve";
-
-export type {
-  ActiveGtdStatus,
-  GtdStatus
-} from "./gtd/types";
+export type { ActiveGtdStatus, GtdStatus } from "./gtd/types";
 export { GTD_ACTIVE_STATUSES, GTD_STATUSES, isActiveGtdStatus, isGtdStatus } from "./gtd/types";
 export {
   getSessionGtdStatus,
@@ -521,6 +165,7 @@ export {
   loadSessionGtdMap,
   sessionGtdKey
 } from "./gtd/store";
+
 export {
   sessionTodolistAbsPath,
   sessionTodolistRelMdPath,
@@ -590,26 +235,6 @@ export {
   getNoteSubtree,
   resolveLinkRoot
 } from "./notes/links";
-export { ensureNotesVectorIndex, chunkNoteMarkdown } from "./notes/vectorIndex";
-export type {
-  NoteIndexProgressCallback,
-  NoteIndexProgressEvent,
-  NoteIndexProgressPhase
-} from "./notes/vectorIndex";
-export { searchNotesByEmbedding } from "./notes/search";
-export { extractExactNoteSearchTerms, isNotesOnlyQuery } from "./notes/search";
-export {
-  normalizeLlmNoteSearchPlan,
-  planNoteSearchDeterministically,
-  shouldAnalyzeNoteSearchWithLlm
-} from "./notes/queryPlan";
-export type {
-  NoteSearchField,
-  NoteSearchMode,
-  NoteSearchOperator,
-  NoteSearchPlan
-} from "./notes/queryPlan";
-export type { NoteSearchHit } from "./notes/search";
 export { reconcileNotesIndex, migrateLegacyNotesToDisk } from "./notes/reconcile";
 export {
   parseNoteDocument,
@@ -634,8 +259,6 @@ export {
   normalizeTaskDocument,
   type NormalizedTaskDocument
 } from "./notes/taskNote";
-export { renderTaskContext, writeTaskContextFile, mergeTaskProjects, knowledgeText } from "./notes/taskContext";
-export type { TaskContextInput } from "./notes/taskContext";
 export {
   loadNoteWorkMap,
   setNoteWork,
@@ -668,338 +291,3 @@ export {
   pathExists,
   fileMtimeMs
 } from "./notes/fs";
-export {
-  backfillReportDigests,
-  previewBackfillReportDigests,
-  listActivityPeriods,
-  localDateKeyFromMs
-} from "./workflow/backfillDigests";
-export type {
-  BackfillReportDigestsOptions,
-  BackfillReportDigestsResult,
-  BackfillLevelStats
-} from "./workflow/backfillDigests";
-
-export {
-  summarizeSessionAction,
-  suggestSessionRenameAction,
-  autoRenameSessionAction,
-  renameSessionAction,
-  hideSessionAction
-} from "./session/actions";
-export {
-  suggestSessionTitleFromMessages,
-  summarizeSessionMessages
-} from "./session/assist";
-export type {
-  SessionActionOptions,
-  SummarizeSessionResult,
-  SuggestSessionRenameResult,
-  AutoRenameSessionResult,
-  RenameSessionResult
-} from "./session/actions";
-export {
-  suggestCommitMessageFromGitContext,
-  buildHeuristicCommitMessage
-} from "./git/commitAssist";
-export {
-  buildCommitMessageSystemPrompt,
-  buildCommitMessageUserPrompt,
-  normalizeSuggestedCommitMessage,
-  normalizeCommitMessageStyle,
-  normalizeCustomCommitInstructions,
-  normalizeExtraCommitInstructions,
-  DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS,
-  COMMIT_INSTRUCTION_MAX_CHARS
-} from "./git/prompts";
-export type { CommitMessagePromptOptions } from "./git/prompts";
-export {
-  ARP_CONFIG_VERSION,
-  ARP_DIR_NAME,
-  ARP_CONFIG_FILE_NAME,
-  normalizeArpConfig,
-  arpConfigPath,
-  loadArpConfig,
-  resolveCommitMessagePromptOptions
-} from "./arp";
-export type {
-  ArpConfig,
-  ArpSharedConfig,
-  ArpWorkbenchConfig,
-  ArpWorkbenchGitConfig,
-  ArpGitCommitMessageConfig,
-  CommitMessageSettingsSource
-} from "./arp";
-export {
-  buildResumeCommand,
-  buildNewSessionCommand,
-  sessionContextFlags,
-  supportsNewSessionYoloMode,
-  supportsSessionContext
-} from "./terminal/commands";
-export type { NewSessionExecutionMode } from "./terminal/commands";
-export {
-  openProjectInEditor,
-  projectEditorLabel,
-  resolveProjectEditor
-} from "./terminal/projectEditor";
-export type { ProjectEditor, ProjectEditorId } from "./terminal/projectEditor";
-export { openProjectInGhostty, openSessionInGhostty } from "./terminal/ghostty";
-export type { GhosttySettings } from "./terminal/ghostty";
-export {
-  openProjectInSystemTerminal,
-  openCommandInSystemTerminal,
-  openSessionInSystemTerminal
-} from "./terminal/systemTerminal";
-export type { SystemTerminalSettings, SystemTerminalLaunchMode } from "./terminal/systemTerminal";
-export {
-  openChatGptAppSession,
-  openChatGptAppProject,
-  openChatGptDeepLink,
-  buildChatGptThreadUrl,
-  buildChatGptNewTaskUrl,
-  CHATGPT_APP_URL_SCHEME
-} from "./terminal/chatgptApp";
-export { ensureSummariesForSessions } from "./session/ensureSummaries";
-export type {
-  EnsureSummariesOptions,
-  EnsureSummariesResult
-} from "./session/ensureSummaries";
-export {
-  resolveSessionSummaryAutoSettings,
-  listSessionsNeedingSummary,
-  selectAutoSummaryCandidates,
-  isEligibleForAutoSummary,
-  isMissingSummary,
-  isStaleSummary,
-  runAutoSessionSummaries,
-  clampInt,
-  DEFAULT_STALE_DELAY_MINUTES,
-  DEFAULT_MISSING_DELAY_MINUTES,
-  DEFAULT_AUTO_SUMMARY_CONCURRENCY,
-  DEFAULT_AUTO_SUMMARY_MAX_PER_TICK
-} from "./session/autoSummary";
-export type {
-  AutoSummaryCandidate,
-  AutoSummaryReason,
-  ResolvedSessionSummaryAutoSettings,
-  RunAutoSessionSummariesOptions,
-  RunAutoSessionSummariesResult
-} from "./session/autoSummary";
-export {
-  resolveSessionTranscriptIndexSettings,
-  selectTranscriptIndexCandidates,
-  listTranscriptIndexMeta,
-  runAutoTranscriptIndex,
-  DEFAULT_TX_QUIET_DELAY_MINUTES,
-  DEFAULT_TX_INDEX_CONCURRENCY,
-  DEFAULT_TX_INDEX_MAX_PER_TICK
-} from "./session/autoTranscriptIndex";
-export type {
-  ResolvedSessionTranscriptIndexSettings,
-  RunAutoTranscriptIndexOptions,
-  RunAutoTranscriptIndexResult,
-  TranscriptIndexMetaRow
-} from "./session/autoTranscriptIndex";
-export {
-  resolveSessionEmbeddingIndexSettings,
-  selectSessionEmbeddingCandidates,
-  listSessionsNeedingEmbedding,
-  runAutoSessionEmbeddings,
-  DEFAULT_EMB_INDEX_QUIET_DELAY_MINUTES,
-  DEFAULT_EMB_INDEX_CONCURRENCY,
-  DEFAULT_EMB_INDEX_MAX_PER_TICK
-} from "./session/autoEmbeddingIndex";
-export type {
-  ResolvedSessionEmbeddingIndexSettings,
-  SessionEmbeddingCandidate,
-  RunAutoSessionEmbeddingsOptions,
-  RunAutoSessionEmbeddingsResult
-} from "./session/autoEmbeddingIndex";
-export { renameSessionNative } from "./session/rename";
-export type { RenameHomes } from "./session/rename";
-export { updateNativeSessionCwd } from "./session/nativeCwd";
-export type { NativeCwdUpdateResult, NativeCwdUpdateReason } from "./session/nativeCwd";
-
-// MCP server and tool-calling support
-export {
-  createNoteMcpServer,
-  createNoteToolContext,
-  runStdioServer,
-  MCP_SERVER_NAME,
-  MCP_SERVER_VERSION
-} from "./mcp/server";
-export {
-  handleMemoryRetrieve,
-  memoryRetrieveSchema
-} from "./mcp/memoryTools";
-export type { MemoryToolContext } from "./mcp/memoryTools";
-export type { NoteToolContext, NoteMcpResult, NoteRelationshipIndex } from "./mcp/tools";
-export { resolveDefaultNoteTarget } from "./mcp/tools";
-export type { ResolvedNoteTarget } from "./mcp/tools";
-export {
-  MCP_SESSION_ENV,
-  MCP_SESSION_ENV_KEYS,
-  isEmptyMcpSessionContext,
-  mcpSessionContextFromEnv
-} from "./mcp/sessionContext";
-export type { McpSessionContext } from "./mcp/sessionContext";
-export type { AgentMcpContext } from "./mcp/server";
-export {
-  AGENT_TOOL_CATALOG,
-  AGENT_TOOL_NAMES,
-  skillToToolDescriptor
-} from "./mcp/toolCatalog";
-export type { AgentToolCategory, AgentToolDescriptor } from "./mcp/toolCatalog";
-export {
-  discoverSkills,
-  parseSkillFile,
-  parseSkillFrontmatter,
-  parseSkillMarkdownFallback,
-  readSkillContent,
-  formatSkillsCatalogPrompt
-} from "./skills";
-export type {
-  SkillDescriptor,
-  SkillScope,
-  DiscoverSkillsOptions
-} from "./skills";
-export {
-  handleSessionSearch,
-  handleSessionList,
-  handleSessionRead,
-  handleSessionReadTranscript,
-  handleSessionSetGtd,
-  handleSessionResume
-} from "./mcp/sessionTools";
-export type { SessionToolContext } from "./mcp/sessionTools";
-export {
-  taskListSchema,
-  taskReadSchema,
-  taskCreateSchema,
-  taskWriteSchema,
-  taskLinkSessionSchema,
-  taskUnlinkSessionSchema,
-  handleTaskList,
-  handleTaskRead,
-  handleTaskCreate,
-  handleTaskWrite,
-  handleTaskLinkSession,
-  handleTaskUnlinkSession
-} from "./mcp/taskTools";
-export type { TaskToolContext } from "./mcp/taskTools";
-export {
-  workbenchListSchema,
-  workbenchReadSchema,
-  handleWorkbenchList,
-  handleWorkbenchRead
-} from "./mcp/workbenchTools";
-export type { WorkbenchToolContext } from "./mcp/workbenchTools";
-export { NoteMcpClient, convertMcpToolsToOpenAiFormat } from "./mcp/client";
-export type { McpToolInfo, McpToolCallResult } from "./mcp/client";
-export { resolveMcpServerCommand } from "./agent/mcpConfig";
-export type { McpServerCommand } from "./agent/mcpConfig";
-export {
-  upsertSessionEmbedding,
-  backfillSessionEmbeddings,
-  listSessionEmbeddingRows,
-  buildSessionEmbedText,
-  sessionEmbeddingKey
-} from "./session/embedStore";
-export type {
-  UpsertSessionEmbeddingOptions,
-  UpsertSessionEmbeddingResult,
-  BackfillSessionEmbeddingsOptions,
-  BackfillSessionEmbeddingsResult
-} from "./session/embedStore";
-export { searchSessionsByEmbedding } from "./session/searchByEmbedding";
-export type { SearchSessionsByEmbeddingOptions } from "./session/searchByEmbedding";
-export {
-  chunkTranscriptText,
-  rankSessionsByTranscriptChunks,
-  searchSessionsByTranscriptEmbedding,
-  indexSessionTranscript,
-  listTranscriptChunkRows,
-  deleteSessionTranscriptIndex,
-  transcriptSourceHash
-} from "./session/transcriptIndex";
-export type {
-  TranscriptChunkInput,
-  RankableTranscriptChunk,
-  RankedTranscriptSession,
-  IndexSessionTranscriptOptions,
-  IndexSessionTranscriptResult,
-  SearchSessionsByTranscriptOptions
-} from "./session/transcriptIndex";
-export {
-  buildNativeConversationArtifacts
-} from "./backup/nativeConversations";
-export type {
-  NativeConversationProvider,
-  NativeConversationFile,
-  NativeConversationProviderSummary,
-  NativeConversationCollection,
-  CollectNativeConversationsOptions
-} from "./backup/nativeConversations";
-export {
-  collectThunderConversationFiles,
-  defaultThunderConversationsDir
-} from "./backup/thunderConversations";
-export type {
-  ThunderConversationFile,
-  ThunderConversationCollection,
-  CollectThunderConversationsOptions
-} from "./backup/thunderConversations";
-
-export type {
-  ScheduleTriggerType,
-  ScheduleStatus,
-  ScheduleRunStatus,
-  ScheduleRunTriggerSource,
-  ScheduleCatchUpPolicy,
-  ScheduleSessionMode,
-  ThunderSchedule,
-  ThunderScheduleRun,
-  ThunderScheduleRunLogEntry,
-  ThunderScheduleInput,
-  ThunderModelInfo,
-  ThunderModelsConfig,
-  ThunderModelsProvider,
-  ThunderQuestionItem,
-  ThunderQuestionOption,
-  ThunderAgentEvent,
-  ThunderFileChangeRecord,
-  ThunderFileChangePayload,
-  ThunderTurnStats,
-  ThunderAgentStats,
-  ThunderMetricsSnapshot,
-  ThunderToolCallFunction,
-  ThunderToolCall,
-  ThunderToolExecutionRecord,
-  ThunderContentPart,
-  ThunderImageAttachment,
-  ThunderChatMessage,
-  ThunderConversationSummary,
-  ThunderConversation,
-  ThunderObservedEvent,
-  ThunderChatStreamPayload,
-  ThunderActiveStreamSnapshot,
-  ThunderChatTaskOptions,
-  ThunderChatTaskResult,
-  ThunderPermissionMode,
-  ThunderModeChangeSource,
-  ThunderModeChanged,
-} from "./thunder/types";
-
-/** The approval modes in the order `Shift+Tab` cycles them (a value, not a type). */
-export { THUNDER_PERMISSION_MODES, normalizeThunderPermissionMode } from "./thunder/types";
-
-export type {
-  ArtifactKind,
-  StageTarget,
-  StageView,
-  UIArtifactEnvelope,
-  StageState
-} from "./artifacts/types";
-
-

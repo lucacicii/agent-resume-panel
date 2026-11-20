@@ -4,30 +4,24 @@
 
 ## User-facing documentation
 
-对外用户文档在本仓库 `docs/`，**不要**把仓库结构、构建命令、源码路径等开发信息写进用户文档：
+对外用户文档在本仓库 `docs/panel/`，**不要**把仓库结构、构建命令、源码路径等开发信息写进用户文档：
 
 | 产品 | 用户文档 | Issues |
 |------|----------|--------|
 | VS Code 扩展 | [docs/panel](docs/panel/README.md) | [issues](https://github.com/lucacicii/agent-resume-panel/issues) |
-| Desktop App | [docs/desktop](docs/desktop/README.md) | [issues](https://github.com/lucacicii/agent-resume-panel/issues) |
-
-Desktop 专项开发见 [apps/desktop/DEVELOPMENT.md](apps/desktop/DEVELOPMENT.md)。
 
 ## Monorepo layout
 
 | 路径 | 说明 |
 |------|------|
 | `apps/extension/` | VS Code 扩展（源码、manifest、VSIX） |
-| `packages/core/` | 共享 TypeScript 核心（`@agent-resume/core`） |
-| `apps/desktop/` | Electron 桌面应用 |
-| `apps/extension/locales/` | 扩展 i18n 文案（无 `desktop.*` 键） |
-| `apps/desktop/locales/` | Desktop i18n 文案（仅 `desktop.*` 键） |
+| `packages/core/` | 核心 TypeScript 库（`@agent-resume/core`） |
+| `apps/extension/locales/` | 扩展 i18n 文案 |
 | `apps/extension/media/` | 扩展 Webview 静态资源 |
 | `apps/extension/scripts/` | 扩展构建、菜单生成、i18n 检查 |
-| `scripts/` | 跨产品脚本（desktop release、i18n merge 等） |
+| `scripts/` | 仓库级脚本（TypeScript runner、i18n 补丁与清理） |
 
 ## Secrets & local config
-
 
 Never commit:
 
@@ -50,19 +44,6 @@ pnpm install --frozen-lockfile
 ```
 
 **Do not copy `node_modules` between machines** (especially Intel Mac ↔ Apple Silicon). Sync git + lockfile only, then reinstall.
-
-### Desktop (macOS)
-
-| | Intel Mac | Apple Silicon |
-|--|-----------|---------------|
-| `pnpm install` / `pnpm run dev:desktop` | ✅ | ✅ |
-| `pnpm run pack:desktop` (universal) | ✅ | ✅ |
-
-After install or when Electron / node-pty / pack fails with env-looking errors:
-
-```sh
-pnpm run doctor:desktop
-```
 
 Compile the extension:
 
@@ -110,8 +91,6 @@ pnpm run build:all
 
 Release notes live in [`apps/extension/CHANGELOG.md`](apps/extension/CHANGELOG.md). Update that file before each Open VSX publish.
 
-Desktop release notes live in [`apps/desktop/CHANGELOG.md`](apps/desktop/CHANGELOG.md). Update that file before `pnpm run release:desktop:mac`.
-
 Publish (requires an [Open VSX access token](https://github.com/eclipse/openvsx/wiki/Deploying-Extensions)):
 
 ```sh
@@ -139,16 +118,6 @@ pnpm run test:menus
 ```
 
 4. Run `pnpm run install:local`, then **Developer: Reload Window**.
-
-## Desktop i18n
-
-Desktop UI strings live under `desktop.*` keys in [`apps/desktop/locales/`](apps/desktop/locales/). After editing [`scripts/desktop-i18n-catalog.json`](scripts/desktop-i18n-catalog.json) or desktop-only overrides, merge into desktop locale files:
-
-```sh
-pnpm run merge:desktop-i18n
-```
-
-Then run `pnpm run build:desktop` (or `dev:desktop -- --fresh`) so `apps/desktop/dist/locales` picks up the changes.
 
 ## Change Checklist
 
