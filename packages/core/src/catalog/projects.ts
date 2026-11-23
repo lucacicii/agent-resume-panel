@@ -575,7 +575,7 @@ async function resolveExistingLocalPath(
 
   // Session paths for this project (may not be in local_paths yet).
   // Prefer paths that match the project's portable identity so a merge that
-  // absorbed subfolder sessions (packages/core, apps/desktop) does not make
+  // absorbed subfolder sessions (packages/core, apps/extension) does not make
   // listProjects pick those as the primary cwd.
   const sessionPaths = await runSqliteJson<{ project_path: string }>(
     dbPath,

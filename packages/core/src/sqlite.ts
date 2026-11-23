@@ -26,7 +26,7 @@ function isBusyError(error: unknown): boolean {
   );
 }
 
-// In-process SQLite engine (Node 22+ / Electron 43+)
+// In-process SQLite engine (Node 22+)
 type NodeDatabaseSyncType = {
   new (
     location: string,

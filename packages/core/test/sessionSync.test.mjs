@@ -274,19 +274,19 @@ test("Claude project_path uses first transcript cwd, not later Bash cd drift", a
       sessionId: "claude-drift",
       cwd: "/tmp/monorepo",
       timestamp: "2026-01-01T00:00:02Z",
-      message: { content: [{ type: "tool_use", name: "Bash", input: { command: "cd apps/desktop && pnpm test" } }] }
+      message: { content: [{ type: "tool_use", name: "Bash", input: { command: "cd apps/extension && pnpm test" } }] }
     },
     {
       type: "user",
       sessionId: "claude-drift",
-      cwd: "/tmp/monorepo/apps/desktop",
+      cwd: "/tmp/monorepo/apps/extension",
       timestamp: "2026-01-01T00:00:03Z",
       message: { content: [{ type: "tool_result", content: "ok" }] }
     },
     {
       type: "assistant",
       sessionId: "claude-drift",
-      cwd: "/tmp/monorepo/apps/desktop",
+      cwd: "/tmp/monorepo/apps/extension",
       timestamp: "2026-01-01T00:00:04Z",
       message: { content: "done" }
     }

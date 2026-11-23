@@ -126,7 +126,7 @@ export async function syncAcpRecordsIntoCatalog(
     await upsertAcpSessionInCatalog(dbPath, panelHome, record, syncTimeMs);
     count += 1;
   }
-  // Refresh sync_state for chat (best-effort; desktop may have extended columns).
+  // Refresh sync_state for chat (best-effort; legacy databases may have extended columns).
   try {
     await runSqlite(
       dbPath,

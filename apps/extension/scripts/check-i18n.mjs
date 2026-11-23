@@ -15,14 +15,6 @@ const usage = collectI18nUsage();
 const extensionEnKeys = usage.extensionEnKeys;
 const extensionUsedKeys = usage.extensionUsedKeys;
 
-function assertLocaleShape(label, locale, predicate, errors) {
-  for (const key of Object.keys(locale)) {
-    if (!predicate(key)) {
-      errors.push(`${label}: invalid key "${key}"`);
-    }
-  }
-}
-
 function checkLocaleParity(baseKeys, localesDir, label, errors) {
   const localeFiles = readdirSync(localesDir).filter((name) => name.endsWith(".json") && name !== "en.json");
   for (const file of localeFiles) {
@@ -38,8 +30,6 @@ function checkLocaleParity(baseKeys, localesDir, label, errors) {
 
 let failed = false;
 const errors = [];
-
-assertLocaleShape("extension locale", usage.extensionEn, (key) => !key.startsWith("desktop."), errors);
 
 for (const key of extensionUsedKeys) {
   if (!extensionEnKeys.has(key)) {

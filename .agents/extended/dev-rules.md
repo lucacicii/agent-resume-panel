@@ -3,7 +3,7 @@
 ## Workspace Layout
 
 - `apps/extension` (`agent-resume-panel`): VS Code extension. TypeScript 5.9, strict mode, Node16 modules, ES2022 target, VS Code `^1.92.0`. Ships `.vsix` to VS Code Marketplace and Open VSX.
-- `packages/core` (`@agent-resume/core`): TypeScript domain library — catalog helpers, session sync, notes, GTD types, i18n, transcripts. Node.js `>=18`. Not published standalone.
+- `packages/core` (`@agent-resume/core`): TypeScript domain library — catalog helpers, session sync, notes, GTD types, i18n, transcripts. Node.js `>=22.13`. Not published standalone.
 
 ## Ownership
 

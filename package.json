@@ -28,7 +28,6 @@
     "i18n:check": "pnpm --filter agent-resume-panel run i18n:check",
     "i18n:check:translations": "pnpm --filter agent-resume-panel run i18n:check:translations",
     "i18n:apply-patches": "node scripts/apply-i18n-patches.mjs",
-    "test:locale": "pnpm --filter agent-resume-panel run test:locale",
     "patch:menus": "node apps/extension/scripts/patch-project-menu-package.mjs"
   },
   "devDependencies": {
