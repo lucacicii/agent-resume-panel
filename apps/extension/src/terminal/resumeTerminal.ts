@@ -83,13 +83,18 @@ export function openNewSessionTerminal(provider: AgentProvider, projectPath: str
     void launchCommandInHerdr({
       cwd: projectPath,
       command,
-      name: t("terminal.nameNewSession", providerLabel(provider)),
+      name: `${provider}-new`,
       labels: projectPath ? { workspace: projectPath } : undefined
-    }).then((launched) => {
-      if (!launched) {
+    })
+      .then((launched) => {
+        if (!launched) {
+          openFallbackNewSessionTerminal(provider, projectPath, command, context);
+        }
+      })
+      .catch((error) => {
+        console.error("[agent-resume-panel] Failed to launch new session in Herdr, falling back:", error);
         openFallbackNewSessionTerminal(provider, projectPath, command, context);
-      }
-    });
+      });
     return;
   }
 
