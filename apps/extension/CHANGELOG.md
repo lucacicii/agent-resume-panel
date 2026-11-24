@@ -8,6 +8,13 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.14.1]
+
+#### 修复
+
+- **右键项目新建会话无反应**：规范化传入 `herdr-core`（`hc`）的终端名称，避免中英文标题触发 `hc` 参数校验失败，并在 Herdr 启动异常时自动回退至内置终端。
+- **OMP / Prime 中文与日文菜单命令缺失**：补齐 `zh-cn` 与 `ja` 语言下 `newOmpSession` 与 `newPrimeSession` 的命令清单定义。
+
 ### [2.14.0]
 
 #### 新增
@@ -540,6 +547,13 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.14.1]
+
+#### Fixed
+
+- **New agent session from project context menu**: Sanitized terminal names passed to `herdr-core` (`hc`) so localized titles no longer fail RPC validation, and added automatic fallback to the integrated terminal if Herdr launch errors.
+- **Localized OMP / Prime menu commands**: Added missing `zh-cn` and `ja` command declarations for `newOmpSession` and `newPrimeSession`.
 
 ### [2.14.0]
 
