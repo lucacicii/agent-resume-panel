@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel V2",
   "publisher": "lucacicii",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, Prime Agent, OMP, and Cursor CLI sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Cursor IDE composer metadata is indexed too.",
-  "version": "2.13.0",
+  "version": "2.14.0",
   "icon": "resources/icon.png",
   "private": true,
   "author": "lucacicii",
@@ -70,6 +70,7 @@
     "onCommand:agentResume.openFolder",
     "onCommand:agentResume.openProject",
     "onCommand:agentResume.openInGhostty",
+    "onCommand:agentResume.openInHerdr",
     "onCommand:agentResume.openInCodexApp",
     "onCommand:agentResume.openInClaudeCodePanel",
     "onCommand:agentResume.openInCodexIdePanel",
@@ -399,6 +400,46 @@
           "minimum": 100,
           "maximum": 5000,
           "description": "Delay before auto-pasting the resume command into Ghostty when ghosttyLaunchMode is pasteCommand."
+        },
+        "agentResume.herdrEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Detect and track local herdr-core (hc) terminals and display live Herdr badges on matching sessions."
+        },
+        "agentResume.autoResumeHerdrSessions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically resume sessions previously opened or tracked in Herdr via herdr-core."
+        },
+        "agentResume.herdrResumeDisplay": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "vscode",
+            "herdrApp"
+          ],
+          "default": "auto",
+          "description": "How Herdr-resumed terminals are displayed: auto (prefer Herdr Bridge extension, fallback to built-in VS Code PTY), vscode (built-in PTY), or herdrApp (activate Herdr desktop app)."
+        },
+        "agentResume.herdrSocketPath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom Unix socket path for herdr-core (hc). Leave empty to use HC_SOCKET or ~/.local/state/herdr-core/default/default.sock."
+        },
+        "agentResume.herdrHandoff": {
+          "type": "boolean",
+          "default": true,
+          "description": "Deliver CLI session handoffs into Herdr when local herdr-core (hc) is running."
+        },
+        "agentResume.herdrNewSessionMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "always",
+            "never"
+          ],
+          "default": "auto",
+          "description": "Whether New Session commands start inside Herdr: auto (when project matches a Herdr Space), always, or never."
         },
         "agentResume.showArchivedCodex": {
           "type": "boolean",
@@ -960,8 +1001,18 @@
         "category": "Agent Resume"
       },
       {
+        "command": "agentResume.sendNoteToHerdr",
+        "title": "Send Note Reference (@path) to Herdr",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.configureSessionMenu",
         "title": "Customize Session Menu",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openInHerdr",
+        "title": "Resume in Herdr",
         "category": "Agent Resume"
       },
       {

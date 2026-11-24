@@ -118,6 +118,11 @@ function patchManifest() {
       group: "1_notes@5"
     },
     {
+      command: "agentResume.sendNoteToHerdr",
+      when: "view == agentResume.notes && viewItem == agentResume.notes.note",
+      group: "1_notes@6"
+    },
+    {
       command: "agentResume.newNote",
       when:
         "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session)",

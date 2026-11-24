@@ -82,7 +82,7 @@ export async function searchAndOpenSessions(
     return;
   }
 
-  searchPanel = vscode.window.createWebviewPanel(
+  const panel = vscode.window.createWebviewPanel(
     "agentResume.searchSessions",
     t("panel.searchSessionsTitle"),
     column,
@@ -93,6 +93,37 @@ export async function searchAndOpenSessions(
     }
   );
 
+  attachSearchPanel(panel, context, tree, refreshTree, acpChatManager);
+}
+
+export async function restoreSearchSessionsPanel(
+  panel: vscode.WebviewPanel,
+  context: vscode.ExtensionContext,
+  tree: SessionTreeProvider,
+  refreshTree: () => Promise<void>,
+  acpChatManager: AcpChatManager
+): Promise<void> {
+  if (searchPanel) {
+    panel.dispose();
+    return;
+  }
+
+  panel.title = t("panel.searchSessionsTitle");
+  panel.webview.options = {
+    enableScripts: true,
+    localResourceRoots: [vscode.Uri.joinPath(getExtensionUri(), "media")]
+  };
+  attachSearchPanel(panel, context, tree, refreshTree, acpChatManager);
+}
+
+function attachSearchPanel(
+  panel: vscode.WebviewPanel,
+  context: vscode.ExtensionContext,
+  tree: SessionTreeProvider,
+  refreshTree: () => Promise<void>,
+  acpChatManager: AcpChatManager
+): void {
+  searchPanel = panel;
   activeSearchContext = context;
   activeSearchTree = tree;
   registerLlmConfigRefresh(context);

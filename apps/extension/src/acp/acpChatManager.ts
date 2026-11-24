@@ -27,6 +27,24 @@ export class AcpChatManager {
     this.panels.set(record.id, panel);
   }
 
+  restore(panel: vscode.WebviewPanel, record: AcpSessionRecord): void {
+    if (this.panels.has(record.id)) {
+      panel.dispose();
+      return;
+    }
+
+    const chatPanel = new AcpChatPanel(
+      this.context,
+      record,
+      this.reloadTree,
+      () => {
+        this.panels.delete(record.id);
+      },
+      { existingPanel: panel }
+    );
+    this.panels.set(record.id, chatPanel);
+  }
+
   hasPanel(id: string): boolean {
     return this.panels.has(id);
   }

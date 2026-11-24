@@ -2,7 +2,8 @@ import * as vscode from "vscode";
 import { AgentSession } from "../history";
 import { PreviewMessage } from "../history/preview/types";
 import { chatCompletion } from "./client";
-import { buildChatCompletionsUrl, getLlmConfig, LlmConfigOverrides } from "./config";
+import { buildChatCompletionsUrl, getLlmConfig, getLlmEndpointConfig, LlmConfig, LlmConfigOverrides } from "./config";
+import { fetchAvailableModels, isLocalLlmEndpoint } from "./models";
 import {
   buildRenameSystemPrompt,
   buildRenameUserPrompt,
@@ -85,4 +86,18 @@ export async function testLlmConnection(
   );
 
   return `Connected to ${endpoint} (${config.model}): ${reply}`;
+}
+
+export async function listLlmModels(
+  context: vscode.ExtensionContext,
+  overrides?: LlmConfigOverrides
+): Promise<string[]> {
+  const endpoint = await getLlmEndpointConfig(context, overrides);
+  if (!endpoint) {
+    throw new Error("Set an API Base URL before fetching models.");
+  }
+  if (!endpoint.apiKey && !isLocalLlmEndpoint(endpoint.baseUrl)) {
+    throw new Error("Set an API key before fetching models from a remote endpoint.");
+  }
+  return fetchAvailableModels(endpoint);
 }

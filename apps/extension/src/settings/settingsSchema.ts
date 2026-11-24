@@ -364,6 +364,60 @@ export function getSettingSections(): SettingSection[] {
           default: 900,
           minimum: 100,
           maximum: 5000
+        },
+        {
+          key: "herdrEnabled",
+          label: t("settings.fieldHerdrEnabledLabel"),
+          description: t("settings.fieldHerdrEnabledDescription"),
+          type: "boolean",
+          default: true
+        },
+        {
+          key: "autoResumeHerdrSessions",
+          label: t("settings.fieldAutoResumeHerdrSessionsLabel"),
+          description: t("settings.fieldAutoResumeHerdrSessionsDescription"),
+          type: "boolean",
+          default: true
+        },
+        {
+          key: "herdrResumeDisplay",
+          label: t("settings.fieldHerdrResumeDisplayLabel"),
+          description: t("settings.fieldHerdrResumeDisplayDescription"),
+          type: "enum",
+          default: "auto",
+          enum: ["auto", "vscode", "herdrApp"],
+          enumLabels: {
+            auto: t("settings.enum.herdrResumeDisplayAuto"),
+            vscode: t("settings.enum.herdrResumeDisplayVscode"),
+            herdrApp: t("settings.enum.herdrResumeDisplayHerdrApp")
+          }
+        },
+        {
+          key: "herdrSocketPath",
+          label: t("settings.fieldHerdrSocketPathLabel"),
+          description: t("settings.fieldHerdrSocketPathDescription"),
+          type: "string",
+          default: ""
+        },
+        {
+          key: "herdrHandoff",
+          label: t("settings.fieldHerdrHandoffLabel"),
+          description: t("settings.fieldHerdrHandoffDescription"),
+          type: "boolean",
+          default: true
+        },
+        {
+          key: "herdrNewSessionMode",
+          label: t("settings.fieldHerdrNewSessionModeLabel"),
+          description: t("settings.fieldHerdrNewSessionModeDescription"),
+          type: "enum",
+          default: "auto",
+          enum: ["auto", "always", "never"],
+          enumLabels: {
+            auto: t("settings.enum.herdrNewSessionModeAuto"),
+            always: t("settings.enum.herdrNewSessionModeAlways"),
+            never: t("settings.enum.herdrNewSessionModeNever")
+          }
         }
       ]
     },

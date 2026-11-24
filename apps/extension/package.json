@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel",
   "publisher": "wuzhengzhe",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, Prime Agent, OMP, and Cursor CLI sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Cursor IDE composer metadata is indexed too.",
-  "version": "2.13.0",
+  "version": "2.14.0",
   "icon": "resources/icon.png",
   "private": true,
   "author": "lucacicii",
@@ -71,6 +71,7 @@
     "onCommand:agentResume.openFolder",
     "onCommand:agentResume.openProject",
     "onCommand:agentResume.openInGhostty",
+    "onCommand:agentResume.openInHerdr",
     "onCommand:agentResume.openInCodexApp",
     "onCommand:agentResume.openInClaudeCodePanel",
     "onCommand:agentResume.openInCodexIdePanel",
@@ -416,6 +417,46 @@
           "minimum": 100,
           "maximum": 5000,
           "description": "Delay before auto-pasting the resume command into Ghostty when ghosttyLaunchMode is pasteCommand."
+        },
+        "agentResume.herdrEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Detect and track local herdr-core (hc) terminals and display live Herdr badges on matching sessions."
+        },
+        "agentResume.autoResumeHerdrSessions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically resume sessions previously opened or tracked in Herdr via herdr-core."
+        },
+        "agentResume.herdrResumeDisplay": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "vscode",
+            "herdrApp"
+          ],
+          "default": "auto",
+          "description": "How Herdr-resumed terminals are displayed: auto (prefer Herdr Bridge extension, fallback to built-in VS Code PTY), vscode (built-in PTY), or herdrApp (activate Herdr desktop app)."
+        },
+        "agentResume.herdrSocketPath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom Unix socket path for herdr-core (hc). Leave empty to use HC_SOCKET or ~/.local/state/herdr-core/default/default.sock."
+        },
+        "agentResume.herdrHandoff": {
+          "type": "boolean",
+          "default": true,
+          "description": "Deliver CLI session handoffs into Herdr when local herdr-core (hc) is running."
+        },
+        "agentResume.herdrNewSessionMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "always",
+            "never"
+          ],
+          "default": "auto",
+          "description": "Whether New Session commands start inside Herdr: auto (when project matches a Herdr Space), always, or never."
         },
         "agentResume.showArchivedCodex": {
           "type": "boolean",
@@ -2665,6 +2706,11 @@
         "category": "Agent Resume"
       },
       {
+        "command": "agentResume.sendNoteToHerdr",
+        "title": "Send Note (@path) to Herdr",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.configureSessionMenu",
         "title": "Customize Session Menu",
         "category": "Agent Resume"
@@ -2672,6 +2718,11 @@
       {
         "command": "agentResume.openInCodexApp",
         "title": "Resume in ChatGPT",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openInHerdr",
+        "title": "Resume in Herdr",
         "category": "Agent Resume"
       },
       {
@@ -3047,6 +3098,16 @@
         "category": "Agent Resume"
       },
       {
+        "command": "agentResume.zh-cn.sendNoteToHerdr",
+        "title": "发送笔记 (@path) 到 Herdr",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ja.sendNoteToHerdr",
+        "title": "ノート参照 (@path) を Herdr に送信",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.zh-cn.configureSessionMenu",
         "title": "自定义会话菜单",
         "category": "Agent Resume"
@@ -3064,6 +3125,16 @@
       {
         "command": "agentResume.ja.openInCodexApp",
         "title": "ChatGPT で再開",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.zh-cn.openInHerdr",
+        "title": "在 Herdr 中恢复",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ja.openInHerdr",
+        "title": "Herdr で再開",
         "category": "Agent Resume"
       },
       {
@@ -3593,6 +3664,11 @@
           "group": "1_notes@5"
         },
         {
+          "command": "agentResume.sendNoteToHerdr",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == en",
+          "group": "1_notes@6"
+        },
+        {
           "command": "agentResume.newNote",
           "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == en",
           "group": "inline@1"
@@ -3633,6 +3709,11 @@
           "group": "1_notes@5"
         },
         {
+          "command": "agentResume.zh-cn.sendNoteToHerdr",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'zh-cn'",
+          "group": "1_notes@6"
+        },
+        {
           "command": "agentResume.zh-cn.newNote",
           "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == 'zh-cn'",
           "group": "inline@1"
@@ -3671,6 +3752,11 @@
           "command": "agentResume.ja.copyNotePath",
           "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ja'",
           "group": "1_notes@5"
+        },
+        {
+          "command": "agentResume.ja.sendNoteToHerdr",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ja'",
+          "group": "1_notes@6"
         },
         {
           "command": "agentResume.ja.newNote",
@@ -5228,6 +5314,11 @@
           "group": "navigation@50"
         },
         {
+          "command": "agentResume.openInHerdr",
+          "when": "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp|cursor|chat)/ && agentResume.uiLocale == en",
+          "group": "navigation@60"
+        },
+        {
           "command": "agentResume.openInCodexApp",
           "when": "view == agentResume.sessions && viewItem == agentResume.session.codex && agentResume.uiLocale == en",
           "group": "navigation@60"
@@ -5243,6 +5334,11 @@
           "group": "navigation@60"
         },
         {
+          "command": "agentResume.zh-cn.openInHerdr",
+          "when": "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp|cursor|chat)/ && agentResume.uiLocale == 'zh-cn'",
+          "group": "navigation@60"
+        },
+        {
           "command": "agentResume.zh-cn.openInCodexApp",
           "when": "view == agentResume.sessions && viewItem == agentResume.session.codex && agentResume.uiLocale == 'zh-cn'",
           "group": "navigation@60"
@@ -5255,6 +5351,11 @@
         {
           "command": "agentResume.zh-cn.openInCodexIdePanel",
           "when": "view == agentResume.sessions && viewItem == agentResume.session.codex && agentResume.codexIdePanelResume.enabled && agentResume.uiLocale == 'zh-cn'",
+          "group": "navigation@60"
+        },
+        {
+          "command": "agentResume.ja.openInHerdr",
+          "when": "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp|cursor|chat)/ && agentResume.uiLocale == 'ja'",
           "group": "navigation@60"
         },
         {

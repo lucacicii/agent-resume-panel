@@ -16,6 +16,7 @@ const SESSION_COMMANDS = new Set([
   "agentResume.renameSession",
   "agentResume.autoRenameSession",
   "agentResume.openInCodexApp",
+  "agentResume.openInHerdr",
   "agentResume.openInClaudeCodePanel",
   "agentResume.openInCodexIdePanel"
 ]);

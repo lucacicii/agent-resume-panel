@@ -222,6 +222,36 @@ body {
   border-bottom-right-radius: 0;
 }
 
+.settings-model-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.settings-model-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-model-fetch-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.settings-model-select {
+  margin-top: 6px;
+}
+
+.settings-model-status {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.settings-model-status.error {
+  color: var(--vscode-errorForeground, #f48771);
+}
+
 .settings-password-toggle {
   display: inline-flex;
   align-items: center;

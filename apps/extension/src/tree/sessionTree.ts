@@ -11,11 +11,8 @@ import {
 } from "../catalog/query";
 import { isFavoriteProject } from "../favorites/projectFavorites";
 import { LlmOutputLanguage } from "../llm/languages";
-import {
-  formatProjectLabel,
-  pickProjectDisplayPath,
-  projectGroupKey
-} from "../projects/projectAliases";
+import { formatProjectLabel, pickProjectDisplayPath, projectGroupKey } from "../projects/projectAliases";
+import type { HerdrSessionMatch } from "../herdr/types";
 import { relativeTime } from "../util/relativeTime";
 import { ProjectSessionSortMode, projectTreeItemId, sortSessionsForProject } from "./projectSessionSort";
 import { DEFAULT_SECTION_ORDER, SectionKind } from "./sectionOrder";
@@ -118,6 +115,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private gtdRawStatusResolver: (session: AgentSession) => GtdStatus | undefined = () => undefined;
   private hasSessionNoteResolver: (session: AgentSession) => boolean = () => false;
   private hasProjectNoteResolver: (projectPath: string) => boolean = () => false;
+  private herdrMatchResolver: (session: AgentSession) => HerdrSessionMatch | undefined = () => undefined;
 
   constructor(private readonly cursorIconPath?: vscode.Uri) {}
 
@@ -151,6 +149,11 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     this.onDidChangeTreeDataEmitter.fire();
   }
 
+  setHerdrMatchResolver(resolver: (session: AgentSession) => HerdrSessionMatch | undefined): void {
+    this.herdrMatchResolver = resolver;
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
   getSessionGtdStatus(session: AgentSession): GtdStatus | undefined {
     return this.gtdRawStatusResolver(session);
   }
@@ -165,6 +168,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
       projectDisplayName: (projectPath) => this.getProjectDisplayName(projectPath),
       gtdStatusResolver: (session) => this.gtdStatusResolver(session),
       hasSessionNoteResolver: (session) => this.hasSessionNoteResolver(session),
+      herdrMatchResolver: (session) => this.herdrMatchResolver(session),
       cursorIconPath: this.cursorIconPath
     };
   }
@@ -560,6 +564,7 @@ export interface SessionTreeItemOptions {
   projectDisplayName?: (projectPath: string) => string;
   gtdStatusResolver?: (session: AgentSession) => string | undefined;
   hasSessionNoteResolver?: (session: AgentSession) => boolean;
+  herdrMatchResolver?: (session: AgentSession) => HerdrSessionMatch | undefined;
   cursorIconPath?: vscode.Uri;
 }
 
@@ -568,13 +573,14 @@ export function buildSessionTreeItem(session: AgentSession, options: SessionTree
   const projectDisplayName = options.projectDisplayName ?? basenameOrPath;
   const gtdStatus = options.gtdStatusResolver?.(session);
   const hasNote = options.hasSessionNoteResolver?.(session) ?? false;
+  const herdrMatch = options.herdrMatchResolver?.(session);
 
   const item = new vscode.TreeItem(
     sessionLabel(session, showProjectName, projectDisplayName),
     vscode.TreeItemCollapsibleState.None
   );
-  item.description = sessionDescription(session, hasNote);
-  item.tooltip = buildSessionTooltip(session, gtdStatus, hasNote);
+  item.description = sessionDescription(session, hasNote, herdrMatch);
+  item.tooltip = buildSessionTooltip(session, gtdStatus, hasNote, herdrMatch);
   item.iconPath = sessionIconPath(session.provider, options.cursorIconPath);
   item.contextValue = `agentResume.session.${session.provider}`;
   item.command = {
@@ -585,13 +591,40 @@ export function buildSessionTreeItem(session: AgentSession, options: SessionTree
   return item;
 }
 
-function sessionDescription(session: AgentSession, hasNote = false): string {
+function formatHerdrBadge(match: HerdrSessionMatch): string {
+  if (match.kind === "live") {
+    if (match.agentState === "blocked" || match.agentState === "error") {
+      return t("tree.herdrNeedsYou");
+    }
+    if (match.agentState === "working") {
+      return t("tree.herdrWorking");
+    }
+    if (match.agentState === "done") {
+      return t("tree.herdrDone");
+    }
+    return t("tree.herdrLive");
+  }
+  return t("tree.herdrRecorded");
+}
+
+function sessionDescription(
+  session: AgentSession,
+  hasNote = false,
+  herdrMatch?: HerdrSessionMatch
+): string {
   const provider = providerLabel(session.provider);
   const time =
     session.provider === "chat" && session.acpProvider
       ? t("tree.descriptionAcp", session.acpProvider, relativeTime(session.updatedAt))
       : t("tree.descriptionProvider", provider, relativeTime(session.updatedAt));
-  return hasNote ? `${time} · ${t("tree.hasNote")}` : time;
+  const parts = [time];
+  if (herdrMatch) {
+    parts.push(formatHerdrBadge(herdrMatch));
+  }
+  if (hasNote) {
+    parts.push(t("tree.hasNote"));
+  }
+  return parts.join(" · ");
 }
 
 function showMoreItem(remaining: number, commandId: string, args?: unknown[]): vscode.TreeItem {
@@ -631,15 +664,28 @@ function buildProjectTooltip(projectPath: string, alias?: string, hasNote = fals
   return lines.join("\n");
 }
 
+function formatHerdrTooltip(match: HerdrSessionMatch): string {
+  const details = [
+    match.kind === "live" ? "live" : match.kind === "finished" ? "finished" : "recorded",
+    match.address,
+    match.spaceName ? `space:${match.spaceName}` : undefined,
+    match.kind === "live" && match.agentState ? match.agentState : undefined,
+    match.statusMsg ? match.statusMsg.slice(0, 80) : undefined
+  ].filter(Boolean);
+  return t("tree.tooltipHerdr", details.join(" · "));
+}
+
 function buildSessionTooltip(
   session: AgentSession,
   gtdStatus?: string,
-  hasNote = false
+  hasNote = false,
+  herdrMatch?: HerdrSessionMatch
 ): string | vscode.MarkdownString {
   const lines = [
     formatTitleWithMessageCount(session),
     t("tree.tooltipProvider", providerLabel(session.provider)),
     session.acpProvider ? t("tree.tooltipAcpAgent", session.acpProvider) : undefined,
+    herdrMatch ? formatHerdrTooltip(herdrMatch) : undefined,
     gtdStatus ? t("tree.tooltipGtdStatus", gtdStatus) : undefined,
     hasNote ? t("tree.tooltipHasNote") : undefined,
     t("tree.tooltipProject", session.projectPath),

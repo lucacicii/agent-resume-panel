@@ -68,10 +68,7 @@ export async function openSessionManagerPanel(
     return;
   }
 
-  activeManagerTree = tree;
-  activeManagerBuildLoadOptions = buildLoadOptions;
-
-  managerPanel = vscode.window.createWebviewPanel(
+  const panel = vscode.window.createWebviewPanel(
     "agentResume.sessionManager",
     t("panel.sessionManagerTitle"),
     column,
@@ -82,6 +79,39 @@ export async function openSessionManagerPanel(
     }
   );
 
+  attachSessionManagerPanel(panel, context, tree, buildLoadOptions, refreshTree);
+}
+
+export async function restoreSessionManagerPanel(
+  panel: vscode.WebviewPanel,
+  context: vscode.ExtensionContext,
+  tree: SessionTreeProvider,
+  buildLoadOptions: () => HistoryLoadOptions,
+  refreshTree: () => Promise<void>
+): Promise<void> {
+  if (managerPanel) {
+    panel.dispose();
+    return;
+  }
+
+  panel.title = t("panel.sessionManagerTitle");
+  panel.webview.options = {
+    enableScripts: true,
+    localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "media")]
+  };
+  attachSessionManagerPanel(panel, context, tree, buildLoadOptions, refreshTree);
+}
+
+function attachSessionManagerPanel(
+  panel: vscode.WebviewPanel,
+  context: vscode.ExtensionContext,
+  tree: SessionTreeProvider,
+  buildLoadOptions: () => HistoryLoadOptions,
+  refreshTree: () => Promise<void>
+): void {
+  managerPanel = panel;
+  activeManagerTree = tree;
+  activeManagerBuildLoadOptions = buildLoadOptions;
   managerPanel.iconPath = vscode.Uri.joinPath(context.extensionUri, "resources", "agent-resume.svg");
 
   managerPanel.webview.onDidReceiveMessage(async (message) => {

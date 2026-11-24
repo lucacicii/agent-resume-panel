@@ -8,6 +8,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.14.0]
+
+#### 新增
+
+- **Herdr 集成与双向联动**：侧边栏实时展示 Herdr 会话运行状态徽标（`working` / `blocked` / `done` / `idle`），支持自动在 Herdr 中恢复会话、通过 Herdr 新建会话与 Handoff、自动同步 Space 名称，并与 **Herdr Core Bridge** 深度联动（会话标题与状态互通）。
+- **LLM Assist 自动获取模型列表**：在设置面板支持手动点击拉取 OpenAI 兼容 `/models` 接口可用模型列表，并在打开 LLM 设置或修改 Base URL 时自动静默刷新模型候选。
+- **Reload Window 窗口恢复**：为 Settings、Session Manager、Search Sessions、Session Preview 和 ACP Chat 面板注册 `WebviewPanelSerializer`，并在工作区状态中持久化已打开的内置 Herdr 终端，在 Reload Window 后自动恢复。
+
 ### [2.13.0]
 
 #### 变更
@@ -532,6 +540,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.14.0]
+
+#### Added
+
+- **Herdr integration & two-way bridge**: Live Herdr session status badges (`working` / `blocked` / `done` / `idle`), auto-resume in Herdr, new session & handoff via Herdr, Space name sync, and deep integration with **Herdr Core Bridge**.
+- **LLM Assist auto fetch models**: Fetch available models from OpenAI-compatible `/models` endpoints in Settings (both on-demand button and automatic silent refresh when opening LLM settings or updating Base URL).
+- **Window restoration on Reload**: Register `WebviewPanelSerializer` for Settings, Session Manager, Search Sessions, Session Preview, and ACP Chat panels, plus workspace-state persistence to reopen built-in Herdr terminals after VS Code Reload Window.
 
 ### [2.13.0]
 

@@ -27,6 +27,7 @@
     "quickpick.newSessionPrimeLabel",
     "quickpick.resumeWithCodexAppLabel",
     "quickpick.resumeWithGhosttyLabel",
+    "quickpick.resumeWithHerdrLabel",
     "settings.enum.acpAutoApprovePermissionsAllowAll",
     "settings.enum.acpAutoApprovePermissionsAsk",
     "settings.enum.catalogSidebarModeFull",
@@ -75,6 +76,8 @@
     "tree.gtd.status.reference",
     "tree.gtd.status.someday",
     "tree.gtd.status.waiting",
+    "tree.herdrLive",
+    "tree.herdrRecorded",
     "webview.search.sectionGtd",
     "webview.settings.apiKeyPlaceholderConfigured",
     "webview.settings.apiKeyPlaceholderEmpty"

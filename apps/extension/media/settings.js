@@ -8,6 +8,18 @@
   let activeSectionId = "general";
   let llmApiKeyConfigured = false;
   let apiKeyInput = "";
+  /** @type {string[]} */
+  let fetchedModels = [];
+  let fetchingModels = false;
+  let lastModelsSignature = "";
+  let modelFetchStatusText = "";
+  let modelFetchStatusError = false;
+  /** @type {HTMLButtonElement | null} */
+  let modelFetchBtn = null;
+  /** @type {HTMLSelectElement | null} */
+  let modelSelectEl = null;
+  /** @type {HTMLDivElement | null} */
+  let modelStatusEl = null;
 
   /** @type {string[]} */
   let projectMenuOrder = [];
@@ -154,6 +166,33 @@
       testResult.classList.remove("hidden");
       testResult.textContent = message.message || "";
       testResult.classList.toggle("error", !message.success);
+      return;
+    }
+
+    if (message.type === "llmModelsResult") {
+      fetchingModels = false;
+      if (message.success) {
+        fetchedModels = Array.isArray(message.models) ? message.models : [];
+        if (fetchedModels.length === 0) {
+          modelFetchStatusError = false;
+          modelFetchStatusText = message.silent
+            ? ""
+            : uiStrings.modelsFetchEmpty || "No models returned by endpoint.";
+        } else {
+          modelFetchStatusError = false;
+          modelFetchStatusText = (uiStrings.modelsFetchedCount || "Fetched {0} models").replace(
+            "{0}",
+            String(fetchedModels.length)
+          );
+        }
+      } else {
+        fetchedModels = [];
+        modelFetchStatusError = !message.silent;
+        modelFetchStatusText = message.silent
+          ? ""
+          : message.error || uiStrings.modelsFetchFailed || "Failed to fetch models.";
+      }
+      updateModelPickerUi();
     }
   });
 
@@ -319,6 +358,7 @@
 
     if (sectionId === "llm") {
       llmActions.classList.remove("hidden");
+      maybeAutoFetchModels();
     }
   }
 
@@ -623,6 +663,9 @@
     input.addEventListener("input", () => {
       apiKeyInput = input.value;
     });
+    input.addEventListener("blur", () => {
+      maybeAutoFetchModels();
+    });
 
     const toggle = document.createElement("button");
     toggle.type = "button";
@@ -646,6 +689,107 @@
     wrapper.appendChild(row);
 
     return wrapper;
+  }
+
+  function buildLlmDraft() {
+    const draft = { ...values };
+    if (apiKeyInput.trim()) {
+      draft["llm.apiKey"] = apiKeyInput.trim();
+    }
+    return draft;
+  }
+
+  function isLocalEndpointUrl(rawUrl) {
+    try {
+      const parsed = new URL(String(rawUrl || "").trim());
+      return (
+        parsed.hostname === "localhost" ||
+        parsed.hostname === "127.0.0.1" ||
+        parsed.hostname === "::1" ||
+        parsed.hostname === "[::1]"
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  function requestFetchModels(silent) {
+    if (fetchingModels) {
+      return;
+    }
+    const baseUrl = String(values["llm.baseUrl"] ?? "").trim();
+    if (!baseUrl) {
+      return;
+    }
+    const signature = `${baseUrl}|${apiKeyInput.trim()}|${llmApiKeyConfigured ? "1" : "0"}`;
+    lastModelsSignature = signature;
+    fetchingModels = true;
+    if (!silent) {
+      modelFetchStatusError = false;
+      modelFetchStatusText = "";
+    }
+    updateModelPickerUi();
+    vscode.postMessage({
+      type: "fetchLlmModels",
+      draft: buildLlmDraft(),
+      silent: Boolean(silent)
+    });
+  }
+
+  function maybeAutoFetchModels() {
+    if (activeSectionId !== "llm" || fetchingModels) {
+      return;
+    }
+    const baseUrl = String(values["llm.baseUrl"] ?? "").trim();
+    if (!baseUrl) {
+      return;
+    }
+    const hasAuth = llmApiKeyConfigured || Boolean(apiKeyInput.trim()) || isLocalEndpointUrl(baseUrl);
+    if (!hasAuth) {
+      return;
+    }
+    const signature = `${baseUrl}|${apiKeyInput.trim()}|${llmApiKeyConfigured ? "1" : "0"}`;
+    if (signature === lastModelsSignature) {
+      return;
+    }
+    requestFetchModels(true);
+  }
+
+  function updateModelPickerUi() {
+    if (modelFetchBtn) {
+      modelFetchBtn.disabled = fetchingModels;
+      modelFetchBtn.textContent = fetchingModels
+        ? uiStrings.buttonFetchingModels || "Fetching..."
+        : uiStrings.buttonFetchModels || "Fetch Models";
+    }
+    if (modelSelectEl) {
+      modelSelectEl.innerHTML = "";
+      if (fetchedModels.length > 0) {
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = uiStrings.modelsSelectPlaceholder || "Select a fetched model...";
+        modelSelectEl.appendChild(placeholder);
+
+        const currentModel = String(values["llm.model"] ?? "").trim();
+        for (const modelId of fetchedModels) {
+          const opt = document.createElement("option");
+          opt.value = modelId;
+          opt.textContent = modelId;
+          if (modelId === currentModel) {
+            opt.selected = true;
+          }
+          modelSelectEl.appendChild(opt);
+        }
+        modelSelectEl.classList.remove("hidden");
+      } else {
+        modelSelectEl.classList.add("hidden");
+      }
+    }
+    if (modelStatusEl) {
+      modelStatusEl.textContent = modelFetchStatusText;
+      modelStatusEl.classList.toggle("hidden", !modelFetchStatusText);
+      modelStatusEl.classList.toggle("error", modelFetchStatusError);
+    }
   }
 
   function renderField(field) {
@@ -709,6 +853,54 @@
       return wrapper;
     }
 
+    if (field.key === "llm.model") {
+      const row = document.createElement("div");
+      row.className = "settings-model-row";
+
+      const input = document.createElement("input");
+      input.className = "settings-input settings-model-input";
+      input.type = "text";
+      input.value = String(values[field.key] ?? field.default);
+      input.addEventListener("input", () => {
+        values[field.key] = input.value;
+        if (modelSelectEl) {
+          modelSelectEl.value = fetchedModels.includes(input.value.trim()) ? input.value.trim() : "";
+        }
+      });
+
+      const fetchBtn = document.createElement("button");
+      fetchBtn.type = "button";
+      fetchBtn.className = "settings-secondary-button settings-model-fetch-btn";
+      fetchBtn.addEventListener("click", () => {
+        requestFetchModels(false);
+      });
+
+      const select = document.createElement("select");
+      select.className = "settings-select settings-model-select hidden";
+      select.addEventListener("change", () => {
+        if (!select.value) {
+          return;
+        }
+        values[field.key] = select.value;
+        input.value = select.value;
+      });
+
+      const status = document.createElement("div");
+      status.className = "settings-model-status hidden";
+
+      modelFetchBtn = fetchBtn;
+      modelSelectEl = select;
+      modelStatusEl = status;
+
+      row.appendChild(input);
+      row.appendChild(fetchBtn);
+      wrapper.appendChild(row);
+      wrapper.appendChild(select);
+      wrapper.appendChild(status);
+      updateModelPickerUi();
+      return wrapper;
+    }
+
     const input = document.createElement("input");
     input.className = "settings-input";
     input.type = field.type === "number" ? "number" : "text";
@@ -722,6 +914,11 @@
     input.addEventListener("input", () => {
       values[field.key] = field.type === "number" ? Number(input.value) : input.value;
     });
+    if (field.key === "llm.baseUrl") {
+      input.addEventListener("blur", () => {
+        maybeAutoFetchModels();
+      });
+    }
     wrapper.appendChild(input);
     return wrapper;
   }

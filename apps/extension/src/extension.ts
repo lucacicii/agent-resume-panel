@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
@@ -8,6 +9,7 @@ import { getAcpRecord, loadAcpRecords } from "./acp/store";
 import { AcpSessionRecord } from "./acp/types";
 import {
   loadCatalogSettings,
+  queryRecentSessionsPage,
   querySessionsByKeys,
   queryVisibleSessionCount,
   removeSessionsFromPanel,
@@ -27,6 +29,16 @@ import { applyUiLocaleContext } from "./i18n/uiLocaleContext";
 import { truncateText } from "./util/dialogText";
 import { openCodexAppProject } from "./terminal/codexApp";
 import { openInGhostty, openProjectInGhostty } from "./terminal/ghosttyTerminal";
+import { HerdrSessionTracker } from "./herdr/herdrSessionTracker";
+import {
+  disposeBuiltInHerdrTerminals,
+  getHerdrSessionTracker,
+  openHerdrResume,
+  restoreBuiltInHerdrTerminals,
+  sendTextToActiveHerdrTerminal,
+  setHerdrSessionTracker,
+  setHerdrTerminalWorkspaceState
+} from "./terminal/herdrTerminal";
 import { consumePendingResumeForWorkspace, storePendingResume } from "./terminal/pendingResume";
 import { openClaudeCodePanelResumeFlow, shouldResumeClaudeInPanel } from "./terminal/claudeCodePanel";
 import {
@@ -91,15 +103,28 @@ import { executeHandoffCommand } from "./handoff/handoffCommand";
 import { CLI_HANDOFF_TARGETS, handoffCommandId } from "./menu/handoffMenu";
 
 import { runAutoRename } from "./preview/sessionAssistActions";
-import { openSessionManagerPanel, refreshSessionManagerPanel } from "./manager/sessionManagerPanel";
-import { openSessionPreviewPanel, refreshSessionPreviewPanel } from "./preview/sessionPreviewPanel";
-import { refreshSessionSearchPanel, searchAndOpenSessions } from "./search/sessionSearch";
+import {
+  openSessionManagerPanel,
+  refreshSessionManagerPanel,
+  restoreSessionManagerPanel
+} from "./manager/sessionManagerPanel";
+import {
+  openSessionPreviewPanel,
+  refreshSessionPreviewPanel,
+  restoreSessionPreviewPanel
+} from "./preview/sessionPreviewPanel";
+import {
+  refreshSessionSearchPanel,
+  restoreSearchSessionsPanel,
+  searchAndOpenSessions
+} from "./search/sessionSearch";
 import {
   openSettingsPanel,
   openSettingsPanelToAcp,
   openSettingsPanelToProjectMenu,
   openSettingsPanelToSessionMenu,
-  refreshSettingsPanel
+  refreshSettingsPanel,
+  restoreSettingsPanel
 } from "./settings/settingsPanel";
 import { loadSectionOrder } from "./tree/sectionOrder";
 import { SessionTreeDragDrop } from "./tree/sessionTreeDragDrop";
@@ -127,8 +152,47 @@ let notesStore: NotesStore | undefined;
 let gtdTree: GtdTreeProvider | undefined;
 let notesTree: NotesTreeProvider | undefined;
 let notesTreeView: vscode.TreeView<import("./notes/notesTree").NotesTreeNode> | undefined;
+let recentApiSessions: AgentSession[] = [];
+let onDidChangeSessionsEmitter: vscode.EventEmitter<void> | undefined;
 
-export function activate(context: vscode.ExtensionContext): void {
+export interface AgentResumeSessionSummary {
+  provider: AgentProvider;
+  id: string;
+  title: string;
+  projectPath: string;
+  summary?: string;
+}
+
+export interface AgentResumeTerminalQuery {
+  provider?: string;
+  sessionId?: string;
+  cwd?: string;
+  title?: string;
+  updatedNearMs?: number;
+}
+
+export interface AgentResumePanelApi {
+  readonly version: 1;
+  readonly onDidChangeSessions: vscode.Event<void>;
+  findSessionForTerminal(query: AgentResumeTerminalQuery): AgentResumeSessionSummary | undefined;
+}
+
+function normalizePathForMatch(dir?: string): string {
+  if (!dir) {
+    return "";
+  }
+  const trimmed = dir.trim();
+  if (!trimmed) {
+    return "";
+  }
+  try {
+    return fs.realpathSync(trimmed);
+  } catch {
+    return path.resolve(trimmed);
+  }
+}
+
+export function activate(context: vscode.ExtensionContext): AgentResumePanelApi {
   extensionContext = context;
   void promptReloadIfContributionsStale(context);
   const tree = new SessionTreeProvider(vscode.Uri.joinPath(context.extensionUri, "resources", "cursor.svg"));
@@ -174,6 +238,16 @@ export function activate(context: vscode.ExtensionContext): void {
   tree.setFavoriteProjects(loadFavoriteProjects(context));
   tree.setSectionOrder(loadSectionOrder(context));
   tree.setProjectSessionSortMode((projectPath) => getProjectSessionSortMode(context, projectPath));
+  const initialConfig = vscode.workspace.getConfiguration("agentResume");
+  const herdrTracker = new HerdrSessionTracker(
+    context,
+    initialConfig.get<string>("herdrSocketPath", "")
+  );
+  setHerdrSessionTracker(herdrTracker);
+  setHerdrTerminalWorkspaceState(context.workspaceState);
+  if (initialConfig.get<boolean>("herdrEnabled", true)) {
+    void herdrTracker.initialize().then(() => restoreBuiltInHerdrTerminals());
+  }
   void applyProjectMenuContextFromConfig();
   void applySessionMenuContextFromConfig();
   void applyUiLocaleContext();
@@ -200,7 +274,58 @@ export function activate(context: vscode.ExtensionContext): void {
     acpTreeView,
     gtdTreeView,
     notesTreeView,
+    herdrTracker,
+    herdrTracker.onDidChange(() => {
+      tree.refresh();
+      gtdTree?.refresh();
+    }),
+    { dispose: () => setHerdrSessionTracker(undefined) },
+    { dispose: () => disposeBuiltInHerdrTerminals() },
     { dispose: () => acpChatManager.dispose() },
+    vscode.window.registerWebviewPanelSerializer("agentResume.settings", {
+      async deserializeWebviewPanel(panel) {
+        await restoreSettingsPanel(panel, context);
+      }
+    }),
+    vscode.window.registerWebviewPanelSerializer("agentResume.sessionManager", {
+      async deserializeWebviewPanel(panel) {
+        await restoreSessionManagerPanel(
+          panel,
+          context,
+          tree,
+          () => buildHistoryLoadOptions(vscode.workspace.getConfiguration("agentResume")),
+          () => refresh(tree, false)
+        );
+      }
+    }),
+    vscode.window.registerWebviewPanelSerializer("agentResume.searchSessions", {
+      async deserializeWebviewPanel(panel) {
+        await restoreSearchSessionsPanel(panel, context, tree, () => refresh(tree, false), acpChatManager);
+      }
+    }),
+    vscode.window.registerWebviewPanelSerializer("agentResume.sessionPreview", {
+      async deserializeWebviewPanel(panel, state) {
+        await restoreSessionPreviewPanel(panel, state, tree, () => refresh(tree, false), context, acpChatManager);
+      }
+    }),
+    vscode.window.registerWebviewPanelSerializer("agentResume.acpChatPanel", {
+      async deserializeWebviewPanel(panel, state) {
+        const chatId =
+          typeof (state as { chatId?: unknown } | undefined)?.chatId === "string"
+            ? (state as { chatId: string }).chatId
+            : undefined;
+        if (!chatId) {
+          panel.dispose();
+          return;
+        }
+        const record = await getAcpRecord(panelHomeFromConfig(), chatId);
+        if (!record) {
+          panel.dispose();
+          return;
+        }
+        acpChatManager.restore(panel, record);
+      }
+    }),
     {
       dispose: () => {
         if (acpStoreRefreshTimer) {
@@ -278,6 +403,9 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     ...menuCommand("agentResume.openInGhostty", (nodeOrSession?: unknown) =>
       openSessionInGhostty(tree, nodeOrSession)
+    ),
+    ...menuCommand("agentResume.openInHerdr", (nodeOrSession?: unknown) =>
+      openSessionInHerdr(tree, nodeOrSession, context)
     ),
     ...menuCommand("agentResume.openInCodexApp", (nodeOrSession?: unknown) =>
       openSessionInCodexApp(tree, nodeOrSession)
@@ -452,6 +580,24 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       void insertNoteImageCommand(notesStore);
     }),
+    ...menuCommand("agentResume.sendNoteToHerdr", async (node?: unknown) => {
+      if (!notesStore || !notesTree) {
+        return;
+      }
+      const record = notesTree.getNoteFromNode(node);
+      if (!record) {
+        return;
+      }
+      const absPath = notesStore.absolutePath(record);
+      const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(absPath));
+      const formatted = workspaceFolder
+        ? path.relative(workspaceFolder.uri.fsPath, absPath)
+        : absPath;
+      const sent = await sendTextToActiveHerdrTerminal(`@${formatted} `);
+      if (sent) {
+        vscode.window.showInformationMessage(t("notification.noteSentToHerdr", record.filename));
+      }
+    }),
     vscode.workspace.onDidSaveTextDocument((document) => {
       if (document.uri.scheme !== "file" || !notesStore) {
         return;
@@ -486,6 +632,17 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       if (event.affectsConfiguration("agentResume.codexIdePanelResume")) {
         void applyCodexIdePanelContext();
+      }
+      if (
+        event.affectsConfiguration("agentResume.herdrSocketPath") ||
+        event.affectsConfiguration("agentResume.herdrEnabled")
+      ) {
+        const cfg = vscode.workspace.getConfiguration("agentResume");
+        const enabled = cfg.get<boolean>("herdrEnabled", true);
+        herdrTracker.setEnabled(enabled);
+        if (enabled) {
+          herdrTracker.setSocketPath(cfg.get<string>("herdrSocketPath", ""));
+        }
       }
       if (event.affectsConfiguration("agentResume.panelHome")) {
         replaceAcpStoreWatcher();
@@ -549,6 +706,99 @@ export function activate(context: vscode.ExtensionContext): void {
     refreshSessionManager: refreshSessionManagerPanel,
     refreshAcpChatPanels
   });
+
+  onDidChangeSessionsEmitter = new vscode.EventEmitter<void>();
+  context.subscriptions.push(
+    onDidChangeSessionsEmitter,
+    tree.onDidChangeTreeData(() => {
+      onDidChangeSessionsEmitter?.fire();
+    })
+  );
+
+  return {
+    version: 1,
+    onDidChangeSessions: onDidChangeSessionsEmitter.event,
+    findSessionForTerminal(query: AgentResumeTerminalQuery): AgentResumeSessionSummary | undefined {
+      const merged = new Map<string, AgentSession>();
+      for (const s of recentApiSessions) {
+        merged.set(`${s.provider}:${s.id}`, s);
+      }
+      for (const s of tree.getSessions()) {
+        merged.set(`${s.provider}:${s.id}`, s);
+      }
+      const sessions = [...merged.values()];
+      if (sessions.length === 0) {
+        return undefined;
+      }
+
+      if (query.sessionId) {
+        const exact = sessions.find(
+          (s) => s.id === query.sessionId && (!query.provider || s.provider === query.provider)
+        );
+        if (exact) {
+          return {
+            provider: exact.provider,
+            id: exact.id,
+            title: exact.title,
+            projectPath: exact.projectPath,
+            summary: exact.sessionSummary
+          };
+        }
+      }
+
+      const normCwd = normalizePathForMatch(query.cwd);
+      if (!normCwd || !query.provider) {
+        return undefined;
+      }
+
+      const candidates = sessions.filter((s) => {
+        if (s.provider !== query.provider) {
+          return false;
+        }
+        const paths = [s.projectPath, s.nativeProjectPath]
+          .map((p) => normalizePathForMatch(p))
+          .filter(Boolean);
+        return paths.some(
+          (p) => p === normCwd || normCwd.startsWith(`${p}${path.sep}`) || p.startsWith(`${normCwd}${path.sep}`)
+        );
+      });
+
+      if (candidates.length === 0) {
+        return undefined;
+      }
+
+      const exactDirCandidates = candidates.filter((s) =>
+        [s.projectPath, s.nativeProjectPath]
+          .map((p) => normalizePathForMatch(p))
+          .includes(normCwd)
+      );
+      const pool = exactDirCandidates.length > 0 ? exactDirCandidates : candidates;
+
+      let best = pool[0];
+      if (query.updatedNearMs && query.updatedNearMs > 0) {
+        let bestDelta = Math.abs(best.updatedAt - query.updatedNearMs);
+        for (const s of pool.slice(1)) {
+          const delta = Math.abs(s.updatedAt - query.updatedNearMs);
+          if (delta < bestDelta) {
+            best = s;
+            bestDelta = delta;
+          }
+        }
+        // Avoid linking unrelated stale sessions (> 6h away) when only directory matched
+        if (bestDelta > 6 * 60 * 60 * 1000) {
+          return undefined;
+        }
+      }
+
+      return {
+        provider: best.provider,
+        id: best.id,
+        title: best.title,
+        projectPath: best.projectPath,
+        summary: best.sessionSummary
+      };
+    }
+  };
 }
 
 export function deactivate(): void {
@@ -581,10 +831,20 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
     const noteSessionKeys = (notesStore?.getAllNotes() ?? [])
       .filter((note) => note.scope === "session" && note.provider && note.agentSessionId)
       .map((note) => ({ provider: note.provider!, id: note.agentSessionId! }));
-    const noteSessions = await querySessionsByKeys(catalog.dbPath, noteSessionKeys, llmConfig?.outputLanguage);
+    const [noteSessions, recentPage] = await Promise.all([
+      querySessionsByKeys(catalog.dbPath, noteSessionKeys, llmConfig?.outputLanguage),
+      queryRecentSessionsPage(catalog.dbPath, {
+        limit: 150,
+        offset: 0,
+        maxCap,
+        outputLanguage: llmConfig?.outputLanguage
+      }).catch(() => ({ sessions: [] as AgentSession[] }))
+    ]);
+    recentApiSessions = recentPage.sessions;
     notesTree?.setSessions(noteSessions);
     notesTree?.setProjectDisplayName((projectPath) => tree.getProjectDisplayName(projectPath));
     notesTree?.refresh();
+    onDidChangeSessionsEmitter?.fire();
     if (showToast) {
       const totalVisible = await queryVisibleSessionCount(catalog.dbPath, maxCap);
       vscode.window.showInformationMessage(t("notification.syncedCliSessions", totalVisible));
@@ -972,6 +1232,19 @@ async function openSessionInGhostty(tree: SessionTreeProvider, nodeOrSession: un
   await openInGhostty(session);
 }
 
+async function openSessionInHerdr(
+  tree: SessionTreeProvider,
+  nodeOrSession: unknown,
+  context: vscode.ExtensionContext
+): Promise<void> {
+  const session = resolveSession(tree, nodeOrSession);
+  if (!session) {
+    return;
+  }
+
+  await openHerdrResume(session, context);
+}
+
 function openSessionInCodexApp(tree: SessionTreeProvider, nodeOrSession: unknown): void {
   const session = resolveSession(tree, nodeOrSession);
   if (!session) {
@@ -1107,7 +1380,8 @@ function applyProjectAndGtdResolvers(
   acpTree: AcpChatTreeProvider,
   gtdTreeProvider: GtdTreeProvider
 ): void {
-  const aliasResolver = (projectPath: string) => projectAliasStore?.get(projectPath);
+  const aliasResolver = (projectPath: string) =>
+    projectAliasStore?.get(projectPath) ?? getHerdrSessionTracker()?.getSpaceNameForFolder(projectPath);
   tree.setProjectAliasResolver(aliasResolver);
   acpTree.setProjectAliasResolver(aliasResolver);
 
@@ -1119,6 +1393,15 @@ function applyProjectAndGtdResolvers(
   tree.setGtdRawStatusResolver((session) => sessionGtdStore?.get(session));
   tree.setHasSessionNoteResolver((session) => notesStore?.hasSessionNote(session) ?? false);
   tree.setHasProjectNoteResolver((projectPath) => notesStore?.hasProjectNote(projectPath) ?? false);
+  tree.setHerdrMatchResolver((session) => {
+    const enabled = vscode.workspace
+      .getConfiguration("agentResume")
+      .get<boolean>("herdrEnabled", true);
+    if (!enabled) {
+      return undefined;
+    }
+    return getHerdrSessionTracker()?.resolve(session);
+  });
   gtdTreeProvider.setSessionTreeOptions(tree.getSessionTreeItemOptions());
 }
 
@@ -1190,7 +1473,12 @@ function resolveSession(tree: SessionTreeProvider, nodeOrSession: unknown): Agen
   }
 
   if (isAgentSession(nodeOrSession)) {
-    return nodeOrSession;
+    const matched =
+      tree
+        .getSessions()
+        .find((s) => s.provider === nodeOrSession.provider && s.id === nodeOrSession.id) ??
+      recentApiSessions.find((s) => s.provider === nodeOrSession.provider && s.id === nodeOrSession.id);
+    return matched ?? nodeOrSession;
   }
 
   return undefined;
@@ -1268,12 +1556,25 @@ async function setProjectAliasCommand(
   }
 
   await projectAliasStore.set(projectPath, nextAlias);
+  const trimmedAlias = nextAlias.trim();
+  if (trimmedAlias) {
+    const tracker = getHerdrSessionTracker();
+    const space = tracker?.getSpaceByFolder(projectPath);
+    if (space?.id) {
+      const bridgeApi = tracker?.getBridgeApi();
+      if (bridgeApi) {
+        void bridgeApi.renameSpace(space.id, trimmedAlias).catch(() => undefined);
+      } else if (tracker?.herdrApp.isAvailable()) {
+        void tracker.herdrApp.doCommand("space.rename", { id: space.id, name: trimmedAlias }).catch(() => undefined);
+      }
+    }
+  }
   tree.refresh();
   acpTree.refresh();
   await refreshSessionSearchPanel();
   await refreshSessionManagerPanel();
   vscode.window.showInformationMessage(
-    nextAlias.trim() ? t("notification.projectAliasSet") : t("notification.projectAliasCleared")
+    trimmedAlias ? t("notification.projectAliasSet") : t("notification.projectAliasCleared")
   );
 }
 

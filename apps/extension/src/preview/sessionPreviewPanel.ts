@@ -2,7 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { AcpChatManager } from "../acp/acpChatManager";
-import { AgentSession } from "../history";
+import { resolveSessionById } from "../catalog/resolve";
+import { AgentProvider, AgentSession } from "../history";
 import { loadSessionPreview } from "../history/preview";
 import { renameSessionWithCatalog } from "../catalog/rename";
 import { loadRenameHomes } from "../history/rename/homes";
@@ -21,6 +22,7 @@ import { SessionTreeProvider } from "../tree/sessionTree";
 let previewPanel: vscode.WebviewPanel | undefined;
 let llmConfigRefreshRegistered = false;
 let activeSessionKey: string | undefined;
+let activeSessionObj: AgentSession | undefined;
 let activeTree: SessionTreeProvider | undefined;
 let activeRefreshTree: (() => Promise<void>) | undefined;
 let activeContext: vscode.ExtensionContext | undefined;
@@ -37,6 +39,7 @@ export async function openSessionPreviewPanel(
   const sessionKey = `${session.provider}:${session.id}`;
 
   if (previewPanel && activeSessionKey === sessionKey) {
+    activeSessionObj = session;
     activeTree = tree;
     activeRefreshTree = refreshTree;
     activeContext = context;
@@ -51,9 +54,10 @@ export async function openSessionPreviewPanel(
     previewPanel.dispose();
     previewPanel = undefined;
     activeSessionKey = undefined;
+    activeSessionObj = undefined;
   }
 
-  previewPanel = vscode.window.createWebviewPanel(
+  const panel = vscode.window.createWebviewPanel(
     "agentResume.sessionPreview",
     t("panel.sessionPreviewTitle", session.title),
     column,
@@ -64,7 +68,57 @@ export async function openSessionPreviewPanel(
     }
   );
 
-  activeSessionKey = sessionKey;
+  attachSessionPreviewPanel(panel, session, tree, refreshTree, context, acpChatManager);
+}
+
+export async function restoreSessionPreviewPanel(
+  panel: vscode.WebviewPanel,
+  state: unknown,
+  tree: SessionTreeProvider,
+  refreshTree: () => Promise<void>,
+  context: vscode.ExtensionContext,
+  acpChatManager: AcpChatManager
+): Promise<void> {
+  const saved = state as { provider?: unknown; id?: unknown } | undefined;
+  const provider = typeof saved?.provider === "string" ? (saved.provider as AgentProvider) : undefined;
+  const id = typeof saved?.id === "string" ? saved.id : undefined;
+  if (!provider || !id) {
+    panel.dispose();
+    return;
+  }
+
+  const session = await resolveSessionById(tree, provider, id);
+  if (!session) {
+    panel.dispose();
+    return;
+  }
+
+  if (previewPanel) {
+    previewPanel.dispose();
+    previewPanel = undefined;
+    activeSessionKey = undefined;
+    activeSessionObj = undefined;
+  }
+
+  panel.title = t("panel.sessionPreviewTitle", session.title);
+  panel.webview.options = {
+    enableScripts: true,
+    localResourceRoots: [vscode.Uri.joinPath(getExtensionUri(), "media")]
+  };
+  attachSessionPreviewPanel(panel, session, tree, refreshTree, context, acpChatManager);
+}
+
+function attachSessionPreviewPanel(
+  panel: vscode.WebviewPanel,
+  session: AgentSession,
+  tree: SessionTreeProvider,
+  refreshTree: () => Promise<void>,
+  context: vscode.ExtensionContext,
+  acpChatManager: AcpChatManager
+): void {
+  previewPanel = panel;
+  activeSessionKey = `${session.provider}:${session.id}`;
+  activeSessionObj = session;
   activeTree = tree;
   activeRefreshTree = refreshTree;
   activeContext = context;
@@ -136,6 +190,7 @@ export async function openSessionPreviewPanel(
   previewPanel.onDidDispose(() => {
     previewPanel = undefined;
     activeSessionKey = undefined;
+    activeSessionObj = undefined;
     activeTree = undefined;
     activeRefreshTree = undefined;
     activeContext = undefined;
@@ -211,7 +266,7 @@ function findActiveSession(): AgentSession | undefined {
 
   const provider = activeSessionKey.slice(0, separatorIndex);
   const id = activeSessionKey.slice(separatorIndex + 1);
-  return activeTree.getSessions().find((entry) => entry.provider === provider && entry.id === id);
+  return activeTree.getSessions().find((entry) => entry.provider === provider && entry.id === id) ?? activeSessionObj;
 }
 
 function registerLlmConfigRefresh(context: vscode.ExtensionContext): void {
@@ -256,6 +311,7 @@ async function sendPreviewData(webview: vscode.Webview, session: AgentSession): 
       type: "init",
       uiStrings: getSessionPreviewUiStrings(),
       provider: session.provider,
+      sessionId: session.id,
       showResumeWith: true,
       showHandoff: canHandoffSession(session),
       llmConfigured,

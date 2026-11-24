@@ -85,6 +85,9 @@
   window.addEventListener("message", (event) => {
     const message = event.data;
     if (message.type === "init") {
+      if (message.provider && message.sessionId) {
+        vscode.setState({ provider: message.provider, id: message.sessionId });
+      }
       uiStrings = message.uiStrings || {};
       applyStaticUi();
       renderPreview(message);
