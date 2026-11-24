@@ -10,7 +10,7 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 ### What it is
 
-Clicking a session (or choosing a resume action from the context menu) launches that agent session again through a **resume target**. Targets are **extension-side** conveniences; Desktop has its own Workbench terminal flow.
+Clicking a session (or choosing a resume action from the context menu) launches that agent session again through a **resume target**.
 
 ### Default resume
 
@@ -42,8 +42,7 @@ Cursor IDE Composer sessions do not have a supported command resume target. Sele
 
 1. Prefer **integrated terminal** when you want everything inside VS Code; use **Ghostty** or app/panel targets when you already work there.  
 2. If a panel resume fails, fall back to terminal resume or copy the command.  
-3. Terminal location (editor area vs panel) and image-hint options live under [Settings](settings-and-data.md).  
-4. Desktop **Workbench** is a separate surface for multi-tab embedded terminals — see [Desktop docs](../desktop/README.md).
+3. Terminal location (editor area vs panel) and image-hint options live under [Settings](settings-and-data.md).
 
 ### Related
 
@@ -57,7 +56,7 @@ Cursor IDE Composer sessions do not have a supported command resume target. Sele
 
 ### 是什么
 
-点击会话（或在右键菜单选择恢复操作）会通过某个 **恢复目标（resume target）** 再次启动该 Agent 会话。这些目标属于 **VS Code 扩展侧**；Desktop 另有 Workbench 终端流程。
+点击会话（或在右键菜单选择恢复操作）会通过某个 **恢复目标（resume target）** 再次启动该 Agent 会话。
 
 ### 默认恢复
 
@@ -89,8 +88,7 @@ Cursor IDE Composer 会话没有受支持的命令恢复目标。选择该会话
 
 1. 希望全部留在 VS Code 内时用 **集成终端**；已有 Ghostty / App / 面板工作流时用对应目标。  
 2. 面板恢复失败时，可回退到终端恢复或复制命令。  
-3. 终端位置、图片提示等见 [设置](settings-and-data.md)。  
-4. Desktop **Workbench** 是独立的多标签内嵌终端场景 — 见 [Desktop 文档](../desktop/README.md)。
+3. 终端位置、图片提示等见 [设置](settings-and-data.md)。
 
 ### 相关文档
 

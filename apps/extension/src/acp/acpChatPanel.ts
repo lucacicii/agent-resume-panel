@@ -75,7 +75,7 @@ export class AcpChatPanel {
     record: AcpSessionRecord,
     private readonly reloadTree: () => Promise<void>,
     private readonly onDispose: () => void,
-    options?: { initialPrompt?: string }
+    options?: { initialPrompt?: string; existingPanel?: vscode.WebviewPanel }
   ) {
     this.initialPrompt = options?.initialPrompt?.trim() || undefined;
     this.record = record;
@@ -83,21 +83,32 @@ export class AcpChatPanel {
       vscode.workspace.getConfiguration("agentResume").get<string>("panelHome", "~/.agent-resume-panel")
     );
 
-    this.panel = vscode.window.createWebviewPanel(
-      "agentResume.acpChatPanel",
-      this.title(),
-      vscode.ViewColumn.Beside,
-      {
+    const localResourceRoots = [
+      vscode.Uri.joinPath(context.extensionUri, "media"),
+      vscode.Uri.joinPath(context.extensionUri, "node_modules", "marked"),
+      vscode.Uri.joinPath(context.extensionUri, "node_modules", "dompurify"),
+      vscode.Uri.file(path.join(this.panelHome, "acp", "attachments"))
+    ];
+
+    if (options?.existingPanel) {
+      this.panel = options.existingPanel;
+      this.panel.title = this.title();
+      this.panel.webview.options = {
         enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [
-          vscode.Uri.joinPath(context.extensionUri, "media"),
-          vscode.Uri.joinPath(context.extensionUri, "node_modules", "marked"),
-          vscode.Uri.joinPath(context.extensionUri, "node_modules", "dompurify"),
-          vscode.Uri.file(path.join(this.panelHome, "acp", "attachments"))
-        ]
-      }
-    );
+        localResourceRoots
+      };
+    } else {
+      this.panel = vscode.window.createWebviewPanel(
+        "agentResume.acpChatPanel",
+        this.title(),
+        vscode.ViewColumn.Beside,
+        {
+          enableScripts: true,
+          retainContextWhenHidden: true,
+          localResourceRoots
+        }
+      );
+    }
 
     this.panel.webview.html = this.renderHtml();
     this.panel.webview.onDidReceiveMessage((message) => void this.handleMessage(message));
@@ -614,6 +625,7 @@ export class AcpChatPanel {
     this.post({
       type: "init",
       init: {
+        chatId: this.record.id,
         title: this.record.title,
         projectPath: this.record.projectPath,
         provider: this.record.provider,

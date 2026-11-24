@@ -114,6 +114,11 @@ export function buildSessionMenuContributionBlocks() {
     ],
     sessionMenuSuffix: [
       {
+        command: "agentResume.openInHerdr",
+        when: SESSION_VIEW_WHEN,
+        group: "navigation@60"
+      },
+      {
         command: "agentResume.openInCodexApp",
         when: "view == agentResume.sessions && viewItem == agentResume.session.codex",
         group: "navigation@60"

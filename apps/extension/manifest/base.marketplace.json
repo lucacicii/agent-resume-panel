@@ -2,8 +2,8 @@
   "name": "agent-resume-panel-v2",
   "displayName": "Agent Resume Panel V2",
   "publisher": "lucacicii",
-  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, Prime Agent, and Cursor CLI sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Cursor IDE composer metadata is indexed too. Companion macOS Desktop app (shared ~/.agent-resume-panel data) adds calendar digests, Agent Q&A, and embedded Workbench.",
-  "version": "2.11.1",
+  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, Prime Agent, OMP, and Cursor CLI sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Cursor IDE composer metadata is indexed too.",
+  "version": "2.14.0",
   "icon": "resources/icon.png",
   "private": true,
   "author": "lucacicii",
@@ -43,7 +43,6 @@
     "chat",
     "acp",
     "sidebar",
-    "desktop",
     "session os",
     "preview",
     "search",
@@ -67,11 +66,11 @@
     "onCommand:agentResume.setNoteGtdStatus",
     "onCommand:agentResume.search",
     "onCommand:agentResume.openSessionManager",
-    "onCommand:agentResume.openReport",
     "onCommand:agentResume.newSession",
     "onCommand:agentResume.openFolder",
     "onCommand:agentResume.openProject",
     "onCommand:agentResume.openInGhostty",
+    "onCommand:agentResume.openInHerdr",
     "onCommand:agentResume.openInCodexApp",
     "onCommand:agentResume.openInClaudeCodePanel",
     "onCommand:agentResume.openInCodexIdePanel",
@@ -82,6 +81,7 @@
     "onCommand:agentResume.newOpenCodeSession",
     "onCommand:agentResume.newPiSession",
     "onCommand:agentResume.newPrimeSession",
+    "onCommand:agentResume.newOmpSession",
     "onCommand:agentResume.newCodexAppSession",
     "onCommand:agentResume.favoriteProject",
     "onCommand:agentResume.unfavoriteProject",
@@ -160,6 +160,11 @@
           "type": "string",
           "default": "~/.prime/agent",
           "description": "Prime Agent home directory containing sessions."
+        },
+        "agentResume.ompHome": {
+          "type": "string",
+          "default": "~/.omp/agent",
+          "description": "OMP home directory containing sessions."
         },
         "agentResume.cursorHome": {
           "type": "string",
@@ -312,6 +317,21 @@
           ],
           "description": "Launch arguments for Prime Agent ACP agent."
         },
+        "agentResume.acp.agents.omp.command": {
+          "type": "string",
+          "default": "omp",
+          "description": "Launch command for OMP ACP agent."
+        },
+        "agentResume.acp.agents.omp.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "acp"
+          ],
+          "description": "Launch arguments for OMP ACP agent."
+        },
         "agentResume.uiLanguage": {
           "type": "string",
           "enum": [
@@ -381,6 +401,46 @@
           "maximum": 5000,
           "description": "Delay before auto-pasting the resume command into Ghostty when ghosttyLaunchMode is pasteCommand."
         },
+        "agentResume.herdrEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Detect and track local herdr-core (hc) terminals and display live Herdr badges on matching sessions."
+        },
+        "agentResume.autoResumeHerdrSessions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically resume sessions previously opened or tracked in Herdr via herdr-core."
+        },
+        "agentResume.herdrResumeDisplay": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "vscode",
+            "herdrApp"
+          ],
+          "default": "auto",
+          "description": "How Herdr-resumed terminals are displayed: auto (prefer Herdr Bridge extension, fallback to built-in VS Code PTY), vscode (built-in PTY), or herdrApp (activate Herdr desktop app)."
+        },
+        "agentResume.herdrSocketPath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom Unix socket path for herdr-core (hc). Leave empty to use HC_SOCKET or ~/.local/state/herdr-core/default/default.sock."
+        },
+        "agentResume.herdrHandoff": {
+          "type": "boolean",
+          "default": true,
+          "description": "Deliver CLI session handoffs into Herdr when local herdr-core (hc) is running."
+        },
+        "agentResume.herdrNewSessionMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "always",
+            "never"
+          ],
+          "default": "auto",
+          "description": "Whether New Session commands start inside Herdr: auto (when project matches a Herdr Space), always, or never."
+        },
         "agentResume.showArchivedCodex": {
           "type": "boolean",
           "default": false,
@@ -421,6 +481,7 @@
             "opencode",
             "pi",
             "prime",
+            "omp",
             "cursor"
           ],
           "default": "codex",
@@ -508,6 +569,7 @@
               "newOpenCodeSession",
               "newPiSession",
               "newPrimeSession",
+              "newOmpSession",
               "newCodexAppSession",
               "openProjectNote",
               "deleteProjectNote"
@@ -535,6 +597,7 @@
               "newOpenCodeSession",
               "newPiSession",
               "newPrimeSession",
+              "newOmpSession",
               "newCodexAppSession",
               "openProjectNote",
               "deleteProjectNote"
@@ -552,6 +615,7 @@
             "newOpenCodeSession",
             "newPiSession",
             "newPrimeSession",
+            "newOmpSession",
             "newCodexAppSession",
             "openProjectNote",
             "deleteProjectNote"
@@ -686,12 +750,6 @@
         "icon": "$(database)"
       },
       {
-        "command": "agentResume.openReport",
-        "title": "Reports (read-only)",
-        "category": "Agent Resume",
-        "icon": "$(calendar)"
-      },
-      {
         "command": "agentResume.newSession",
         "title": "New Session",
         "category": "Agent Resume",
@@ -794,6 +852,11 @@
       {
         "command": "agentResume.handoffTo.prime",
         "title": "Hand Off to Prime Agent",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.omp",
+        "title": "Hand Off to OMP",
         "category": "Agent Resume"
       },
       {
@@ -938,8 +1001,18 @@
         "category": "Agent Resume"
       },
       {
+        "command": "agentResume.sendNoteToHerdr",
+        "title": "Send Note Reference (@path) to Herdr",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.configureSessionMenu",
         "title": "Customize Session Menu",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openInHerdr",
+        "title": "Resume in Herdr",
         "category": "Agent Resume"
       },
       {
@@ -1035,6 +1108,11 @@
       {
         "command": "agentResume.newPrimeSession",
         "title": "New Prime Agent Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newOmpSession",
+        "title": "New OMP Session",
         "category": "Agent Resume"
       },
       {

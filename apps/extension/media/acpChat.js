@@ -580,6 +580,9 @@
     const message = event.data;
     switch (message.type) {
       case "init":
+        if (message.init?.chatId) {
+          vscode.setState({ chatId: message.init.chatId });
+        }
         if (message.init?.uiStrings) {
           uiStrings = message.init.uiStrings;
         }

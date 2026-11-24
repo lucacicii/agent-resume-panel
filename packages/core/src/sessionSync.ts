@@ -4,31 +4,22 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAcpSessionRecords, type AcpSessionStoreRecord } from "./acp/store";
 import { AgentSession, AgentProvider } from "./catalog/types";
-import {
-  ensureCatalogSyncStateDesktop,
-  ensureExtensionCatalogSchema,
-  syncStateHasExtendedColumns
-} from "./catalog/db";
+import { ensureExtensionCatalogSchema } from "./catalog/db";
 import { syncAcpRecordsIntoCatalog, type AcpCatalogRecordInput } from "./catalog/acpCatalog";
 import { purgeRetiredAlmaCatalog } from "./catalog/mutations";
 import { reconcileProjectsFromSessions } from "./catalog/projects";
 import { escapeSqlLiteral, runSqliteJson, runSqliteReadOnlyJson, runSqliteTransaction } from "./sqlite";
-import { AgentHomesSettings, PanelSettings, SessionSyncStalePolicy } from "./settings/types";
-import { catalogDbFromSettings } from "./settings/store";
-import { agentHomeDiffersFromDefault, AgentHomeKey, resolvePreviewHomes } from "./transcript/homes";
+import { agentHomeDiffersFromDefault, AgentHomeKey, type AgentHomesSettings } from "./transcript/homes";
 import { candidateAgyRoots } from "./transcript/agyRoots";
 import { listJsonlFiles, findFilesByName } from "./transcript/fs";
 import { findCursorTranscriptFile, listCursorChatMetas } from "./transcript/cursor";
 
 export type SyncableAgentProvider = Exclude<AgentProvider, "chat">;
-
-type CatalogSchemaMode = "extension" | "desktop";
+export type SessionSyncStalePolicy = "off" | "purge";
 
 export interface AgentSessionSyncOptions {
   dbPath: string;
   panelHome: string;
-  /** Desktop sync uses the full schema; extension paths stay on the frozen subset. */
-  catalogSchema?: CatalogSchemaMode;
   codexHome: string;
   claudeHome: string;
   antigravityHome: string;
@@ -93,29 +84,6 @@ const BATCH_SIZE = 80;
 const CODEX_ACP_ORIGINATOR = "@agentclientprotocol/codex-acp";
 const CODEX_SESSION_META_READ_LIMIT = 256 * 1024;
 
-export function sessionSyncOptionsFromSettings(
-  settings: PanelSettings,
-  overrides: Partial<AgentSessionSyncOptions> = {}
-): AgentSessionSyncOptions {
-  const homes = resolvePreviewHomes(settings);
-  const sync = settings.sessionSync || {};
-  return {
-    dbPath: catalogDbFromSettings(settings),
-    ...homes,
-    configuredAgentHomes: settings.agentHomes,
-    maxItems: clamp(sync.maxItems ?? 10_000, 1, 50_000),
-    stalePolicy: normalizeStalePolicy(sync.stalePolicy),
-    showArchivedCodex: sync.showArchivedCodex === true,
-    showArchivedOpenCode: sync.showArchivedOpenCode === true,
-    showSubagentCodex: sync.showSubagentCodex === true,
-    showSubagentGrok: sync.showSubagentGrok === true,
-    showArchivedCursorIde: sync.showArchivedCursorIde === true,
-    showSubagentCursorIde: sync.showSubagentCursorIde === true,
-    catalogSchema: "desktop",
-    ...overrides
-  };
-}
-
 export async function loadAllAgentSessions(options: AgentSessionSyncOptions): Promise<AgentSessionSyncResult> {
   return (await loadAllAgentSessionDetails(options)).result;
 }
@@ -176,9 +144,6 @@ export function syncAgentSessions(options: AgentSessionSyncOptions): Promise<Age
 
 async function performSync(options: AgentSessionSyncOptions): Promise<AgentSessionSyncResult> {
   await ensureExtensionCatalogSchema(options.dbPath);
-  if (options.catalogSchema === "desktop") {
-    await ensureCatalogSyncStateDesktop(options.dbPath);
-  }
   const { result, excludedCodexAcpSessionIds } = await loadAllAgentSessionDetails(options);
   const loaded = result.sessions as LoadedSession[];
   for (const providerResult of result.providers) {
@@ -332,15 +297,6 @@ async function applyProviderStalePolicy(dbPath: string, provider: SyncableAgentP
 }
 
 async function writeSyncState(dbPath: string, result: AgentSessionProviderSyncResult): Promise<void> {
-  const extended = await syncStateHasExtendedColumns(dbPath);
-  if (extended) {
-    await runSqliteTransaction(dbPath, [`INSERT INTO sync_state(provider,last_sync_at_ms,status,session_count,warning)
-      VALUES(${sql(result.provider)},${result.syncedAt},${sql(result.status)},${result.sessionCount},${nullable(result.warning)})
-      ON CONFLICT(provider) DO UPDATE SET last_sync_at_ms=excluded.last_sync_at_ms,status=excluded.status,
-      session_count=excluded.session_count,warning=excluded.warning`]);
-    return;
-  }
-
   await runSqliteTransaction(dbPath, [`INSERT INTO sync_state(provider,last_sync_at_ms)
     VALUES(${sql(result.provider)},${result.syncedAt})
     ON CONFLICT(provider) DO UPDATE SET last_sync_at_ms=excluded.last_sync_at_ms`]);

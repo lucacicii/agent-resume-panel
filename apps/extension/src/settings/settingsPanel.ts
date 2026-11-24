@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { llmOverridesFromDraft } from "../llm/config";
-import { testLlmConnection } from "../llm/sessionAssist";
+import { listLlmModels, testLlmConnection } from "../llm/sessionAssist";
 import { t } from "../i18n";
 import { getSettingsUiStrings } from "../webview/uiStrings";
 import {
@@ -21,6 +21,7 @@ interface WebviewMessage {
   type?: string;
   patch?: Record<string, unknown>;
   draft?: Record<string, unknown>;
+  silent?: boolean;
   href?: string;
 }
 
@@ -59,7 +60,7 @@ async function revealSettingsPanel(context: vscode.ExtensionContext): Promise<vo
     return;
   }
 
-  settingsPanel = vscode.window.createWebviewPanel(
+  const panel = vscode.window.createWebviewPanel(
     "agentResume.settings",
     t("panel.settingsTitle"),
     column,
@@ -70,6 +71,31 @@ async function revealSettingsPanel(context: vscode.ExtensionContext): Promise<vo
     }
   );
 
+  await attachSettingsPanel(panel, context);
+}
+
+export async function restoreSettingsPanel(
+  panel: vscode.WebviewPanel,
+  context: vscode.ExtensionContext
+): Promise<void> {
+  if (settingsPanel) {
+    panel.dispose();
+    return;
+  }
+
+  panel.title = t("panel.settingsTitle");
+  panel.webview.options = {
+    enableScripts: true,
+    localResourceRoots: [vscode.Uri.joinPath(getExtensionUri(), "media")]
+  };
+  await attachSettingsPanel(panel, context);
+}
+
+async function attachSettingsPanel(
+  panel: vscode.WebviewPanel,
+  context: vscode.ExtensionContext
+): Promise<void> {
+  settingsPanel = panel;
   activeContext = context;
   settingsPanel.iconPath = vscode.Uri.joinPath(getExtensionUri(), "resources", "agent-resume.svg");
   settingsPanel.webview.html = getWebviewHtml(settingsPanel.webview);
@@ -118,6 +144,26 @@ async function revealSettingsPanel(context: vscode.ExtensionContext): Promise<vo
           type: "testResult",
           success: false,
           message: formatError(error)
+        });
+      }
+      return;
+    }
+
+    if (message.type === "fetchLlmModels") {
+      try {
+        const models = await listLlmModels(ctx, llmOverridesFromDraft(message.draft));
+        settingsPanel!.webview.postMessage({
+          type: "llmModelsResult",
+          success: true,
+          models,
+          silent: Boolean(message.silent)
+        });
+      } catch (error) {
+        settingsPanel!.webview.postMessage({
+          type: "llmModelsResult",
+          success: false,
+          error: formatError(error),
+          silent: Boolean(message.silent)
         });
       }
       return;

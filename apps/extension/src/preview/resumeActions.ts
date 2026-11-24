@@ -4,9 +4,10 @@ import { t } from "../i18n";
 import { openClaudeCodePanelResumeFlow } from "../terminal/claudeCodePanel";
 import { isCodexIdePanelResumeAvailable, openCodexIdePanelResumeFlow } from "../terminal/codexIdePanel";
 import { openInGhostty } from "../terminal/ghosttyTerminal";
+import { getHerdrSessionTracker, openHerdrResume } from "../terminal/herdrTerminal";
 import { openCodexAppResumeTerminal, openResumeTerminal } from "../terminal/resumeTerminal";
 
-type ResumeTarget = "vscode" | "ghostty" | "codexApp" | "codexIdePanel" | "claudePanel";
+type ResumeTarget = "vscode" | "ghostty" | "herdr" | "codexApp" | "codexIdePanel" | "claudePanel";
 
 interface ResumeTargetOption extends vscode.QuickPickItem {
   target: ResumeTarget;
@@ -24,6 +25,11 @@ export async function resumeSession(
 
   if (target === "ghostty") {
     await openInGhostty(session);
+    return;
+  }
+
+  if (target === "herdr") {
+    await openHerdrResume(session, context);
     return;
   }
 
@@ -61,7 +67,21 @@ export async function resumeSession(
 }
 
 export async function pickResumeTarget(session: AgentSession): Promise<ResumeTarget | undefined> {
+  const tracker = getHerdrSessionTracker();
+  const herdrMatch = tracker?.resolve(session);
+  const herdrOption: ResumeTargetOption | undefined =
+    tracker?.isDaemonAvailable() && session.provider !== "cursor-ide" && session.provider !== "chat"
+      ? {
+          label: t("quickpick.resumeWithHerdrLabel"),
+          description: herdrMatch
+            ? t("quickpick.resumeWithHerdrMatchedDescription")
+            : t("quickpick.resumeWithHerdrDescription"),
+          target: "herdr"
+        }
+      : undefined;
+
   const options: ResumeTargetOption[] = [
+    ...(herdrMatch && herdrOption ? [herdrOption] : []),
     {
       label: t("quickpick.resumeWithVscodeLabel"),
       description: t("quickpick.resumeWithVscodeDescription"),
@@ -71,7 +91,8 @@ export async function pickResumeTarget(session: AgentSession): Promise<ResumeTar
       label: t("quickpick.resumeWithGhosttyLabel"),
       description: t("quickpick.resumeWithGhosttyDescription"),
       target: "ghostty"
-    }
+    },
+    ...(!herdrMatch && herdrOption ? [herdrOption] : [])
   ];
 
   if (session.provider === "claude") {

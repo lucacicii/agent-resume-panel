@@ -6,7 +6,9 @@ import {
   UI_LANGUAGE_AUTO,
   UI_LANGUAGE_SETTING
 } from "@agent-resume/core/extension";
+import { buildModelsUrl, isLocalLlmEndpoint } from "./models";
 import { LlmOutputLanguage } from "./languages";
+export { buildModelsUrl, isLocalLlmEndpoint };
 import { LLM_API_KEY_SECRET } from "../settings/settingsSchema";
 import {
   loadPanelSettingsFile,
@@ -72,7 +74,7 @@ export function isOutputLanguageFollowingUi(): boolean {
  * API key resolution order:
  * 1) overrides
  * 2) VS Code SecretStorage
- * 3) panelHome settings.json (shared with Desktop)
+ * 3) panelHome settings.json
  * 4) env AGENT_RESUME_LLM_API_KEY
  */
 async function getLlmApiKey(context: vscode.ExtensionContext): Promise<string | undefined> {
@@ -152,6 +154,30 @@ export async function getLlmConfig(
     maxContextChars: Number.isFinite(maxContextChars) ? maxContextChars : 120000,
     apiKey
   };
+}
+
+export async function getLlmEndpointConfig(
+  context: vscode.ExtensionContext,
+  overrides?: LlmConfigOverrides
+): Promise<{ baseUrl: string; apiKey?: string } | undefined> {
+  let panelBaseUrl: string | undefined;
+  try {
+    const panel = await loadPanelSettingsFile();
+    panelBaseUrl = panel.llm.baseUrl;
+  } catch {
+    // ignore
+  }
+
+  const baseUrl = normalizeBaseUrl(
+    overrides?.baseUrl ??
+      String(readLlmSettingWithPanelFallback("llm.baseUrl", panelBaseUrl, "https://api.openai.com/v1"))
+  );
+  if (!baseUrl) {
+    return undefined;
+  }
+
+  const apiKey = overrides?.apiKey?.trim() || (await getLlmApiKey(context));
+  return { baseUrl, apiKey };
 }
 
 export async function isLlmConfigured(context: vscode.ExtensionContext): Promise<boolean> {

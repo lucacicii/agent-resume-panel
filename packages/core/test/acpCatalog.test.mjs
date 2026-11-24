@@ -10,7 +10,25 @@ import {
   upsertAcpSessionInCatalog
 } from "../dist/catalog/acpCatalog.js";
 import { ensureExtensionCatalogSchema } from "../dist/catalog/db.js";
-import { getSessionById, listSessions } from "../dist/catalog/query.js";
+import { toAgentSession } from "../dist/catalog/types.js";
+import { escapeSqlLiteral, runSqlite, runSqliteJson } from "../dist/sqlite.js";
+import { moveSessionToProjectInCatalog } from "../dist/index.js";
+
+async function getSessionById(dbPath, provider, id) {
+  const rows = await runSqliteJson(
+    dbPath,
+    `SELECT * FROM sessions WHERE provider = '${escapeSqlLiteral(provider)}' AND agent_session_id = '${escapeSqlLiteral(id)}' LIMIT 1;`
+  );
+  return rows[0] ? toAgentSession(rows[0]) : undefined;
+}
+
+async function listVisibleSessions(dbPath, limit = 100) {
+  const rows = await runSqliteJson(
+    dbPath,
+    `SELECT * FROM sessions WHERE hidden = 0 ORDER BY updated_at_ms DESC LIMIT ${limit};`
+  );
+  return rows.map((row) => toAgentSession(row));
+}
 
 test("upsertAcpSessionInCatalog writes chat row with acp_provider and transcript refs", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "acp-catalog-"));
@@ -87,8 +105,6 @@ test("syncAcpRecordsIntoCatalog is idempotent and preserves user_title", async (
     }
   ];
   await syncAcpRecordsIntoCatalog(dbPath, dir, records, 200);
-  // Simulate user rename via user_title
-  const { runSqlite } = await import("../dist/sqlite.js");
   await runSqlite(
     dbPath,
     `UPDATE sessions SET user_title = 'Renamed' WHERE provider = 'chat' AND agent_session_id = 'a';`
@@ -101,7 +117,7 @@ test("syncAcpRecordsIntoCatalog is idempotent and preserves user_title", async (
     400
   );
 
-  const listed = await listSessions(dbPath, 10);
+  const listed = await listVisibleSessions(dbPath, 10);
   const row = listed.find((s) => s.id === "a");
   assert.ok(row);
   assert.equal(row.title, "Renamed"); // user_title wins in toAgentSession
@@ -124,8 +140,6 @@ test("upsertAcpSessionInCatalog keeps a user-moved project_path", async () => {
     updatedAt: 100,
     messageCount: 1
   });
-  const { runSqliteJson } = await import("../dist/sqlite.js");
-  const { moveSessionToProjectInCatalog } = await import("../dist/index.js");
   const moved = await moveSessionToProjectInCatalog(dbPath, "chat", "chat-move", "/tmp/reassigned");
   assert.equal(moved.newPath, "/tmp/reassigned");
 
@@ -148,27 +162,6 @@ test("upsertAcpSessionInCatalog keeps a user-moved project_path", async () => {
   );
   assert.equal(rows[0].project_path, "/tmp/reassigned");
   assert.equal(rows[0].native_project_path, "/tmp/original");
-
-  await fs.rm(dir, { recursive: true, force: true });
-});
-
-test("listSessions without a limit returns every visible catalog session", async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "acp-catalog-unbounded-"));
-  const dbPath = path.join(dir, "catalog.db");
-  await ensureExtensionCatalogSchema(dbPath);
-
-  const records = Array.from({ length: 550 }, (_, index) => ({
-    id: `chat-${index}`,
-    title: `Chat ${index}`,
-    projectPath: "/p",
-    acpProvider: "codex",
-    updatedAt: index + 1,
-    messageCount: 1
-  }));
-  await syncAcpRecordsIntoCatalog(dbPath, dir, records, 1_000);
-
-  assert.equal((await listSessions(dbPath)).length, 550);
-  assert.equal((await listSessions(dbPath, 500)).length, 500);
 
   await fs.rm(dir, { recursive: true, force: true });
 });

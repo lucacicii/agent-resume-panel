@@ -9,6 +9,12 @@ import {
 } from "./codexIdePanel";
 import { buildNewSessionCommand, buildResumeCommand } from "./commandBuilder";
 import { openCodexAppSession } from "./codexApp";
+import {
+  launchCommandInHerdr,
+  openHerdrResume,
+  shouldAutoResumeInHerdr,
+  shouldStartNewSessionInHerdr
+} from "./herdrTerminal";
 
 export { buildNewSessionCommand, buildResumeCommand };
 
@@ -18,6 +24,10 @@ let closeTerminalListener: vscode.Disposable | undefined;
 export function openSessionResume(session: AgentSession, context?: vscode.ExtensionContext): void {
   if (session.provider === "cursor-ide") {
     vscode.window.showInformationMessage("Cursor IDE chat resume is unavailable; open this project in Cursor to continue.");
+    return;
+  }
+  if (shouldAutoResumeInHerdr(session)) {
+    void openHerdrResume(session, context);
     return;
   }
   if (session.provider === "claude" && shouldResumeClaudeInPanel()) {
@@ -68,6 +78,30 @@ export function openCodexAppResumeTerminal(session: AgentSession, context?: vsco
 }
 
 export function openNewSessionTerminal(provider: AgentProvider, projectPath: string, context?: vscode.ExtensionContext): void {
+  const command = buildNewSessionCommand(provider, projectPath);
+  if (shouldStartNewSessionInHerdr(projectPath)) {
+    void launchCommandInHerdr({
+      cwd: projectPath,
+      command,
+      name: t("terminal.nameNewSession", providerLabel(provider)),
+      labels: projectPath ? { workspace: projectPath } : undefined
+    }).then((launched) => {
+      if (!launched) {
+        openFallbackNewSessionTerminal(provider, projectPath, command, context);
+      }
+    });
+    return;
+  }
+
+  openFallbackNewSessionTerminal(provider, projectPath, command, context);
+}
+
+function openFallbackNewSessionTerminal(
+  provider: AgentProvider,
+  projectPath: string,
+  command: string,
+  context?: vscode.ExtensionContext
+): void {
   void showImageSupportHint(context);
 
   const terminal = vscode.window.createTerminal({
@@ -78,7 +112,7 @@ export function openNewSessionTerminal(provider: AgentProvider, projectPath: str
   });
 
   terminal.show();
-  terminal.sendText(buildNewSessionCommand(provider, projectPath), true);
+  terminal.sendText(command, true);
 }
 
 function terminalLocation(): vscode.TerminalOptions["location"] {

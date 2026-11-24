@@ -1,3 +1,0 @@
-  ⏺ Reading src/index.ts
-
-Working...

@@ -2,7 +2,7 @@
 
 > Parent index: `.agents/menus-index.md`
 >
-> **Scope:** VS Code extension owns the activity-bar ACP Chats tree and editor webview. **Desktop Workbench** also launches ACP visual chat panes when Settings → Workbench → New Session targets `acp:*` (see `apps/desktop/src/main/acp/` and `AcpChatView.tsx`). Both share `panelHome/acp` storage.
+> **Scope:** VS Code extension owns the activity-bar ACP Chats tree and editor webview, storing threads in `panelHome/acp`.
 
 | Feature keywords | Code path | Notes |
 | --- | --- | --- |
@@ -15,5 +15,5 @@
 
 ## Constraints
 
-- ACP **messages** stay in `panelHome/acp` JSONL; **session index** dual-writes to `catalog.db` as `provider=chat` + `acp_provider` so Workbench GTD, hide, rename, summary, search, and Memory ranges share the CLI session flow.
+- ACP **messages** stay in `panelHome/acp` JSONL; **session index** dual-writes to `catalog.db` as `provider=chat` + `acp_provider` so GTD, hide, rename, summary, and search share the CLI session flow.
 - Do not broaden ACP filesystem, terminal, or permission capabilities without an explicit security review.

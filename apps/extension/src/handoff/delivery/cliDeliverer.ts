@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { AgentProvider } from "../../history";
+import { launchCommandInHerdr, shouldUseHerdrForHandoff } from "../../terminal/herdrTerminal";
 import { HandoffDeliverer } from "./types";
 import { writeHandoffFile } from "./handoffFileWriter";
 import { buildHandoffCliLaunchCommand } from "./cliLaunch";
@@ -29,8 +30,24 @@ export const cliHandoffDeliverer: HandoffDeliverer = {
       filePath
     );
 
+    const terminalName = `Handoff → ${providerLabel(provider)}`;
+    if (shouldUseHerdrForHandoff()) {
+      const launched = await launchCommandInHerdr({
+        cwd: input.projectPath,
+        command: launchCommand,
+        name: terminalName,
+        labels: input.projectPath ? { workspace: input.projectPath } : undefined
+      });
+      if (launched) {
+        return {
+          channel: "cli",
+          detail: filePath
+        };
+      }
+    }
+
     const terminal = vscode.window.createTerminal({
-      name: `Handoff → ${providerLabel(provider)}`,
+      name: terminalName,
       cwd: input.projectPath || undefined,
       location: terminalLocation()
     });

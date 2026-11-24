@@ -7,8 +7,4 @@ registry: https://registry.npmjs.org/
 
 allowBuilds:
   "@vscode/vsce-sign": true
-  electron: true
-  esbuild: true
-  inotify: false
   keytar: true
-  node-pty: true

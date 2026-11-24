@@ -3,9 +3,9 @@
  *
  * A GUI-launched VS Code (Finder / Dock) inherits a minimal PATH (often
  * without Homebrew, fnm, nvm, Volta). ACP agents default to `prime-agent`,
- * `npx`, etc., which then fail with spawn ENOENT. Mirrors the desktop app's
- * `apps/desktop/src/main/processPath.ts` so the extension finds the same
- * common install locations and surfaces a clear error instead of a 60s wait.
+ * `npx`, etc., which then fail with spawn ENOENT. This helper probes common
+ * install locations so the extension resolves binaries reliably and surfaces
+ * a clear error instead of a 60s wait.
  */
 
 import * as fs from "node:fs";

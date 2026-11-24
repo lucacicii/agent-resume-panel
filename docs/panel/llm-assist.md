@@ -46,8 +46,7 @@ Handoff targets commonly include Codex, Claude, Antigravity, Grok, OpenCode, and
 ### Related
 
 - [Sessions](sessions.md) · [ACP Chat](acp-chat.md) · [Resume & targets](resume-and-targets.md)  
-- [Settings & data](settings-and-data.md)  
-- Desktop has separate **Report digests** and **Agent Q&A** (same shared LLM settings possible): [Desktop docs](../desktop/README.md)
+- [Settings & data](settings-and-data.md)
 
 ---
 
@@ -91,5 +90,4 @@ Handoff targets commonly include Codex, Claude, Antigravity, Grok, OpenCode, and
 ### 相关文档
 
 - [会话 Sessions](sessions.md) · [ACP Chat](acp-chat.md) · [恢复与目标](resume-and-targets.md)  
-- [设置与数据](settings-and-data.md)  
-- Desktop 另有 **Report 回顾** 与 **Agent 问答**（可共用 LLM 设置）：[Desktop 文档](../desktop/README.md)
+- [设置与数据](settings-and-data.md)

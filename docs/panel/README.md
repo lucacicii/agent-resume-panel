@@ -3,8 +3,6 @@
 Languages: [English](#english) | [简体中文](#简体中文)
 
 Browse, search, and resume **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi / Cursor CLI** sessions from a VS Code / VSCodium sidebar — with **ACP Chat**, **GTD** tagging, **multi-note Markdown** files, and Summarize / Rename / Handoff assist. **Cursor IDE** Composer session metadata is indexed and opens its recorded project in Cursor.
-
-There is also a standalone **macOS Desktop app** for calendar digests, Agent Q&A over your work history, and an embedded **Workbench** terminal — it shares the same local data as this extension.
 <img width="2880" height="1632" alt="image" src="https://github.com/user-attachments/assets/fb4639d1-9cde-4510-8064-a17e374b016b" />
 
 <img width="2880" height="1632" alt="image" src="https://github.com/user-attachments/assets/3fb6400c-8cb6-4a8d-9b5a-1a5db1c10ad5" />
@@ -19,15 +17,15 @@ There is also a standalone **macOS Desktop app** for calendar digests, Agent Q&A
 
 
 
-| | VS Code extension | Desktop app (macOS) |
-|---|---|---|
-| **Install** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) | [Download DMG](https://github.com/lucacicii/agent-resume-panel/releases/latest) |
-| **Docs** | [This folder](README.md) | [Desktop docs](../desktop/README.md) |
+| | Link |
+|---|---|
+| **Install** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) |
+| **Docs** | [This folder](README.md) |
 
-Extension version: **2.11.2** · [Changelog](../../apps/extension/CHANGELOG.md) · Desktop: see [releases](https://github.com/lucacicii/agent-resume-panel/releases)
+Extension version: **2.14.0** · [Changelog](../../apps/extension/CHANGELOG.md)
 
 > **No cloud · Local-first**  
-> Session index, notes, and ACP chats are stored on your machine under **`~/.agent-resume-panel`** (shared by extension and Desktop).  
+> Session index, notes, and ACP chats are stored on your machine under **`~/.agent-resume-panel`**.  
 > Optional LLM Assist only contacts a third-party API you configure.
 
 ---
@@ -54,24 +52,6 @@ Extension version: **2.11.2** · [Changelog](../../apps/extension/CHANGELOG.md) 
 3. Click a session in **Sessions** to resume (default target is configurable).
 4. Use **Refresh** in a view’s title bar when lists look stale.
 
-### VS Code extension vs Desktop
-
-**Two products, one data directory** — same agent sessions and the same `~/.agent-resume-panel` folder. Use one or both.
-
-| | **VS Code extension** | **Agent Resume Desktop** |
-|---|---|---|
-| **What it is** | Sidebar panel inside VS Code / Cursor / VSCodium | Standalone macOS app — a **Session OS + Memory** layer |
-| **Best for** | Resume while coding; **ACP Chat** beside the editor; quick GTD / Notes in the IDE | Step back from the editor: **calendar digests**, natural-language recall, dedicated **Workbench** |
-| **Core views** | Sessions · ACP Chats · GTD · Notes | **Report** · **Agent** · **Workbench** · Notes (+ Sessions reference) |
-| **Desktop-only** | — | Daily / weekly / monthly AI digests; **Agent** Q&A over reports; embedded xterm **Workbench** with multi-tab sessions |
-| **Extension-only** | ACP Chat panel; Claude / Codex IDE panel resume; Ghostty targets | — |
-
-**Shared (no duplicate setup):** `catalog.db` session index, GTD tags, Markdown notes, LLM settings (`settings.json`). CLI transcripts still live in each agent’s native storage (Codex, Claude, etc.). Desktop keeps its own extras under `panelHome/.desktop/`.
-
-Typical combo: **extension** for day-to-day resume inside the editor → **Desktop** for weekly review and digests — without re-importing anything.
-
-[Install extension](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) · [Download Desktop (macOS)](https://github.com/lucacicii/agent-resume-panel/releases/latest) · [Desktop docs](../desktop/README.md)
-
 ### Feedback & support
 
 - **Discord community**: [discord.gg/CG2esx7K7](https://discord.gg/CG2esx7K7)
@@ -80,8 +60,6 @@ Typical combo: **extension** for day-to-day resume inside the editor → **Deskt
 
 ### Related links
 
-- [Desktop App documentation](../desktop/README.md)
-- [Download Desktop (macOS)](https://github.com/lucacicii/agent-resume-panel/releases/latest)
 - [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2)
 
 ---
@@ -90,17 +68,15 @@ Typical combo: **extension** for day-to-day resume inside the editor → **Deskt
 
 在 VS Code / VSCodium 侧边栏中统一浏览、搜索、恢复 **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi / Cursor CLI** 历史会话；支持 **ACP Chat**、**GTD**、**多条 Markdown 笔记**，以及摘要 / 重命名 / Handoff 等辅助能力。**Cursor IDE** Composer 会话仅索引元数据，点击后在 Cursor 中打开其记录的项目。
 
-另有独立 **macOS 桌面端**：日历回顾、基于报告的 **Agent** 问答、内嵌 **Workbench** 终端，与本扩展共用同一份本机数据。
+| | 链接 |
+|---|---|
+| **安装** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) |
+| **文档** | [本目录](README.md) |
 
-| | VS Code 扩展 | Desktop 桌面端（macOS） |
-|---|---|---|
-| **安装** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) | [下载 DMG](https://github.com/lucacicii/agent-resume-panel/releases/latest) |
-| **文档** | [本目录](README.md) | [Desktop 文档](../desktop/README.md) |
-
-扩展版本：**2.11.2** · [更新日志](../../apps/extension/CHANGELOG.md) · 桌面端版本见 [Releases](https://github.com/lucacicii/agent-resume-panel/releases)
+扩展版本：**2.14.0** · [更新日志](../../apps/extension/CHANGELOG.md)
 
 > **无云端 · 纯本机存储**  
-> 数据默认目录 **`~/.agent-resume-panel`**（扩展与 Desktop 共用）。可选 LLM Assist 仅在你配置第三方 API 时使用。
+> 数据默认目录 **`~/.agent-resume-panel`**。可选 LLM Assist 仅在你配置第三方 API 时使用。
 
 ### 按模块阅读
 
@@ -122,24 +98,6 @@ Typical combo: **extension** for day-to-day resume inside the editor → **Deskt
 3. 在 **Sessions** 中点击会话即可恢复（默认目标可配置）。
 4. 列表过期时，点视图标题栏的 **Refresh**。
 
-### VS Code 扩展 vs Desktop
-
-**两个产品，一份数据目录** — 读取同一批 Agent 会话、共用 **`~/.agent-resume-panel`**，可单独使用或搭配使用。
-
-| | **VS Code 扩展** | **Agent Resume Desktop** |
-|---|---|---|
-| **定位** | 装在 VS Code / Cursor / VSCodium 里的侧边栏面板 | 独立 macOS 应用 — **Session OS + Memory** |
-| **适合场景** | 写代码时顺手恢复会话；编辑器旁 **ACP Chat**；在 IDE 里打 GTD / 记笔记 | 离开编辑器做回顾：**日历日报**、自然语言回忆、专用 **Workbench** 工作台 |
-| **主要视图** | Sessions · ACP Chats · GTD · Notes | **Report** · **Agent** · **Workbench** · Notes（+ Sessions 参考列表） |
-| **仅 Desktop** | — | 日 / 周 / 月 AI 回顾报告；对报告做 **Agent** 问答；内嵌 xterm **Workbench** 多标签恢复 |
-| **仅扩展** | ACP Chat 面板；Claude / Codex 插件面板恢复；Ghostty 等恢复目标 | — |
-
-**共用（无需重复配置）：** `catalog.db` 会话索引、GTD 标记、Markdown 笔记、LLM 设置（`settings.json`）。CLI 对话正文仍在各 Agent 本机原生存储。Desktop 私有数据在 `panelHome/.desktop/`。
-
-常见搭配：**扩展**负责日常在编辑器里恢复会话 → **Desktop** 负责周报回顾与 Digest——无需重新导入。
-
-[安装扩展](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) · [下载 Desktop（macOS）](https://github.com/lucacicii/agent-resume-panel/releases/latest) · [Desktop 文档](../desktop/README.md)
-
 ### 反馈与支持
 
 - **Discord 社区**：[discord.gg/CG2esx7K7](https://discord.gg/CG2esx7K7)
@@ -148,6 +106,4 @@ Typical combo: **extension** for day-to-day resume inside the editor → **Deskt
 
 ### 相关链接
 
-- [Desktop App 用户文档](../desktop/README.md)
-- [下载 Desktop（macOS）](https://github.com/lucacicii/agent-resume-panel/releases/latest)
 - [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2)

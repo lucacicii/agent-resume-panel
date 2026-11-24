@@ -4,7 +4,7 @@
   "private": true,
   "author": "lucacicii",
   "license": "AGPL-3.0-only",
-  "description": "Shared catalog, settings, LLM, and memory for Agent Resume Panel and Desktop",
+  "description": "Shared catalog, session sync, i18n, and notes core for Agent Resume Panel",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -15,32 +15,19 @@
     "./extension": {
       "types": "./dist/extension.d.ts",
       "default": "./dist/extension.js"
-    },
-    "./browser": {
-      "types": "./dist/browser.d.ts",
-      "default": "./dist/browser.js"
     }
   },
-  "bin": {
-    "agent-resume-mcp": "./dist/mcp/cli.js",
-    "agent-resume-browser-mcp": "./dist/mcp/browserCli.js",
-    "arpm": "./dist/settings/arpm.js"
-  },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.13"
   },
   "scripts": {
     "build": "node ../../scripts/run-tsc.mjs --cwd . -p ./",
     "watch": "node ../../scripts/run-tsc.mjs --cwd . -p ./ -w",
     "test": "pnpm run build && node --test test/*.test.mjs"
   },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "zod": "^4.4.3"
-  },
   "devDependencies": {
     "@types/node": "^24.13.1",
-    "typescript": "^5.9.3"
+    "typescript": "5.9.3"
   },
   "files": [
     "dist"

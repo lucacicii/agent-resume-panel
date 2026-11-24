@@ -1,4 +1,5 @@
 import { buildChatCompletionsUrl, LlmConfig } from "./config";
+export { fetchAvailableModels } from "./models";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
