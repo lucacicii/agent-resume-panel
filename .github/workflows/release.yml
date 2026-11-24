@@ -1,0 +1,73 @@
+name: Release Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --registry=https://registry.npmjs.org
+
+      - name: Build Open VSX and VS Code Marketplace VSIXs
+        run: pnpm run build:all
+
+      - name: Run checks
+        run: pnpm run test:menus && pnpm run test:manifest && pnpm run test:core && pnpm run i18n:check
+
+      - name: Publish to VS Code Marketplace (OIDC Trusted Publishing / PAT fallback)
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          VSIX=$(ls apps/extension/dist/agent-resume-panel-v2-*.vsix | head -n 1)
+          if [ -z "$VSIX" ]; then
+            echo "VS Code Marketplace VSIX not found."
+            exit 1
+          fi
+          if [ -n "$VSCE_PAT" ]; then
+            pnpm --filter agent-resume-panel exec vsce publish --skip-duplicate --packagePath "$VSIX" --pat "$VSCE_PAT"
+          else
+            pnpm dlx @vscode/vsce@^4.1.1 publish --oidc --skip-duplicate --packagePath "$VSIX"
+          fi
+
+      - name: Publish to Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          VSIX=$(ls apps/extension/dist/agent-resume-panel-[0-9]*.vsix | head -n 1)
+          if [ -z "$VSIX" ]; then
+            echo "Open VSX VSIX not found."
+            exit 1
+          fi
+          if [ -n "$OVSX_PAT" ]; then
+            pnpm --filter agent-resume-panel exec ovsx publish "$VSIX" --skip-duplicate -p "$OVSX_PAT"
+          else
+            echo "OVSX_PAT secret not set; skipping Open VSX."
+          fi
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apps/extension/dist/agent-resume-panel-*.vsix
+          generate_release_notes: true
