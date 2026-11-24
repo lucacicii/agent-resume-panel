@@ -115,6 +115,7 @@ function openBuiltInHerdrPseudoterminal(
   const closeEmitter = new vscode.EventEmitter<number | void>();
   const decoder = new TextDecoder("utf-8");
   let stream: HcAttachStream | undefined;
+  const pendingInput: string[] = [];
   let disposed = false;
 
   const pty: vscode.Pseudoterminal = {
@@ -137,6 +138,13 @@ function openBuiltInHerdrPseudoterminal(
             return;
           }
           stream = attached;
+          attached.focus(true);
+          if (pendingInput.length > 0) {
+            const queued = pendingInput.splice(0, pendingInput.length);
+            for (const chunk of queued) {
+              attached.writeData(chunk);
+            }
+          }
           attached.on("data", (chunk: Buffer) => {
             const text = decoder.decode(chunk, { stream: true });
             if (text) {
@@ -168,7 +176,11 @@ function openBuiltInHerdrPseudoterminal(
       closeEmitter.dispose();
     },
     handleInput: (data) => {
-      stream?.writeData(data);
+      if (stream) {
+        stream.writeData(data);
+      } else {
+        pendingInput.push(data);
+      }
     },
     setDimensions: (dims) => {
       stream?.resize(dims.columns, dims.rows);
@@ -179,7 +191,8 @@ function openBuiltInHerdrPseudoterminal(
     name: `Herdr: ${title} (${address})`,
     pty,
     location: terminalLocation(),
-    iconPath: new vscode.ThemeIcon("terminal")
+    iconPath: new vscode.ThemeIcon("terminal"),
+    isTransient: true
   });
   attachedTerminals.set(address, terminal);
   attachedTerminalMeta.set(address, title);
@@ -195,7 +208,12 @@ export async function restoreBuiltInHerdrTerminals(): Promise<void> {
   if (!saved?.length) {
     return;
   }
-  const liveSet = new Set(activeTracker.getTerminals().map((term) => term.address));
+  const liveSet = new Set(
+    activeTracker
+      .getTerminals()
+      .filter((term) => term.state === "live")
+      .map((term) => term.address)
+  );
   for (const item of saved) {
     if (!item?.address || isDisposing) {
       continue;
