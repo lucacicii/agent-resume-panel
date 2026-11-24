@@ -8,6 +8,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.14.2]
+
+#### 修复
+
+- **Reload 后 Herdr 终端无法在 TUI 中输入**：为内置 Herdr Pseudoterminal 启用 `isTransient: true` 防止 IDE 恢复只读幽灵终端；恢复阶段仅重新附着仍在运行的 `live` 终端；附着完成后主动上报焦点并补发连接前缓存的按键输入。
+
 ### [2.14.1]
 
 #### 修复
@@ -547,6 +553,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.14.2]
+
+#### Fixed
+
+- **Herdr TUI input unresponsive after Reload**: Mark built-in Herdr Pseudoterminals as `isTransient: true` to prevent stale IDE ghost terminals, filter auto-restore to `state === "live"` terminals only, notify focus upon attach, and flush buffered early keystrokes.
 
 ### [2.14.1]
 
