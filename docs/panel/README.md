@@ -61,6 +61,7 @@ Extension version: **2.14.0** · [Changelog](../../apps/extension/CHANGELOG.md)
 ### Related links
 
 - [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2)
+- **Companion extension — [Herdr Core Bridge](https://github.com/lucacicii/herdr-bridge)** ([Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.herdr-core-bridge) · [Open VSX](https://open-vsx.org/extension/lucacicii/herdr-core-bridge)): Connects VS Code to local `herdr-core` (`hc`) for live agent status monitoring, Herdr Spaces, and Native/XTerm PTY attachment; integrates two-way with Agent Resume Panel (live status badges, auto-resume, Space name sync, session title sync, and quick Preview/Notes/GTD actions).
 
 ---
 
@@ -107,3 +108,4 @@ Extension version: **2.14.0** · [Changelog](../../apps/extension/CHANGELOG.md)
 ### 相关链接
 
 - [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2)
+- **配套扩展 — [Herdr Core Bridge](https://github.com/lucacicii/herdr-bridge)**（[Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.herdr-core-bridge) · [Open VSX](https://open-vsx.org/extension/lucacicii/herdr-core-bridge)）：在 VS Code 中连接本地 `herdr-core`（`hc`），提供实时状态监控、Herdr Spaces 与 Native/XTerm 共享终端附着；与 Agent Resume Panel 双向联动（实时状态徽标、自动恢复、Space 名称同步、会话标题同步以及终端右键打开预览/笔记/GTD）。

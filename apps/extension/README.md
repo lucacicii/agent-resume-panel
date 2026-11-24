@@ -29,7 +29,7 @@ Extension version: **2.14.0** · [Changelog](CHANGELOG.md)
 | **Notes** | Multiple Markdown notes per session or project |
 | **Search / Manager** | Filter, bulk browse, Export backup |
 | **LLM Assist** | Summarize, Auto Rename, Handoff Brief (optional API) |
-| **Resume targets** | Terminal, Claude/Codex panels, Ghostty, Codex App |
+| **Resume targets** | Terminal, Claude/Codex panels, Ghostty, Codex App, Herdr (`Herdr Core Bridge`) |
 | **Prime Agent** | Prime Agent CLI sync, preview, `prime-agent --resume` terminal resume, and ACP Chat via `prime-agent --mode acp` |
 | **OMP** | OMP CLI sync (`~/.omp/agent/sessions`), preview, `omp -r` terminal resume, and ACP Chat via `omp acp` |
 | **Cursor** | Cursor CLI sync, preview, terminal resume, and copied `cursor-agent` command; Cursor IDE composer headers open the recorded project (command resume is not available) |
@@ -45,6 +45,7 @@ Extension version: **2.14.0** · [Changelog](CHANGELOG.md)
 | | Link |
 |---|------|
 | VS Code extension docs | [docs/panel](../../docs/panel/README.md) |
+| Companion extension | [Herdr Core Bridge](https://github.com/lucacicii/herdr-bridge) ([Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.herdr-core-bridge) · [Open VSX](https://open-vsx.org/extension/lucacicii/herdr-core-bridge)) — live `hc` PTYs, Spaces & two-way session sync |
 | Discord community | [discord.gg/CG2esx7K7](https://discord.gg/CG2esx7K7) |
 | Report issues | [Issues](https://github.com/lucacicii/agent-resume-panel/issues) |
 
@@ -76,7 +77,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 | **Notes** | 多条 Markdown 笔记，支持图片附件 |
 | **搜索 / Manager** | 筛选、批量浏览、Export 备份 |
 | **LLM Assist** | 摘要、自动重命名、Handoff Brief |
-| **恢复目标** | 终端、Claude/Codex 面板、Ghostty、Codex App |
+| **恢复目标** | 终端、Claude/Codex 面板、Ghostty、Codex App、Herdr（`Herdr Core Bridge`） |
 | **Prime Agent** | Prime Agent CLI 同步、预览、`prime-agent --resume` 终端恢复，以及 `prime-agent --mode acp` ACP 聊天 |
 | **OMP** | OMP CLI 同步（`~/.omp/agent/sessions`）、预览、`omp -r` 终端恢复，以及 `omp acp` ACP 聊天 |
 | **Cursor** | Cursor CLI 支持同步、预览、终端恢复与复制 `cursor-agent` 命令；Cursor IDE Composer 仅打开记录的项目，不支持命令恢复 |
@@ -92,6 +93,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 | | 链接 |
 |---|------|
 | VS Code 扩展文档 | [docs/panel](../../docs/panel/README.md) |
+| 配套扩展 | [Herdr Core Bridge](https://github.com/lucacicii/herdr-bridge)（[Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.herdr-core-bridge) · [Open VSX](https://open-vsx.org/extension/lucacicii/herdr-core-bridge)）— 实时 `hc` 终端、Spaces 与双向会话联动 |
 | Discord 社区 | [discord.gg/CG2esx7K7](https://discord.gg/CG2esx7K7) |
 | 问题反馈 | [Issues](https://github.com/lucacicii/agent-resume-panel/issues) |
 

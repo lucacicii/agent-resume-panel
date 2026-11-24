@@ -96,6 +96,20 @@ The extension stores its local data under **`~/.agent-resume-panel`**:
 
 ---
 
+### Companion Extension: Herdr Core Bridge
+
+**Agent Resume Panel** pairs with **[Herdr Core Bridge](https://github.com/lucacicii/herdr-bridge)** ([Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.herdr-core-bridge) · [Open VSX](https://open-vsx.org/extension/lucacicii/herdr-core-bridge)):
+
+- **Agent Resume Panel** handles **historical session indexing, GTD, Markdown notes, LLM Assist, and dispatch**.
+- **Herdr Core Bridge** handles **live `herdr-core` (`hc`) PTY sessions, Herdr Spaces, Native/XTerm Webview terminal hosting, and `@path#L` editor references**.
+
+With both installed:
+- Live Herdr session states (`working` / `blocked` / `done` / `idle`) appear directly in Agent Resume Panel, and Herdr sessions auto-resume via Herdr Core Bridge.
+- Project aliases set in Agent Resume Panel sync automatically to Herdr Space names.
+- Herdr Core Bridge shows readable session titles from Agent Resume Panel and lets you jump straight to **Preview**, **Notes**, or **GTD** from any live Herdr terminal.
+
+---
+
 ### Monorepo Development Guide
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for full developer setup, build, and contribution instructions.
@@ -201,6 +215,19 @@ pnpm run install:local # Build VSIX & install to local VS Code/Cursor
 
 - **VS Code Marketplace**: [前往 Marketplace 安装](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2)
 - **Open VSX 市场**: 在 VSCodium 或支持 Open VSX 的编辑器中搜索 `agent-resume-panel-v2`。
+
+---
+
+### 配套扩展：Herdr Core Bridge
+
+**Agent Resume Panel** 与 **[Herdr Core Bridge](https://github.com/lucacicii/herdr-bridge)**（[Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.herdr-core-bridge) · [Open VSX](https://open-vsx.org/extension/lucacicii/herdr-core-bridge)）协同工作：
+
+- **Agent Resume Panel** 负责**历史会话索引、GTD 状态、Markdown 笔记、LLM 辅助与恢复调度**。
+- **Herdr Core Bridge** 负责**实时 `herdr-core`（`hc`）共享 PTY 终端、Herdr Spaces、Native / XTerm Webview 双模式附着与 `@path#L` 代码引用发送**。
+
+同时安装两个扩展时会自动打通双向联动：
+- Agent Resume Panel 侧边栏会实时显示 Herdr 运行状态徽标（`working` / `blocked` / `done` / `idle`），支持自动通过 Herdr Core Bridge 恢复/新建终端，并将项目别名自动同步为 Herdr Space 名称。
+- Herdr Core Bridge 会自动读取 Agent Resume Panel 的会话标题展示在活跃终端上，并支持从终端右键一键打开预览、笔记或设置 GTD 状态。
 
 ---
 
