@@ -301,6 +301,24 @@ export async function openHerdrResume(
   return true;
 }
 
+function sanitizeHerdrTerminalName(raw?: string): string | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^[^a-z0-9]+/, "")
+    .replace(/-+$/, "")
+    .slice(0, 32)
+    .replace(/-+$/, "");
+  if (!normalized || /^[ts]\d+$/i.test(normalized)) {
+    return undefined;
+  }
+  return normalized;
+}
+
 export async function launchCommandInHerdr(options: {
   cwd: string;
   command: string;
@@ -313,6 +331,7 @@ export async function launchCommandInHerdr(options: {
     return false;
   }
 
+  const safeName = sanitizeHerdrTerminalName(options.name);
   const targetSpaceId =
     options.spaceId ||
     (options.cwd ? tracker.getSpaceByFolder(options.cwd)?.id : undefined);
@@ -325,7 +344,7 @@ export async function launchCommandInHerdr(options: {
     await bridgeApi.runAndOpen({
       cwd: options.cwd || undefined,
       line: options.command,
-      name: options.name,
+      name: safeName,
       labels: options.labels,
       spaceId: targetSpaceId
     });
@@ -335,7 +354,7 @@ export async function launchCommandInHerdr(options: {
   const created = await tracker.client.runTerminal({
     cwd: options.cwd || undefined,
     line: options.command,
-    name: options.name,
+    name: safeName,
     keep: true,
     labels: options.labels
   });

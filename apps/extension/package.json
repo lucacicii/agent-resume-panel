@@ -2560,8 +2560,28 @@
         "category": "Agent Resume"
       },
       {
+        "command": "agentResume.zh-cn.newPrimeSession",
+        "title": "新建 Prime Agent 会话",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ja.newPrimeSession",
+        "title": "新しい Prime Agent セッション",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.newOmpSession",
         "title": "New OMP Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.zh-cn.newOmpSession",
+        "title": "新建 OMP 会话",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ja.newOmpSession",
+        "title": "新しい OMP セッション",
         "category": "Agent Resume"
       },
       {
