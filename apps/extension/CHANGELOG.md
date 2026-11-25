@@ -8,6 +8,19 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.16.0]
+
+#### 新增
+
+- **ACP 对话页面全面重构**：对齐主流编码助手交互体验，支持居中阅读列布局、明暗主题自适应 Agent 图标、可折叠思考过程块、结构化工具调用时间线（点击路径跳转源码）、原地更新的执行计划卡片、`/` 斜杠命令自动补全、代码块复制与消息复制、图片拖拽上传及点击放大灯箱、IME 组词保护与智能自动滚动。
+- **多 Agent 统一配置控件**：归一化各 ACP Agent 的标准 `configOptions`（Model / Mode / 推理强度 / Boolean 开关）与旧版 `modes` / `models` 字段，支持按类别排序与切换，消除重复选项。
+- **编辑器标题栏新建会话支持 ACP**：在设置 `agentResume.editorNewSessionProvider` 中新增 `acp`（每次选择代理）及 `acp:codex`、`acp:claude`、`acp:grok`、`acp:opencode`、`acp:pi`、`acp:prime`、`acp:omp` 直连选项。
+
+#### 修复
+
+- **Pi ACP 启动路径与失效工作目录容错**：显式解析并注入 `PI_ACP_PI_COMMAND`，在历史会话的 `projectPath` 已移动或删除时自动回退到匹配的工作区或主目录，避免 `pi-acp` 误报 `executable not found`。
+- **Pi ACP 重复 Thinking 下拉框**：当响应已返回标准 `configOptions` 时不再从兼容字段 `modes` / `models` 额外合成下拉框。
+
 ### [2.15.1]
 
 #### 优化
@@ -571,6 +584,19 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.16.0]
+
+#### Added
+
+- **ACP Chat UI/UX Redesign**: Aligned with mainstream coding-agent chat workflows — centered thread layout, theme-aware official agent icons, collapsible Thinking/Reasoning block, structured Tool Calls timeline with clickable file locations, in-place Plan checklist updates, `/` slash-command autocomplete, code block & turn copy buttons, drag-and-drop image uploads with lightbox zoom, IME-safe composer, and smart auto-scroll.
+- **Unified Multi-Agent Config Controls**: Normalized ACP `configOptions` (Model / Mode / Reasoning effort / Boolean toggles) alongside legacy `modes` / `models` without duplicating controls.
+- **ACP Support in Editor New Session Provider**: Added `acp` (prompt for ACP agent) and direct `acp:codex`, `acp:claude`, `acp:grok`, `acp:opencode`, `acp:pi`, `acp:prime`, `acp:omp` choices to `agentResume.editorNewSessionProvider`.
+
+#### Fixed
+
+- **Pi ACP executable resolution & missing workspace fallback**: Resolve and pass `PI_ACP_PI_COMMAND`, validate working directories before spawn, and fall back gracefully to the matching workspace folder or home directory when a historical `projectPath` no longer exists.
+- **Duplicate Thinking dropdown in Pi ACP**: Do not synthesize extra selectors from legacy `modes` / `models` shims when the agent already returns standard `configOptions`.
 
 ### [2.15.1]
 
