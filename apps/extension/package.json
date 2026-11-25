@@ -499,10 +499,18 @@
             "pi",
             "prime",
             "omp",
-            "cursor"
+            "cursor",
+            "acp",
+            "acp:codex",
+            "acp:claude",
+            "acp:grok",
+            "acp:opencode",
+            "acp:pi",
+            "acp:prime",
+            "acp:omp"
           ],
           "default": "codex",
-          "description": "CLI agent provider started by the editor title bar New Session button."
+          "description": "Agent provider (CLI or ACP Chat) started by the editor title bar New Session button."
         },
         "agentResume.claudeResumeMode": {
           "type": "string",

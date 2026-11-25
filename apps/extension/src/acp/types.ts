@@ -19,6 +19,59 @@ export interface AcpSessionRecord {
   source?: string;
 }
 
+export interface AcpConfigOptionChoice {
+  value: string;
+  name: string;
+  description?: string;
+}
+
+export interface AcpConfigOptionGroup {
+  group: string;
+  name: string;
+  options: AcpConfigOptionChoice[];
+}
+
+export type AcpConfigOption =
+  | {
+      id: string;
+      name: string;
+      description?: string;
+      category?: string;
+      type: "select";
+      currentValue: string;
+      options: AcpConfigOptionChoice[];
+      groups?: AcpConfigOptionGroup[];
+      source: "configOption" | "mode" | "model";
+    }
+  | {
+      id: string;
+      name: string;
+      description?: string;
+      category?: string;
+      type: "boolean";
+      currentValue: boolean;
+      source: "configOption";
+    };
+
+export interface AcpAvailableCommand {
+  name: string;
+  description: string;
+  inputHint?: string;
+}
+
+export interface AcpPlanEntry {
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+  priority?: string;
+}
+
+export interface AcpUsageInfo {
+  used?: number;
+  size?: number;
+  costAmount?: number;
+  costCurrency?: string;
+}
+
 export type AcpChatMessageRole = "user" | "assistant" | "system" | "tool" | "plan";
 
 export type AcpToolCallStatus = "pending" | "in_progress" | "completed" | "failed";
@@ -51,6 +104,8 @@ export interface AcpChatMessage {
   id: string;
   role: AcpChatMessageRole;
   text: string;
+  thinking?: string;
+  planEntries?: AcpPlanEntry[];
   timestamp: number;
   images?: AcpImageAttachment[];
   toolCalls?: AcpToolCallInfo[];

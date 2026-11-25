@@ -6,7 +6,7 @@ import { AcpChatManager, refreshAcpChatPanels } from "./acp/acpChatManager";
 import { AcpChatTreeProvider } from "./acp/acpChatTree";
 import { createAcpChatSession, panelHomeFromConfig, pickAcpAgentProvider } from "./acp/newSession";
 import { getAcpRecord, loadAcpRecords } from "./acp/store";
-import { AcpSessionRecord } from "./acp/types";
+import { AcpAgentProvider, AcpSessionRecord } from "./acp/types";
 import {
   loadCatalogSettings,
   queryRecentSessionsPage,
@@ -134,7 +134,27 @@ import { PANEL_DOC_ISSUES, PANEL_DOC_README } from "./constants/docLinks";
 import { promptReloadIfContributionsStale } from "./upgrade/contributionSync";
 
 type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
-type EditorNewSessionProvider = Extract<AgentProvider, "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "prime" | "omp" | "cursor">;
+type EditorCliProvider = Extract<
+  AgentProvider,
+  "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "prime" | "omp" | "cursor"
+>;
+type EditorNewSessionProvider = EditorCliProvider | "acp" | `acp:${AcpAgentProvider}`;
+
+function isAcpEditorProvider(
+  provider: EditorNewSessionProvider
+): provider is "acp" | `acp:${AcpAgentProvider}` {
+  return provider === "acp" || provider.startsWith("acp:");
+}
+
+const VALID_ACP_PROVIDERS = new Set<AcpAgentProvider>([
+  "codex",
+  "claude",
+  "grok",
+  "opencode",
+  "pi",
+  "prime",
+  "omp"
+]);
 
 function defaultCursorIdeUserDataHome(): string {
   if (process.platform === "darwin") {
@@ -370,7 +390,9 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
       gtdTree?.showMoreStatus(status)
     ),
     vscode.commands.registerCommand("agentResume.newSession", () => newSessionInCurrentWorkspace(context, tree)),
-    vscode.commands.registerCommand("agentResume.newSessionFromEditor", () => newSessionFromEditor(context, tree)),
+    vscode.commands.registerCommand("agentResume.newSessionFromEditor", () =>
+      newSessionFromEditor(context, tree, acpTree, acpChatManager)
+    ),
     vscode.commands.registerCommand("agentResume.newAcpChat", () =>
       openNewAcpChat(acpTree, acpChatManager, context.extensionUri)
     ),
@@ -1085,7 +1107,12 @@ async function openNewChatSession(
   await refreshAcpChats(acpTree, false);
 }
 
-async function newSessionFromEditor(context: vscode.ExtensionContext, tree?: SessionTreeProvider): Promise<void> {
+async function newSessionFromEditor(
+  context: vscode.ExtensionContext,
+  tree: SessionTreeProvider | undefined,
+  acpTree: AcpChatTreeProvider,
+  acpChatManager: AcpChatManager
+): Promise<void> {
   const config = vscode.workspace.getConfiguration("agentResume");
   let provider = config.get<EditorNewSessionProvider>("editorNewSessionProvider", "codex");
   if (provider === ("chat" as EditorNewSessionProvider)) {
@@ -1093,6 +1120,22 @@ async function newSessionFromEditor(context: vscode.ExtensionContext, tree?: Ses
   }
   const projectPath = await resolveProjectForNewSession();
   if (!projectPath) {
+    return;
+  }
+
+  if (isAcpEditorProvider(provider)) {
+    const requested = provider.startsWith("acp:") ? provider.slice(4) : undefined;
+    const acpProvider =
+      requested && VALID_ACP_PROVIDERS.has(requested as AcpAgentProvider)
+        ? (requested as AcpAgentProvider)
+        : await pickAcpAgentProvider(context.extensionUri);
+    if (!acpProvider) {
+      return;
+    }
+
+    const record = await createAcpChatSession(projectPath, acpProvider);
+    acpChatManager.open(record);
+    await refreshAcpChats(acpTree, false);
     return;
   }
 

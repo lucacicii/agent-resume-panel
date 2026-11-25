@@ -1,9 +1,12 @@
 import * as crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { expandHome } from "../history/pathUtils";
-import { agentUriIconPath } from "../icons/agentIcons";
-import { AcpAgentConnection, AcpPromptBlock } from "./agentConnection";
+import { agentUriIconPath, buildWebviewAgentIconMap } from "../icons/agentIcons";
+import { AcpAgentConnection, AcpPromptBlock, normalizeConfigOptionsArray } from "./agentConnection";
+import { sortConfigOptions } from "./configNormalization";
 import { subscribeSessionUpdates, clearSessionUpdateListeners } from "./sessionUpdateBus";
 import {
   appendAcpMessage,
@@ -17,12 +20,17 @@ import {
 } from "./store";
 import { getAcpChatUiStrings } from "../webview/uiStrings";
 import {
+  AcpAgentProvider,
+  AcpAvailableCommand,
   AcpChatMessage,
+  AcpConfigOption,
   AcpImageAttachment,
+  AcpPlanEntry,
   AcpSessionRecord,
   AcpToolCallInfo,
   AcpToolCallLocation,
-  AcpToolCallStatus
+  AcpToolCallStatus,
+  AcpUsageInfo
 } from "./types";
 
 type WebviewImageAttachment = AcpImageAttachment & { previewUrl: string };
@@ -36,7 +44,13 @@ interface WebviewSendPayload {
   text?: string;
   images?: IncomingAcpImage[];
   modeId?: string;
+  configId?: string;
+  value?: string | boolean;
+  valueType?: "select" | "boolean";
+  source?: "configOption" | "mode" | "model";
   href?: string;
+  path?: string;
+  line?: number;
 }
 
 interface AcpMode {
@@ -49,6 +63,16 @@ interface ModesState {
   availableModes: AcpMode[];
 }
 
+const PROVIDER_LABELS: Record<AcpAgentProvider, string> = {
+  codex: "Codex",
+  claude: "Claude",
+  grok: "Grok Build",
+  opencode: "OpenCode",
+  pi: "Pi",
+  prime: "Prime Agent",
+  omp: "OMP"
+};
+
 export class AcpChatPanel {
   private readonly panel: vscode.WebviewPanel;
   private readonly panelHome: string;
@@ -60,13 +84,19 @@ export class AcpChatPanel {
   private isConnecting = false;
   private availableModes: AcpMode[] = [];
   private currentModeId?: string;
+  private configOptions: AcpConfigOption[] = [];
+  private availableCommands: AcpAvailableCommand[] = [];
+  private usage?: AcpUsageInfo;
   private unsubscribeSessionUpdates?: () => void;
   private streamingAssistantId?: string;
   private turnAssistantId?: string;
+  private turnPlanMessageId?: string;
   private streamingText = "";
+  private streamingThinking = "";
   private activeAcpSessionId?: string;
   private isReplayingLoadedHistory = false;
   private historyReplayDone?: () => void;
+  private cancelledByUser = false;
   private readonly initialPrompt?: string;
   private initialPromptSent = false;
   private pendingExternalStoreRefresh = false;
@@ -86,6 +116,7 @@ export class AcpChatPanel {
 
     const localResourceRoots = [
       vscode.Uri.joinPath(context.extensionUri, "media"),
+      vscode.Uri.joinPath(context.extensionUri, "resources"),
       vscode.Uri.joinPath(context.extensionUri, "node_modules", "marked"),
       vscode.Uri.joinPath(context.extensionUri, "node_modules", "dompurify"),
       vscode.Uri.file(path.join(this.panelHome, "acp", "attachments"))
@@ -154,6 +185,26 @@ export class AcpChatPanel {
     this.postInit();
   }
 
+  private resolveWorkingDirectory(): { cwd: string; fallbackFrom?: string } {
+    const configured = path.resolve(this.record.projectPath);
+    if (isExistingDirectory(configured)) {
+      return { cwd: configured };
+    }
+
+    const baseName = path.basename(configured);
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const matchingFolder = folders.find(
+      (folder) => path.basename(folder.uri.fsPath) === baseName && isExistingDirectory(folder.uri.fsPath)
+    );
+    const firstValidFolder = folders.find((folder) => isExistingDirectory(folder.uri.fsPath));
+    const fallback = matchingFolder?.uri.fsPath ?? firstValidFolder?.uri.fsPath ?? os.homedir();
+
+    return {
+      cwd: path.resolve(fallback),
+      fallbackFrom: this.record.projectPath
+    };
+  }
+
   private async ensureAgentSession(): Promise<void> {
     if (this.isConnecting) {
       return;
@@ -163,20 +214,32 @@ export class AcpChatPanel {
     this.post({ type: "status", status: "connecting", isRunning: false, isConnecting: true });
 
     try {
+      const { cwd, fallbackFrom } = this.resolveWorkingDirectory();
+      if (fallbackFrom && !this.messages.some((entry) => entry.id === "system-cwd-fallback")) {
+        const notice: AcpChatMessage = {
+          id: "system-cwd-fallback",
+          role: "system",
+          text: `Project directory not found (${fallbackFrom}). Using ${cwd} instead.`,
+          timestamp: Date.now()
+        };
+        this.messages.push(notice);
+        this.post({ type: "message", message: this.enrichMessageForWebview(notice) });
+      }
+
       if (this.activeAcpSessionId) {
         clearSessionUpdateListeners(this.activeAcpSessionId);
       }
       this.unsubscribeSessionUpdates?.();
       this.unsubscribeSessionUpdates = undefined;
       this.connection?.dispose();
-      this.connection = new AcpAgentConnection(this.record.provider, this.record.projectPath);
+      this.connection = new AcpAgentConnection(this.record.provider, cwd);
 
       if (this.record.acpSessionId) {
         const previousSessionId = this.record.acpSessionId;
         this.activeAcpSessionId = previousSessionId;
         this.isReplayingLoadedHistory = false;
         try {
-          const result = await this.connection.restoreSession(previousSessionId, this.record.projectPath);
+          const result = await this.connection.restoreSession(previousSessionId, cwd);
           if (result.sessionId !== previousSessionId) {
             clearSessionUpdateListeners(previousSessionId);
             this.record.acpSessionId = result.sessionId;
@@ -184,9 +247,10 @@ export class AcpChatPanel {
             this.record.updatedAt = Date.now();
             await updateAcpRecord(this.panelHome, this.record);
           }
-          this.applyModes(result.modes);
+          this.applySessionConfig(result.modes, result.configOptions);
           if (result.method === "load") {
             this.isReplayingLoadedHistory = true;
+            this.setupSessionUpdates();
             await this.waitForHistoryReplay();
           }
         } finally {
@@ -194,10 +258,10 @@ export class AcpChatPanel {
           this.historyReplayDone = undefined;
         }
       } else {
-        const result = await this.connection.startSession(this.record.projectPath);
+        const result = await this.connection.startSession(cwd);
         this.record.acpSessionId = result.sessionId;
         this.activeAcpSessionId = result.sessionId;
-        this.applyModes(result.modes);
+        this.applySessionConfig(result.modes, result.configOptions);
         this.record.updatedAt = Date.now();
         await updateAcpRecord(this.panelHome, this.record);
       }
@@ -209,7 +273,7 @@ export class AcpChatPanel {
     } catch (error) {
       this.post({
         type: "error",
-        message: `Failed to connect to ${this.record.provider} agent: ${formatError(error)}`
+        message: `Failed to connect to ${PROVIDER_LABELS[this.record.provider] || this.record.provider} agent: ${formatError(error)}`
       });
       this.post({ type: "status", status: "error", isRunning: false, isConnecting: false });
     } finally {
@@ -257,6 +321,14 @@ export class AcpChatPanel {
     }
   }
 
+  private applySessionConfig(
+    modes: ModesState | null | undefined,
+    configOptions: AcpConfigOption[]
+  ): void {
+    this.applyModes(modes);
+    this.configOptions = configOptions;
+  }
+
   private setupSessionUpdates(): void {
     if (!this.activeAcpSessionId) {
       return;
@@ -276,14 +348,18 @@ export class AcpChatPanel {
 
     if (this.isReplayingLoadedHistory) {
       if (kind === "available_commands_update") {
+        this.handleAvailableCommandsUpdate(update);
         this.historyReplayDone?.();
+        return;
       }
       if (
         kind === "user_message_chunk" ||
         kind === "agent_message_chunk" ||
         kind === "agent_thought_chunk" ||
         kind === "tool_call" ||
-        kind === "tool_call_update"
+        kind === "tool_call_update" ||
+        kind === "plan" ||
+        kind === "plan_update"
       ) {
         return;
       }
@@ -291,8 +367,10 @@ export class AcpChatPanel {
 
     switch (kind) {
       case "agent_message_chunk":
+        this.handleAgentChunk(update, "text");
+        break;
       case "agent_thought_chunk":
-        this.handleAgentChunk(update);
+        this.handleAgentChunk(update, "thinking");
         break;
       case "tool_call":
         this.upsertTurnToolCall(parseToolCallFromUpdate(update, "pending"));
@@ -301,20 +379,142 @@ export class AcpChatPanel {
         this.upsertTurnToolCall(parseToolCallFromUpdate(update));
         break;
       case "plan":
+      case "plan_update":
         this.handlePlan(update);
+        break;
+      case "available_commands_update":
+        this.handleAvailableCommandsUpdate(update);
+        break;
+      case "config_option_update":
+        this.handleConfigOptionUpdate(update);
         break;
       case "current_mode_update":
         if (typeof update.currentModeId === "string") {
-          this.currentModeId = update.currentModeId;
-          this.record.currentModeId = update.currentModeId;
+          this.syncCurrentMode(update.currentModeId);
           void updateAcpRecord(this.panelHome, this.record);
           this.postInit();
         }
         break;
+      case "session_info_update":
+        if (typeof update.title === "string" && update.title.trim()) {
+          this.record.title = truncate(update.title.trim(), 72);
+          this.record.updatedAt = Date.now();
+          void updateAcpRecord(this.panelHome, this.record);
+          this.postInit();
+          void this.reloadTree();
+        }
+        break;
+      case "usage_update":
+        this.handleUsageUpdate(update);
+        break;
     }
   }
 
-  private handleAgentChunk(update: Record<string, unknown>): void {
+  private handleAvailableCommandsUpdate(update: Record<string, unknown>): void {
+    const raw = update.availableCommands;
+    if (!Array.isArray(raw)) {
+      return;
+    }
+
+    const commands: AcpAvailableCommand[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+      const entry = item as { name?: unknown; description?: unknown; input?: { hint?: unknown } };
+      if (typeof entry.name !== "string" || !entry.name.trim()) {
+        continue;
+      }
+      const cmd: AcpAvailableCommand = {
+        name: entry.name.trim(),
+        description: typeof entry.description === "string" ? entry.description : ""
+      };
+      if (entry.input && typeof entry.input.hint === "string" && entry.input.hint) {
+        cmd.inputHint = entry.input.hint;
+      }
+      commands.push(cmd);
+    }
+
+    this.availableCommands = commands;
+    this.post({ type: "commands", commands: this.availableCommands });
+  }
+
+  private handleConfigOptionUpdate(update: Record<string, unknown>): void {
+    const incoming = normalizeConfigOptionsArray(update.configOptions);
+    if (!incoming.length && !Array.isArray(update.configOptions)) {
+      return;
+    }
+
+    const hasMode = incoming.some((opt) => opt.category === "mode" || opt.id === "mode");
+    const hasModel = incoming.some((opt) => opt.category === "model" || opt.id === "model");
+
+    const preservedLegacy = this.configOptions.filter((opt) => {
+      if (opt.source === "mode") {
+        return !hasMode;
+      }
+      if (opt.source === "model") {
+        return !hasModel;
+      }
+      return false;
+    });
+
+    this.configOptions = sortConfigOptions([...incoming, ...preservedLegacy]);
+    const modeOpt = this.configOptions.find(
+      (opt): opt is Extract<AcpConfigOption, { type: "select" }> =>
+        opt.type === "select" && (opt.category === "mode" || opt.id === "mode")
+    );
+    if (modeOpt && modeOpt.currentValue) {
+      this.currentModeId = modeOpt.currentValue;
+      this.record.currentModeId = modeOpt.currentValue;
+    }
+    this.postInit();
+  }
+
+  private handleUsageUpdate(update: Record<string, unknown>): void {
+    const used = typeof update.used === "number" ? update.used : undefined;
+    const size = typeof update.size === "number" ? update.size : undefined;
+    const cost = update.cost as { amount?: unknown; currency?: unknown } | null | undefined;
+    const costAmount = typeof cost?.amount === "number" ? cost.amount : undefined;
+    const costCurrency = typeof cost?.currency === "string" ? cost.currency : undefined;
+
+    if (used === undefined && size === undefined && costAmount === undefined) {
+      return;
+    }
+
+    this.usage = {
+      ...(used !== undefined ? { used } : {}),
+      ...(size !== undefined ? { size } : {}),
+      ...(costAmount !== undefined ? { costAmount } : {}),
+      ...(costCurrency ? { costCurrency } : {})
+    };
+    this.post({ type: "usage", usage: this.usage });
+  }
+
+  private syncCurrentMode(modeId: string): void {
+    this.currentModeId = modeId;
+    this.record.currentModeId = modeId;
+    const hasExplicitModeOption = this.configOptions.some(
+      (opt) => opt.type === "select" && (opt.category === "mode" || opt.id === "mode")
+    );
+    this.configOptions = this.configOptions.map((opt) => {
+      if (opt.type !== "select") {
+        return opt;
+      }
+      if (opt.category === "mode" || opt.id === "mode") {
+        return { ...opt, currentValue: modeId };
+      }
+      if (
+        !hasExplicitModeOption &&
+        opt.category === "thought_level" &&
+        opt.options.some((choice) => choice.value === modeId)
+      ) {
+        return { ...opt, currentValue: modeId };
+      }
+      return opt;
+    });
+  }
+
+  private handleAgentChunk(update: Record<string, unknown>, channel: "text" | "thinking"): void {
     const delta = extractTextFromContent(update.content);
     if (!delta || !this.turnAssistantId) {
       return;
@@ -322,7 +522,12 @@ export class AcpChatPanel {
 
     if (!this.streamingAssistantId) {
       this.streamingAssistantId = this.turnAssistantId;
-      this.streamingText = delta;
+      this.streamingText = "";
+      this.streamingThinking = "";
+    }
+
+    if (channel === "thinking") {
+      this.streamingThinking += delta;
     } else {
       this.streamingText += delta;
     }
@@ -333,12 +538,20 @@ export class AcpChatPanel {
   private getAssistantMessage(id: string): AcpChatMessage {
     const existing = this.messages.find((entry) => entry.id === id);
     if (existing) {
+      if (id === this.streamingAssistantId) {
+        return {
+          ...existing,
+          text: this.streamingText || existing.text,
+          thinking: this.streamingThinking || existing.thinking
+        };
+      }
       return existing;
     }
     return {
       id,
       role: "assistant",
       text: id === this.streamingAssistantId ? this.streamingText : "",
+      thinking: id === this.streamingAssistantId && this.streamingThinking ? this.streamingThinking : undefined,
       timestamp: Date.now(),
       toolCalls: []
     };
@@ -385,8 +598,13 @@ export class AcpChatPanel {
     }
 
     assistant.toolCalls = toolCalls;
-    if (this.streamingText && this.streamingAssistantId === assistant.id) {
-      assistant.text = this.streamingText;
+    if (this.streamingAssistantId === assistant.id) {
+      if (this.streamingText) {
+        assistant.text = this.streamingText;
+      }
+      if (this.streamingThinking) {
+        assistant.thinking = this.streamingThinking;
+      }
     }
 
     const messageIndex = this.messages.findIndex((entry) => entry.id === assistant.id);
@@ -404,26 +622,35 @@ export class AcpChatPanel {
         type: "assistantDelta",
         id: assistant.id,
         text: assistant.text,
+        thinking: assistant.thinking ?? "",
         toolCalls: assistant.toolCalls ?? [],
         streaming: true
       });
       return;
     }
 
-    this.post({ type: "messageUpdate", message: assistant });
+    this.post({ type: "messageUpdate", message: this.enrichMessageForWebview(assistant) });
   }
 
   private handlePlan(update: Record<string, unknown>): void {
+    const planEntries = parsePlanEntries(update);
     const text = formatPlanText(update);
-    if (!text) {
+    if (!planEntries.length && !text) {
       return;
     }
 
+    const planId =
+      typeof update.planId === "string" && update.planId
+        ? `plan:${update.planId}`
+        : (this.turnPlanMessageId ??= crypto.randomUUID());
+
+    const existing = this.messages.find((entry) => entry.id === planId);
     const message: AcpChatMessage = {
-      id: crypto.randomUUID(),
+      id: planId,
       role: "plan",
       text,
-      timestamp: Date.now()
+      ...(planEntries.length ? { planEntries } : {}),
+      timestamp: existing?.timestamp ?? Date.now()
     };
     this.upsertMessage(message);
   }
@@ -445,13 +672,24 @@ export class AcpChatPanel {
       case "ready":
         this.postInit();
         this.postHistory();
+        if (this.availableCommands.length) {
+          this.post({ type: "commands", commands: this.availableCommands });
+        }
+        if (this.usage) {
+          this.post({ type: "usage", usage: this.usage });
+        }
         return;
       case "send":
         await this.sendMessage(message.text ?? "", message.images ?? []);
         return;
       case "stop":
+        this.cancelledByUser = true;
         if (this.activeAcpSessionId && this.connection) {
-          await this.connection.cancel(this.activeAcpSessionId);
+          try {
+            await this.connection.cancel(this.activeAcpSessionId);
+          } catch {
+            // Best-effort cancel notification.
+          }
         }
         this.abortController?.abort();
         this.isRunning = false;
@@ -460,6 +698,9 @@ export class AcpChatPanel {
         return;
       case "setMode":
         await this.setMode(message.modeId ?? "");
+        return;
+      case "setConfigOption":
+        await this.setConfigOption(message);
         return;
       case "reconnect":
         await this.ensureAgentSession();
@@ -470,6 +711,35 @@ export class AcpChatPanel {
           await vscode.env.openExternal(vscode.Uri.parse(message.href));
         }
         return;
+      case "openFile":
+        if (message.path) {
+          await this.openWorkspaceFile(message.path, message.line);
+        }
+        return;
+      case "copyText":
+        if (typeof message.text === "string") {
+          await vscode.env.clipboard.writeText(message.text);
+        }
+        return;
+    }
+  }
+
+  private async openWorkspaceFile(filePath: string, line?: number): Promise<void> {
+    try {
+      const { cwd } = this.resolveWorkingDirectory();
+      const resolved = path.isAbsolute(filePath)
+        ? filePath
+        : path.resolve(cwd, filePath);
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(resolved));
+      const zeroLine = Math.max(0, (typeof line === "number" ? line : 1) - 1);
+      const pos = new vscode.Position(zeroLine, 0);
+      await vscode.window.showTextDocument(doc, {
+        viewColumn: vscode.ViewColumn.One,
+        selection: new vscode.Range(pos, pos),
+        preserveFocus: false
+      });
+    } catch (error) {
+      this.post({ type: "error", message: `Failed to open ${filePath}: ${formatError(error)}` });
     }
   }
 
@@ -480,13 +750,86 @@ export class AcpChatPanel {
 
     try {
       await this.connection.setMode(this.activeAcpSessionId, modeId);
-      this.currentModeId = modeId;
-      this.record.currentModeId = modeId;
+      this.syncCurrentMode(modeId);
       this.record.updatedAt = Date.now();
       await updateAcpRecord(this.panelHome, this.record);
       this.postInit();
     } catch (error) {
       this.post({ type: "error", message: `Mode switch failed: ${formatError(error)}` });
+    }
+  }
+
+  private async setConfigOption(payload: WebviewSendPayload): Promise<void> {
+    const configId = payload.configId;
+    if (!configId || payload.value === undefined || !this.connection || !this.activeAcpSessionId || this.isRunning) {
+      return;
+    }
+
+    if (payload.source === "mode") {
+      await this.setMode(String(payload.value));
+      return;
+    }
+
+    const valueType = payload.valueType === "boolean" ? "boolean" : "select";
+
+    try {
+      let updated: AcpConfigOption[] | null = null;
+      if (payload.source === "model") {
+        try {
+          updated = await this.connection.setConfigOption(
+            this.activeAcpSessionId,
+            configId,
+            payload.value,
+            "select"
+          );
+        } catch {
+          await this.connection.setMode(this.activeAcpSessionId, String(payload.value));
+        }
+      } else {
+        updated = await this.connection.setConfigOption(
+          this.activeAcpSessionId,
+          configId,
+          payload.value,
+          valueType
+        );
+      }
+
+      if (updated) {
+        const hasMode = updated.some((opt) => opt.category === "mode" || opt.id === "mode");
+        const hasModel = updated.some((opt) => opt.category === "model" || opt.id === "model");
+        const preservedLegacy = this.configOptions.filter(
+          (opt) => (opt.source === "mode" && !hasMode) || (opt.source === "model" && !hasModel)
+        );
+        this.configOptions = sortConfigOptions([...updated, ...preservedLegacy]);
+      } else {
+        this.configOptions = this.configOptions.map((opt) => {
+          if (opt.id !== configId) {
+            return opt;
+          }
+          if (opt.type === "boolean" && valueType === "boolean") {
+            return { ...opt, currentValue: Boolean(payload.value) };
+          }
+          if (opt.type === "select" && valueType === "select") {
+            return { ...opt, currentValue: String(payload.value) };
+          }
+          return opt;
+        });
+      }
+
+      const modeOpt = this.configOptions.find(
+        (opt): opt is Extract<AcpConfigOption, { type: "select" }> =>
+          opt.type === "select" && (opt.category === "mode" || opt.id === "mode")
+      );
+      if (modeOpt && modeOpt.currentValue) {
+        this.currentModeId = modeOpt.currentValue;
+        this.record.currentModeId = modeOpt.currentValue;
+      }
+
+      this.record.updatedAt = Date.now();
+      await updateAcpRecord(this.panelHome, this.record);
+      this.postInit();
+    } catch (error) {
+      this.post({ type: "error", message: `Config switch failed: ${formatError(error)}` });
     }
   }
 
@@ -546,10 +889,13 @@ export class AcpChatPanel {
     this.postInit();
 
     this.isRunning = true;
+    this.cancelledByUser = false;
     this.abortController = new AbortController();
     this.turnAssistantId = crypto.randomUUID();
+    this.turnPlanMessageId = undefined;
     this.streamingAssistantId = undefined;
     this.streamingText = "";
+    this.streamingThinking = "";
     this.post({ type: "status", status: "thinking", isRunning: true, isConnecting: false });
 
     const turnId = this.turnAssistantId;
@@ -558,17 +904,22 @@ export class AcpChatPanel {
       await this.connection.prompt(this.activeAcpSessionId, blocks);
       await this.drainSessionUpdates();
       this.finalizeStreamingAssistant();
-      if (turnId && !this.messages.some((entry) => entry.role === "assistant" && entry.id === turnId)) {
+      if (
+        !this.cancelledByUser &&
+        turnId &&
+        !this.messages.some((entry) => entry.role === "assistant" && entry.id === turnId)
+      ) {
+        const providerName = PROVIDER_LABELS[this.record.provider] || this.record.provider;
         this.post({
           type: "error",
-          message: "Agent returned an empty response. Try again or check Codex permissions."
+          message: `${providerName} returned an empty response. Try again or check agent permissions.`
         });
       }
       this.record.updatedAt = Date.now();
       await updateAcpRecord(this.panelHome, this.record);
       await this.reloadTree();
     } catch (error) {
-      if (this.abortController.signal.aborted) {
+      if (this.abortController.signal.aborted || this.cancelledByUser) {
         this.finalizeStreamingAssistant();
         this.post({ type: "status", status: "stopped", isRunning: false, isConnecting: false });
         return;
@@ -577,6 +928,7 @@ export class AcpChatPanel {
     } finally {
       this.isRunning = false;
       this.abortController = undefined;
+      this.turnPlanMessageId = undefined;
       this.post({ type: "status", status: "ready", isRunning: false, isConnecting: false });
       await this.flushExternalStoreRefresh();
     }
@@ -586,21 +938,24 @@ export class AcpChatPanel {
     const turnId = this.streamingAssistantId ?? this.turnAssistantId;
     if (!turnId) {
       this.streamingText = "";
+      this.streamingThinking = "";
       return;
     }
 
     const index = this.messages.findIndex((entry) => entry.id === turnId);
     const existing = index >= 0 ? this.messages[index] : undefined;
     const text = this.streamingText.trim() || existing?.text?.trim() || "";
+    const thinking = this.streamingThinking.trim() || existing?.thinking?.trim() || "";
     const toolCalls = existing?.toolCalls;
 
-    if (!text && !toolCalls?.length) {
+    if (!text && !thinking && !toolCalls?.length) {
       if (index >= 0) {
         this.messages.splice(index, 1);
       }
       this.streamingAssistantId = undefined;
       this.turnAssistantId = undefined;
       this.streamingText = "";
+      this.streamingThinking = "";
       return;
     }
 
@@ -608,6 +963,7 @@ export class AcpChatPanel {
       id: turnId,
       role: "assistant",
       text,
+      ...(thinking ? { thinking } : {}),
       timestamp: existing?.timestamp ?? Date.now(),
       toolCalls: toolCalls?.length ? toolCalls : undefined
     };
@@ -623,9 +979,11 @@ export class AcpChatPanel {
     this.streamingAssistantId = undefined;
     this.turnAssistantId = undefined;
     this.streamingText = "";
+    this.streamingThinking = "";
   }
 
   private postInit(): void {
+    const iconMap = buildWebviewAgentIconMap(this.panel.webview, this.context.extensionUri);
     this.post({
       type: "init",
       init: {
@@ -633,9 +991,14 @@ export class AcpChatPanel {
         title: this.record.title,
         projectPath: this.record.projectPath,
         provider: this.record.provider,
+        providerLabel: PROVIDER_LABELS[this.record.provider] || this.record.provider,
+        agentIcon: iconMap[this.record.provider],
         acpSessionId: this.record.acpSessionId,
         modes: this.availableModes,
         modeId: this.currentModeId,
+        configOptions: this.configOptions,
+        commands: this.availableCommands,
+        usage: this.usage,
         isRunning: this.isRunning,
         isConnecting: this.isConnecting,
         status: this.isConnecting ? "connecting" : this.isRunning ? "running" : "ready",
@@ -693,7 +1056,8 @@ export class AcpChatPanel {
 
   private title(): string {
     const mode = this.currentModeId ? ` · ${this.currentModeId}` : "";
-    return `ACP ${this.record.provider}${mode}: ${truncate(this.record.title, 28)}`;
+    const providerLabel = PROVIDER_LABELS[this.record.provider] || this.record.provider;
+    return `ACP ${providerLabel}${mode}: ${truncate(this.record.title, 28)}`;
   }
 
   private post(payload: unknown): void {
@@ -733,32 +1097,58 @@ export class AcpChatPanel {
 <body class="chat-shell">
   <header id="header">
     <div class="header-main">
-      <span id="status-dot" class="status-dot connecting" aria-hidden="true"></span>
+      <img id="header-icon" class="header-icon" alt="" hidden>
       <div class="header-text">
-        <div id="header-title">ACP Chat</div>
+        <div class="header-title-row">
+          <div id="header-title">ACP Chat</div>
+          <span id="status-pill" class="status-pill connecting">
+            <span id="status-dot" class="status-dot connecting" aria-hidden="true"></span>
+            <span id="status-label">connecting</span>
+          </span>
+        </div>
         <div id="header-meta"></div>
       </div>
     </div>
     <div class="header-actions">
-      <select id="mode" hidden aria-label="Agent mode"></select>
-      <button id="reconnect" type="button" title="Reconnect">↻</button>
-      <button id="stop" type="button" disabled title="Stop">■</button>
+      <span id="header-usage" class="header-usage" hidden></span>
+      <button id="reconnect" class="icon-btn" type="button" title="Reconnect" aria-label="Reconnect">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 2v4h-4l1.45-1.45A4.5 4.5 0 1 0 12.4 9.5h1.53A6 6 0 1 1 12 3.5L13.5 2z"/></svg>
+      </button>
     </div>
   </header>
-  <main id="messages" class="chat-messages"></main>
-  <footer id="composer">
-    <div id="pending-images" class="pending-images" hidden></div>
-    <div class="composer-bar">
-      <button id="attach" type="button" class="attach-btn" hidden title="Attach image" aria-label="Attach image">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 6v11.5a4 4 0 0 1-8 0V5a2.5 2.5 0 0 1 5 0v10.5a1 1 0 0 1-2 0V6h-1.5v9.5a2.5 2.5 0 0 0 5 0V5a4 4 0 0 0-8 0v12.5a5.5 5.5 0 0 0 11 0V6z"/></svg>
-      </button>
-      <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
+  <main id="messages" class="chat-messages">
+    <div id="empty-state" class="empty-state" hidden></div>
+    <div id="messages-inner" class="chat-thread"></div>
+  </main>
+  <button id="scroll-bottom" class="scroll-bottom-btn" type="button" hidden title="Scroll to bottom" aria-label="Scroll to bottom">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 12.2 2.8 7l1.06-1.06L7.25 9.33V2h1.5v7.33l3.39-3.39L13.2 7 8 12.2z"/></svg>
+  </button>
+  <footer id="composer" class="composer-wrap">
+    <div id="composer-card" class="composer-card">
+      <div id="slash-menu" class="slash-menu" hidden role="listbox"></div>
+      <div id="pending-images" class="pending-images" hidden></div>
       <textarea id="input" rows="1" placeholder="Message the agent…" aria-label="Message"></textarea>
-      <button id="send" type="button" aria-label="Send">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-      </button>
+      <div class="composer-toolbar">
+        <div class="composer-controls">
+          <button id="attach" type="button" class="toolbar-icon-btn" hidden title="Attach image" aria-label="Attach image">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 6v11.5a4 4 0 0 1-8 0V5a2.5 2.5 0 0 1 5 0v10.5a1 1 0 0 1-2 0V6h-1.5v9.5a2.5 2.5 0 0 0 5 0V5a4 4 0 0 0-8 0v12.5a5.5 5.5 0 0 0 11 0V6z"/></svg>
+          </button>
+          <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
+          <button id="slash-trigger" type="button" class="toolbar-icon-btn" hidden title="Slash commands" aria-label="Slash commands">/</button>
+          <div id="config-controls" class="config-controls"></div>
+        </div>
+        <div class="composer-actions">
+          <button id="send-stop" type="button" class="send-stop-btn" aria-label="Send" title="Send">
+            <svg class="icon-send" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            <svg class="icon-stop" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
   </footer>
+  <div id="image-lightbox" class="image-lightbox" hidden role="dialog" aria-modal="true">
+    <img id="image-lightbox-img" alt="">
+  </div>
   <script nonce="${nonce}" src="${markedUri}"></script>
   <script nonce="${nonce}" src="${purifyUri}"></script>
   <script nonce="${nonce}" src="${scriptUri}"></script>
@@ -910,6 +1300,32 @@ function mergeToolCallInfo(existing: AcpToolCallInfo, incoming: AcpToolCallInfo)
   };
 }
 
+function parsePlanEntries(update: Record<string, unknown>): AcpPlanEntry[] {
+  if (!Array.isArray(update.entries)) {
+    return [];
+  }
+
+  const entries: AcpPlanEntry[] = [];
+  for (const item of update.entries) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const step = item as { content?: unknown; status?: unknown; priority?: unknown };
+    const content = typeof step.content === "string" ? step.content.trim() : "";
+    if (!content) {
+      continue;
+    }
+    const status =
+      step.status === "completed" || step.status === "in_progress" ? step.status : "pending";
+    const entry: AcpPlanEntry = { content, status };
+    if (typeof step.priority === "string" && step.priority) {
+      entry.priority = step.priority;
+    }
+    entries.push(entry);
+  }
+  return entries;
+}
+
 function formatPlanText(update: Record<string, unknown>): string {
   const entries = update.entries;
   if (!Array.isArray(entries) || !entries.length) {
@@ -932,6 +1348,14 @@ function formatPlanText(update: Record<string, unknown>): string {
 
 function truncate(value: string, maxLength: number): string {
   return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
+}
+
+function isExistingDirectory(dirPath: string): boolean {
+  try {
+    return fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 function formatError(error: unknown): string {

@@ -69,7 +69,25 @@ export function getSettingSections(): SettingSection[] {
           description: t("settings.fieldEditorNewSessionProviderDescription"),
           type: "enum",
           default: "codex",
-          enum: ["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "omp", "cursor"],
+          enum: [
+            "codex",
+            "claude",
+            "agy",
+            "grok",
+            "opencode",
+            "pi",
+            "prime",
+            "omp",
+            "cursor",
+            "acp",
+            "acp:codex",
+            "acp:claude",
+            "acp:grok",
+            "acp:opencode",
+            "acp:pi",
+            "acp:prime",
+            "acp:omp"
+          ],
           enumLabels: {
             codex: t("settings.enum.editorNewSessionProviderCodex"),
             claude: t("settings.enum.editorNewSessionProviderClaude"),
@@ -79,7 +97,15 @@ export function getSettingSections(): SettingSection[] {
             pi: t("settings.enum.editorNewSessionProviderPi"),
             prime: t("settings.enum.editorNewSessionProviderPrime"),
             omp: t("settings.enum.editorNewSessionProviderOmp"),
-            cursor: "Cursor CLI"
+            cursor: "Cursor CLI",
+            acp: t("settings.enum.editorNewSessionProviderAcp"),
+            "acp:codex": "ACP · Codex",
+            "acp:claude": "ACP · Claude",
+            "acp:grok": "ACP · Grok Build",
+            "acp:opencode": "ACP · OpenCode",
+            "acp:pi": "ACP · Pi",
+            "acp:prime": "ACP · Prime Agent",
+            "acp:omp": "ACP · OMP"
           }
         }
       ]

@@ -1,25 +1,33 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import * as fs from "node:fs";
 import { Writable, Readable } from "node:stream";
 import type { AgentCapabilities, ClientConnection, ClientContext } from "@agentclientprotocol/sdk" with { "resolution-mode": "import" };
 import * as path from "node:path";
 import { loadAcpAgentLaunch } from "./config";
+import {
+  AcpSessionModes,
+  normalizeConfigOptionsArray,
+  normalizeSessionConfigOptions
+} from "./configNormalization";
 import { createAcpClientApp } from "./createClientApp";
-import { resolveSpawnCommand } from "./resolveCommand";
+import { resolveExecutable, resolveSpawnCommand } from "./resolveCommand";
 
 import { getAcpSdk } from "./sdk";
-import type { AcpAgentProvider } from "./types";
+import type { AcpAgentProvider, AcpConfigOption } from "./types";
 
 const STDERR_BUFFER_LIMIT = 2048;
 const ACP_HANDSHAKE_TIMEOUT_MS = 60_000;
 
-export type AcpSessionModes = {
-  currentModeId: string;
-  availableModes: Array<{ id: string; name: string }>;
+export {
+  AcpSessionModes,
+  normalizeConfigOptionsArray,
+  normalizeSessionConfigOptions
 };
 
 export type RestoreSessionResult = {
   sessionId: string;
   modes: AcpSessionModes | null;
+  configOptions: AcpConfigOption[];
   method: "resume" | "load" | "new";
 };
 
@@ -50,6 +58,12 @@ export class AcpAgentConnection {
     const spawnSpec = resolveSpawnCommand(launch.command, process.env, launch.env);
     const command = spawnSpec.command;
     const env = spawnSpec.env;
+    if (this.provider === "pi" && !env.PI_ACP_PI_COMMAND) {
+      const piExecutable = resolveExecutable("pi", env.PATH || "");
+      if (piExecutable) {
+        env.PI_ACP_PI_COMMAND = piExecutable;
+      }
+    }
     const args = primeAgentLaunchArgs(this.provider, launch.args, this.projectPath);
     if (!spawnSpec.resolved && !path.isAbsolute(command) && !command.includes(path.sep)) {
       throw new Error(
@@ -171,20 +185,24 @@ export class AcpAgentConnection {
     return new Error(`${baseMessage}: ${details.join(" — ")}`);
   }
 
-  async startSession(projectPath: string): Promise<{ sessionId: string; modes: AcpSessionModes | null }> {
+  async startSession(
+    projectPath: string
+  ): Promise<{ sessionId: string; modes: AcpSessionModes | null; configOptions: AcpConfigOption[] }> {
+    const cwd = assertExistingDirectory(projectPath);
     const agent = await this.connect();
-    const cwd = path.resolve(projectPath);
     const response = await agent.buildSession(cwd).start();
+    const normalized = normalizeSessionConfigOptions(response.newSessionResponse as Record<string, unknown>);
     return {
       sessionId: response.sessionId,
-      modes: normalizeSessionModes(response.newSessionResponse as Record<string, unknown>)
+      modes: normalized.modes,
+      configOptions: normalized.configOptions
     };
   }
 
   async restoreSession(acpSessionId: string, projectPath: string): Promise<RestoreSessionResult> {
+    const cwd = assertExistingDirectory(projectPath);
     const agent = await this.connect();
     const acp = await getAcpSdk();
-    const cwd = path.resolve(projectPath);
     const params = { sessionId: acpSessionId, cwd, mcpServers: [] as [] };
 
     const restoreMethods: Array<"load" | "resume"> = [];
@@ -201,9 +219,11 @@ export class AcpAgentConnection {
           method === "load" ? acp.methods.agent.session.load : acp.methods.agent.session.resume,
           params
         );
+        const normalized = normalizeSessionConfigOptions(response as Record<string, unknown>);
         return {
           sessionId: acpSessionId,
-          modes: normalizeSessionModes(response as Record<string, unknown>),
+          modes: normalized.modes,
+          configOptions: normalized.configOptions,
           method
         };
       } catch (error) {
@@ -217,9 +237,11 @@ export class AcpAgentConnection {
     }
 
     const response = await agent.buildSession(cwd).start();
+    const normalized = normalizeSessionConfigOptions(response.newSessionResponse as Record<string, unknown>);
     return {
       sessionId: response.sessionId,
-      modes: normalizeSessionModes(response.newSessionResponse as Record<string, unknown>),
+      modes: normalized.modes,
+      configOptions: normalized.configOptions,
       method: "new"
     };
   }
@@ -235,6 +257,35 @@ export class AcpAgentConnection {
       sessionId: acpSessionId,
       modeId
     });
+  }
+
+  async setConfigOption(
+    acpSessionId: string,
+    configId: string,
+    value: string | boolean,
+    valueType: "select" | "boolean" = "select"
+  ): Promise<AcpConfigOption[] | null> {
+    const agent = await this.connect();
+    const acp = await getAcpSdk();
+    const payload =
+      valueType === "boolean"
+        ? {
+            sessionId: acpSessionId,
+            configId,
+            type: "boolean" as const,
+            value: Boolean(value)
+          }
+        : {
+            sessionId: acpSessionId,
+            configId,
+            value: String(value)
+          };
+    const response = await agent.request(acp.methods.agent.session.setConfigOption, payload);
+    const rawOptions = (response as Record<string, unknown> | null | undefined)?.configOptions;
+    if (!Array.isArray(rawOptions)) {
+      return null;
+    }
+    return normalizeConfigOptionsArray(rawOptions);
   }
 
   async prompt(acpSessionId: string, blocks: AcpPromptBlock[]): Promise<{ stopReason: string }> {
@@ -275,6 +326,20 @@ export class AcpAgentConnection {
   }
 }
 
+function assertExistingDirectory(projectPath: string): string {
+  const cwd = path.resolve(projectPath);
+  let isDir = false;
+  try {
+    isDir = fs.existsSync(cwd) && fs.statSync(cwd).isDirectory();
+  } catch {
+    isDir = false;
+  }
+  if (!isDir) {
+    throw new Error(`Project directory does not exist: ${cwd}`);
+  }
+  return cwd;
+}
+
 function primeAgentLaunchArgs(
   provider: AcpAgentProvider,
   args: string[],
@@ -296,29 +361,4 @@ function primeAgentLaunchArgs(
 function supportsSessionResume(capabilities?: AgentCapabilities): boolean {
   const resume = capabilities?.sessionCapabilities?.resume;
   return resume != null && typeof resume === "object";
-}
-
-function normalizeSessionModes(response: Record<string, unknown>): AcpSessionModes | null {
-  const modes = response.modes;
-  if (modes && typeof modes === "object") {
-    const currentModeId = (modes as { currentModeId?: string }).currentModeId;
-    const availableModes = (modes as { availableModes?: Array<{ id: string; name: string }> }).availableModes;
-    if (currentModeId && availableModes?.length) {
-      return { currentModeId, availableModes };
-    }
-  }
-
-  const models = response.models;
-  if (models && typeof models === "object") {
-    const currentModelId = (models as { currentModelId?: string }).currentModelId;
-    const availableModels = (models as { availableModels?: Array<{ modelId: string; name: string }> }).availableModels;
-    if (currentModelId && availableModels?.length) {
-      return {
-        currentModeId: currentModelId,
-        availableModes: availableModels.map((entry) => ({ id: entry.modelId, name: entry.name }))
-      };
-    }
-  }
-
-  return null;
 }
