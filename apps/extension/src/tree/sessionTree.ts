@@ -16,6 +16,7 @@ import type { HerdrSessionMatch } from "../herdr/types";
 import { relativeTime } from "../util/relativeTime";
 import { ProjectSessionSortMode, projectTreeItemId, sortSessionsForProject } from "./projectSessionSort";
 import { DEFAULT_SECTION_ORDER, SectionKind } from "./sectionOrder";
+import { agentIconPath, fallbackProviderCodicon } from "../icons/agentIcons";
 
 type RootNode = RecentRootNode | FavoritesRootNode | ProjectsRootNode | WarningNode | EmptyNode;
 export type TreeNode =
@@ -117,7 +118,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private hasProjectNoteResolver: (projectPath: string) => boolean = () => false;
   private herdrMatchResolver: (session: AgentSession) => HerdrSessionMatch | undefined = () => undefined;
 
-  constructor(private readonly cursorIconPath?: vscode.Uri) {}
+  constructor(private readonly extensionUri?: vscode.Uri) {}
 
   setProjectSessionSortMode(resolver: (projectPath: string) => ProjectSessionSortMode): void {
     this.projectSessionSortMode = resolver;
@@ -169,7 +170,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
       gtdStatusResolver: (session) => this.gtdStatusResolver(session),
       hasSessionNoteResolver: (session) => this.hasSessionNoteResolver(session),
       herdrMatchResolver: (session) => this.herdrMatchResolver(session),
-      cursorIconPath: this.cursorIconPath
+      extensionUri: this.extensionUri
     };
   }
 
@@ -565,7 +566,7 @@ export interface SessionTreeItemOptions {
   gtdStatusResolver?: (session: AgentSession) => string | undefined;
   hasSessionNoteResolver?: (session: AgentSession) => boolean;
   herdrMatchResolver?: (session: AgentSession) => HerdrSessionMatch | undefined;
-  cursorIconPath?: vscode.Uri;
+  extensionUri?: vscode.Uri;
 }
 
 export function buildSessionTreeItem(session: AgentSession, options: SessionTreeItemOptions = {}): vscode.TreeItem {
@@ -581,7 +582,7 @@ export function buildSessionTreeItem(session: AgentSession, options: SessionTree
   );
   item.description = sessionDescription(session, hasNote, herdrMatch);
   item.tooltip = buildSessionTooltip(session, gtdStatus, hasNote, herdrMatch);
-  item.iconPath = sessionIconPath(session.provider, options.cursorIconPath);
+  item.iconPath = agentIconPath(options.extensionUri, session.provider, session.acpProvider);
   item.contextValue = `agentResume.session.${session.provider}`;
   item.command = {
     command: session.provider === "chat" ? "agentResume.openChatSession" : "agentResume.openSession",
@@ -845,44 +846,6 @@ export function providerLabel(provider: AgentSession["provider"]): string {
   return "claude";
 }
 
-function providerIcon(provider: AgentSession["provider"]): string {
-  if (provider === "chat") {
-    return "comment";
-  }
-  if (provider === "codex") {
-    return "hubot";
-  }
-  if (provider === "agy") {
-    return "sparkle";
-  }
-  if (provider === "grok") {
-    return "rocket";
-  }
-  if (provider === "opencode") {
-    return "terminal";
-  }
-  if (provider === "pi") {
-    return "symbol-method";
-  }
-  if (provider === "prime") {
-    return "sparkle";
-  }
-  if (provider === "omp") {
-    return "symbol-method";
-  }
-  if (provider === "cursor" || provider === "cursor-ide") {
-    return "window";
-  }
-  return "comment-discussion";
-}
-
-function sessionIconPath(provider: AgentSession["provider"], cursorIconPath?: vscode.Uri): vscode.ThemeIcon | vscode.Uri {
-  if ((provider === "cursor" || provider === "cursor-ide") && cursorIconPath) {
-    return cursorIconPath;
-  }
-  return new vscode.ThemeIcon(providerIcon(provider));
-}
-
 interface SearchSessionItem {
   provider: AgentSession["provider"];
   id: string;
@@ -975,15 +938,19 @@ export function enrichSearchSessionItem(session: AgentSession, tree: SessionTree
 
 export function sessionQuickPickLabel(
   session: AgentSession,
-  options?: { omitProjectPath?: boolean }
+  options?: { omitProjectPath?: boolean; extensionUri?: vscode.Uri }
 ): vscode.QuickPickItem & { session: AgentSession } {
   const linkSuffix = session.provider === "chat" && session.acpProvider ? ` · acp/${session.acpProvider}` : "";
   const detail = options?.omitProjectPath
     ? session.branch || undefined
     : `${compactPath(session.projectPath)}${session.branch ? ` · ${session.branch}` : ""}`;
+  const title = formatTitleWithMessageCount(session);
 
   return {
-    label: `$(${providerIcon(session.provider)}) ${formatTitleWithMessageCount(session)}`,
+    label: options?.extensionUri ? title : `$(${fallbackProviderCodicon(session.provider)}) ${title}`,
+    ...(options?.extensionUri
+      ? { iconPath: agentIconPath(options.extensionUri, session.provider, session.acpProvider) }
+      : {}),
     description: `${providerLabel(session.provider)}${linkSuffix}`,
     detail,
     session
