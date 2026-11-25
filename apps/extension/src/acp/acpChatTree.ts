@@ -4,7 +4,8 @@ import { basenameOrPath } from "../history/pathUtils";
 import { t } from "../i18n";
 import { formatProjectLabel } from "../projects/projectAliases";
 import { acpRelativeTime } from "../util/relativeTime";
-import { AcpAgentProvider, AcpSessionRecord } from "./types";
+import { agentIconPath } from "../icons/agentIcons";
+import { AcpSessionRecord } from "./types";
 
 type AcpChatTreeNode =
   | { kind: "recentRoot" }
@@ -24,6 +25,8 @@ export class AcpChatTreeProvider implements vscode.TreeDataProvider<AcpChatTreeN
   private warnings: string[] = [];
   private recentVisibleCount = recentInitialLimit;
   private projectAliasResolver: (projectPath: string) => string | undefined = () => undefined;
+
+  constructor(private readonly extensionUri?: vscode.Uri) {}
 
   setProjectAliasResolver(resolver: (projectPath: string) => string | undefined): void {
     this.projectAliasResolver = resolver;
@@ -99,7 +102,7 @@ export class AcpChatTreeProvider implements vscode.TreeDataProvider<AcpChatTreeN
         return item;
       }
       case "chat":
-        return chatItem(element.record, element.showProjectName, (path) => this.getProjectDisplayName(path));
+        return chatItem(element.record, element.showProjectName, (path) => this.getProjectDisplayName(path), this.extensionUri);
     }
   }
 
@@ -153,7 +156,8 @@ function buildAcpProjectTooltip(projectPath: string, alias?: string): string {
 function chatItem(
   record: AcpSessionRecord,
   showProjectName = false,
-  projectDisplayName: (projectPath: string) => string = basenameOrPath
+  projectDisplayName: (projectPath: string) => string = basenameOrPath,
+  extensionUri?: vscode.Uri
 ): vscode.TreeItem {
   const title = record.title || t("tree.acp.defaultTitle");
   const label = showProjectName ? `${projectDisplayName(record.projectPath)} · ${title}` : title;
@@ -169,7 +173,7 @@ function chatItem(
   ]
     .filter(Boolean)
     .join("\n");
-  item.iconPath = new vscode.ThemeIcon(providerIcon(record.provider));
+  item.iconPath = agentIconPath(extensionUri, record.provider);
   item.contextValue = `agentResume.acpChat.${record.provider}`;
   item.command = {
     command: "agentResume.openAcpChat",
@@ -195,27 +199,6 @@ function groupByProject(records: AcpSessionRecord[]): AcpChatTreeNode[] {
       records: projectRecords.sort((a, b) => b.updatedAt - a.updatedAt)
     }))
     .sort((a, b) => (b.records[0]?.updatedAt ?? 0) - (a.records[0]?.updatedAt ?? 0) || a.projectPath.localeCompare(b.projectPath));
-}
-
-function providerIcon(provider: AcpAgentProvider): string {
-  switch (provider) {
-    case "codex":
-      return "hubot";
-    case "claude":
-      return "comment-discussion";
-    case "grok":
-      return "rocket";
-    case "opencode":
-      return "terminal";
-    case "pi":
-      return "symbol-method";
-    case "prime":
-      return "sparkle";
-    case "omp":
-      return "symbol-method";
-    default:
-      return "comment";
-  }
 }
 
 function isAcpChatNode(value: unknown): value is { kind: "chat"; record: AcpSessionRecord } {

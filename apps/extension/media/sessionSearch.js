@@ -15,6 +15,10 @@
   let previewLoadingKey = null;
   /** @type {{ provider: string, id: string } | null} */
   let activePreviewSession = null;
+  let previewRenderMode = "markdown";
+  let previewMessagesData = [];
+  let previewSummaryState = { text: "", isError: false, visible: false };
+  const markdownHelper = window.AgentResumePreviewMarkdown;
   const PAGE_SIZE = 50;
   const searchInput = document.getElementById("search");
   const chipsEl = document.getElementById("chips");
@@ -26,6 +30,10 @@
   const previewNotice = document.getElementById("preview-notice");
   const previewSummary = document.getElementById("preview-summary");
   const previewMessages = document.getElementById("preview-messages");
+  const previewBody = document.getElementById("preview-body") || previewMessages;
+  const previewModeToggle = document.getElementById("preview-mode-toggle");
+  const previewModeMarkdown = document.getElementById("preview-mode-markdown");
+  const previewModeRaw = document.getElementById("preview-mode-raw");
   const previewResume = document.getElementById("preview-resume");
   const previewResumeWith = document.getElementById("preview-resume-with");
   const previewSummarize = document.getElementById("preview-summarize");
@@ -65,6 +73,17 @@
       previewClose.textContent = previewUiStrings.buttonClose || "Close";
       previewClose.setAttribute("aria-label", previewUiStrings.ariaClose || "Close preview");
     }
+    if (previewModeToggle) {
+      previewModeToggle.setAttribute("aria-label", previewUiStrings.ariaRenderMode || "Preview display format");
+    }
+    if (previewModeMarkdown) {
+      previewModeMarkdown.textContent = previewUiStrings.modeMarkdown || "Markdown";
+      previewModeMarkdown.setAttribute("aria-label", previewUiStrings.ariaModeMarkdown || "Switch to Markdown preview");
+    }
+    if (previewModeRaw) {
+      previewModeRaw.textContent = previewUiStrings.modeRaw || "Raw";
+      previewModeRaw.setAttribute("aria-label", previewUiStrings.ariaModeRaw || "Switch to raw text");
+    }
   }
 
   function applyStaticUi() {
@@ -89,6 +108,66 @@
     searchDebounceTimer = setTimeout(() => {
       requestPage(0);
     }, 150);
+  });
+
+  function normalizeMode(mode) {
+    return markdownHelper ? markdownHelper.normalizeMode(mode) : mode === "raw" ? "raw" : "markdown";
+  }
+
+  function applyFormattedText(el, text) {
+    if (markdownHelper) {
+      markdownHelper.applyFormattedText(el, text, previewRenderMode);
+      return;
+    }
+    el.classList.remove("markdown-body");
+    el.textContent = typeof text === "string" ? text : "";
+  }
+
+  function updateRenderModeButtons() {
+    const isMarkdown = previewRenderMode === "markdown";
+    if (previewModeMarkdown) {
+      previewModeMarkdown.classList.toggle("active", isMarkdown);
+      previewModeMarkdown.setAttribute("aria-pressed", String(isMarkdown));
+    }
+    if (previewModeRaw) {
+      previewModeRaw.classList.toggle("active", !isMarkdown);
+      previewModeRaw.setAttribute("aria-pressed", String(!isMarkdown));
+    }
+  }
+
+  function setPreviewRenderMode(nextMode, persist) {
+    const normalized = normalizeMode(nextMode);
+    if (normalized === previewRenderMode) {
+      updateRenderModeButtons();
+      return;
+    }
+
+    const maxScroll = Math.max(0, previewBody.scrollHeight - previewBody.clientHeight);
+    const scrollRatio = maxScroll > 0 ? previewBody.scrollTop / maxScroll : 0;
+
+    previewRenderMode = normalized;
+    updateRenderModeButtons();
+    renderPreviewMessages();
+    if (previewSummaryState.visible) {
+      renderSummary(previewSummaryState.text, previewSummaryState.isError);
+    }
+
+    const nextMaxScroll = Math.max(0, previewBody.scrollHeight - previewBody.clientHeight);
+    if (nextMaxScroll > 0 && scrollRatio > 0) {
+      previewBody.scrollTop = Math.round(scrollRatio * nextMaxScroll);
+    }
+
+    if (persist) {
+      vscode.postMessage({ type: "setPreviewRenderMode", mode: previewRenderMode });
+    }
+  }
+
+  previewModeMarkdown?.addEventListener("click", () => {
+    setPreviewRenderMode("markdown", true);
+  });
+
+  previewModeRaw?.addEventListener("click", () => {
+    setPreviewRenderMode("raw", true);
   });
 
   previewResume.addEventListener("click", () => {
@@ -523,21 +602,34 @@
 
   function showPreview(message) {
     activePreviewSession = { provider: message.provider, id: message.id };
+    previewRenderMode = normalizeMode(message.renderMode);
+    updateRenderModeButtons();
     previewRename.disabled = false;
     applyResumeActions(message.showResumeWith !== false);
     applyLlmActions(message.llmConfigured === true, message.showHandoff === true);
     renderNotices(message);
     previewTitle.textContent = message.title || previewUiStrings.defaultTitle || "Session Preview";
-    previewMessages.innerHTML = "";
+    previewMessagesData = Array.isArray(message.messages) ? message.messages : [];
 
     if (message.cachedSummary) {
       renderSummary(message.cachedSummary);
     } else {
+      previewSummaryState = { text: "", isError: false, visible: false };
       previewSummary.classList.add("hidden");
+      previewSummary.classList.remove("markdown-body");
       previewSummary.textContent = "";
     }
 
-    for (const entry of message.messages || []) {
+    renderPreviewMessages();
+
+    previewOverlay.classList.remove("hidden");
+    previewOverlay.setAttribute("aria-hidden", "false");
+    previewBody.scrollTop = 0;
+  }
+
+  function renderPreviewMessages() {
+    previewMessages.innerHTML = "";
+    for (const entry of previewMessagesData) {
       const block = document.createElement("div");
       block.className = `preview-message ${entry.role}`;
 
@@ -550,19 +642,18 @@
 
       const text = document.createElement("div");
       text.className = "preview-text";
-      text.textContent = entry.text;
+      applyFormattedText(text, entry.text);
 
       block.appendChild(role);
       block.appendChild(text);
       previewMessages.appendChild(block);
     }
-
-    previewOverlay.classList.remove("hidden");
-    previewOverlay.setAttribute("aria-hidden", "false");
   }
 
   function closePreview() {
     activePreviewSession = null;
+    previewMessagesData = [];
+    previewSummaryState = { text: "", isError: false, visible: false };
     previewRename.disabled = false;
     setAiButtonsDisabled(false);
     applyResumeActions(true);
@@ -570,15 +661,22 @@
     previewNotice.innerHTML = "";
     previewNotice.classList.add("hidden");
     previewSummary.classList.add("hidden");
+    previewSummary.classList.remove("markdown-body");
     previewOverlay.classList.add("hidden");
     previewOverlay.setAttribute("aria-hidden", "true");
     vscode.postMessage({ type: "previewClosed" });
   }
 
   function renderSummary(text, isError) {
-    previewSummary.textContent = text;
+    previewSummaryState = { text: typeof text === "string" ? text : "", isError: Boolean(isError), visible: true };
+    if (previewSummaryState.isError) {
+      previewSummary.classList.remove("markdown-body");
+      previewSummary.textContent = previewSummaryState.text;
+    } else {
+      applyFormattedText(previewSummary, previewSummaryState.text);
+    }
     previewSummary.classList.remove("hidden");
-    previewSummary.classList.toggle("preview-summary-error", Boolean(isError));
+    previewSummary.classList.toggle("preview-summary-error", previewSummaryState.isError);
   }
 
   function applyResumeActions(showResumeWith) {

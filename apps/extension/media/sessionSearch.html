@@ -8,6 +8,7 @@
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="{{styleUri}}" />
+    <link rel="stylesheet" href="{{markdownStyleUri}}" />
   </head>
   <body>
     <div class="panel">
@@ -34,7 +35,16 @@
     <div id="preview-overlay" class="preview-overlay hidden" aria-hidden="true">
       <div class="preview-card">
         <div class="preview-header">
-          <div id="preview-title" class="preview-title"></div>
+          <div class="preview-header-top">
+            <div id="preview-title" class="preview-title"></div>
+            <div class="preview-header-controls">
+              <div id="preview-mode-toggle" class="preview-mode-toggle" role="group" aria-label="Preview display format">
+                <button id="preview-mode-markdown" type="button" class="preview-mode-btn active" data-mode="markdown" aria-pressed="true">Markdown</button>
+                <button id="preview-mode-raw" type="button" class="preview-mode-btn" data-mode="raw" aria-pressed="false">Raw</button>
+              </div>
+              <button id="preview-close" type="button" class="preview-action preview-action-close" aria-label="Close preview">Close</button>
+            </div>
+          </div>
           <div class="preview-actions">
             <button id="preview-resume" type="button" class="preview-action preview-action-primary" aria-label="Resume session">Resume</button>
             <button id="preview-resume-with" type="button" class="preview-action" aria-label="Resume session with">Resume with…</button>
@@ -42,14 +52,18 @@
             <button id="preview-auto-rename" type="button" class="preview-action hidden" aria-label="Auto rename session">Auto Rename</button>
             <button id="preview-handoff" type="button" class="preview-action hidden" aria-label="Hand off to another agent">Hand Off to…</button>
             <button id="preview-rename" type="button" class="preview-action" aria-label="Rename session">Rename</button>
-            <button id="preview-close" type="button" class="preview-action" aria-label="Close preview">Close</button>
           </div>
         </div>
-        <div id="preview-notice" class="preview-notice hidden"></div>
-        <div id="preview-summary" class="preview-summary hidden"></div>
-        <div id="preview-messages" class="preview-messages"></div>
+        <div id="preview-body" class="preview-body">
+          <div id="preview-notice" class="preview-notice hidden"></div>
+          <div id="preview-summary" class="preview-summary hidden"></div>
+          <div id="preview-messages" class="preview-messages"></div>
+        </div>
       </div>
     </div>
+    <script nonce="{{nonce}}" src="{{markedUri}}"></script>
+    <script nonce="{{nonce}}" src="{{purifyUri}}"></script>
+    <script nonce="{{nonce}}" src="{{markdownScriptUri}}"></script>
     <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
   </body>
 </html>

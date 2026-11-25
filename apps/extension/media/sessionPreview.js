@@ -2,11 +2,19 @@
   const vscode = acquireVsCodeApi();
 
   let uiStrings = {};
+  let renderMode = "markdown";
+  let currentMessages = [];
+  let currentSummary = { text: "", isError: false, visible: false };
+  const markdownHelper = window.AgentResumePreviewMarkdown;
 
   const previewTitle = document.getElementById("preview-title");
   const previewNotice = document.getElementById("preview-notice");
   const previewSummary = document.getElementById("preview-summary");
   const previewMessages = document.getElementById("preview-messages");
+  const previewBody = document.getElementById("preview-body") || previewMessages;
+  const previewModeToggle = document.getElementById("preview-mode-toggle");
+  const previewModeMarkdown = document.getElementById("preview-mode-markdown");
+  const previewModeRaw = document.getElementById("preview-mode-raw");
   const previewResume = document.getElementById("preview-resume");
   const previewResumeWith = document.getElementById("preview-resume-with");
   const previewSummarize = document.getElementById("preview-summarize");
@@ -44,6 +52,17 @@
       previewClose.textContent = uiStrings.buttonClose || "Close";
       previewClose.setAttribute("aria-label", uiStrings.ariaClose || "Close preview");
     }
+    if (previewModeToggle) {
+      previewModeToggle.setAttribute("aria-label", uiStrings.ariaRenderMode || "Preview display format");
+    }
+    if (previewModeMarkdown) {
+      previewModeMarkdown.textContent = uiStrings.modeMarkdown || "Markdown";
+      previewModeMarkdown.setAttribute("aria-label", uiStrings.ariaModeMarkdown || "Switch to Markdown preview");
+    }
+    if (previewModeRaw) {
+      previewModeRaw.textContent = uiStrings.modeRaw || "Raw";
+      previewModeRaw.setAttribute("aria-label", uiStrings.ariaModeRaw || "Switch to raw text");
+    }
     const loadingEl = document.querySelector(".preview-loading");
     if (loadingEl) {
       loadingEl.textContent = uiStrings.loadingConversation || loadingEl.textContent;
@@ -52,6 +71,66 @@
       previewTitle.textContent = uiStrings.loadingTitle || previewTitle.textContent;
     }
   }
+
+  function normalizeMode(mode) {
+    return markdownHelper ? markdownHelper.normalizeMode(mode) : mode === "raw" ? "raw" : "markdown";
+  }
+
+  function applyFormattedText(el, text) {
+    if (markdownHelper) {
+      markdownHelper.applyFormattedText(el, text, renderMode);
+      return;
+    }
+    el.classList.remove("markdown-body");
+    el.textContent = typeof text === "string" ? text : "";
+  }
+
+  function updateRenderModeButtons() {
+    const isMarkdown = renderMode === "markdown";
+    if (previewModeMarkdown) {
+      previewModeMarkdown.classList.toggle("active", isMarkdown);
+      previewModeMarkdown.setAttribute("aria-pressed", String(isMarkdown));
+    }
+    if (previewModeRaw) {
+      previewModeRaw.classList.toggle("active", !isMarkdown);
+      previewModeRaw.setAttribute("aria-pressed", String(!isMarkdown));
+    }
+  }
+
+  function setRenderMode(nextMode, persist) {
+    const normalized = normalizeMode(nextMode);
+    if (normalized === renderMode) {
+      updateRenderModeButtons();
+      return;
+    }
+
+    const maxScroll = Math.max(0, previewBody.scrollHeight - previewBody.clientHeight);
+    const scrollRatio = maxScroll > 0 ? previewBody.scrollTop / maxScroll : 0;
+
+    renderMode = normalized;
+    updateRenderModeButtons();
+    renderMessages();
+    if (currentSummary.visible) {
+      renderSummary(currentSummary.text, currentSummary.isError);
+    }
+
+    const nextMaxScroll = Math.max(0, previewBody.scrollHeight - previewBody.clientHeight);
+    if (nextMaxScroll > 0 && scrollRatio > 0) {
+      previewBody.scrollTop = Math.round(scrollRatio * nextMaxScroll);
+    }
+
+    if (persist) {
+      vscode.postMessage({ type: "setPreviewRenderMode", mode: renderMode });
+    }
+  }
+
+  previewModeMarkdown?.addEventListener("click", () => {
+    setRenderMode("markdown", true);
+  });
+
+  previewModeRaw?.addEventListener("click", () => {
+    setRenderMode("raw", true);
+  });
 
   previewResume.addEventListener("click", () => {
     vscode.postMessage({ type: "resume" });
@@ -98,6 +177,9 @@
       previewTitle.textContent = uiStrings.failedTitle || "Preview failed";
       previewNotice.classList.add("hidden");
       previewSummary.classList.add("hidden");
+      previewSummary.classList.remove("markdown-body");
+      currentSummary = { text: "", isError: false, visible: false };
+      currentMessages = [];
       previewMessages.innerHTML = "";
       const error = document.createElement("div");
       error.className = "preview-error";
@@ -155,8 +237,10 @@
   });
 
   function renderPreview(message) {
+    renderMode = normalizeMode(message.renderMode);
+    updateRenderModeButtons();
     previewTitle.textContent = message.title || uiStrings.defaultTitle || "Session Preview";
-    previewMessages.innerHTML = "";
+    currentMessages = Array.isArray(message.messages) ? message.messages : [];
     applyResumeActions(message.showResumeWith !== false);
     applyLlmActions(message.llmConfigured === true, message.showHandoff === true);
     renderNotices(message);
@@ -164,11 +248,18 @@
     if (message.cachedSummary) {
       renderSummary(message.cachedSummary);
     } else {
+      currentSummary = { text: "", isError: false, visible: false };
       previewSummary.classList.add("hidden");
+      previewSummary.classList.remove("markdown-body");
       previewSummary.textContent = "";
     }
 
-    for (const entry of message.messages || []) {
+    renderMessages();
+  }
+
+  function renderMessages() {
+    previewMessages.innerHTML = "";
+    for (const entry of currentMessages) {
       const block = document.createElement("div");
       block.className = `preview-message ${entry.role}`;
 
@@ -181,7 +272,7 @@
 
       const text = document.createElement("div");
       text.className = "preview-text";
-      text.textContent = entry.text;
+      applyFormattedText(text, entry.text);
 
       block.appendChild(role);
       block.appendChild(text);
@@ -236,9 +327,15 @@
   }
 
   function renderSummary(text, isError) {
-    previewSummary.textContent = text;
+    currentSummary = { text: typeof text === "string" ? text : "", isError: Boolean(isError), visible: true };
+    if (currentSummary.isError) {
+      previewSummary.classList.remove("markdown-body");
+      previewSummary.textContent = currentSummary.text;
+    } else {
+      applyFormattedText(previewSummary, currentSummary.text);
+    }
     previewSummary.classList.remove("hidden");
-    previewSummary.classList.toggle("preview-summary-error", Boolean(isError));
+    previewSummary.classList.toggle("preview-summary-error", currentSummary.isError);
   }
 
   function applyResumeActions(showResumeWith) {

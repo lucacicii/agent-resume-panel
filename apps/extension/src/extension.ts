@@ -27,6 +27,7 @@ import { menuCommand } from "./i18n/menuCommands";
 import { registerLocalizedUiRefreshTargets, refreshAllLocalizedUi } from "./i18n/refresh";
 import { applyUiLocaleContext } from "./i18n/uiLocaleContext";
 import { truncateText } from "./util/dialogText";
+import { agentIconPath } from "./icons/agentIcons";
 import { openCodexAppProject } from "./terminal/codexApp";
 import { openInGhostty, openProjectInGhostty } from "./terminal/ghosttyTerminal";
 import { HerdrSessionTracker } from "./herdr/herdrSessionTracker";
@@ -195,8 +196,8 @@ function normalizePathForMatch(dir?: string): string {
 export function activate(context: vscode.ExtensionContext): AgentResumePanelApi {
   extensionContext = context;
   void promptReloadIfContributionsStale(context);
-  const tree = new SessionTreeProvider(vscode.Uri.joinPath(context.extensionUri, "resources", "cursor.svg"));
-  const acpTree = new AcpChatTreeProvider();
+  const tree = new SessionTreeProvider(context.extensionUri);
+  const acpTree = new AcpChatTreeProvider(context.extensionUri);
   const catalogDbPath = loadCatalogSettings().dbPath;
   projectAliasStore = new ProjectAliasStore(catalogDbPath);
   sessionGtdStore = new SessionGtdStore(catalogDbPath);
@@ -370,7 +371,9 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
     ),
     vscode.commands.registerCommand("agentResume.newSession", () => newSessionInCurrentWorkspace(context, tree)),
     vscode.commands.registerCommand("agentResume.newSessionFromEditor", () => newSessionFromEditor(context, tree)),
-    vscode.commands.registerCommand("agentResume.newAcpChat", () => openNewAcpChat(acpTree, acpChatManager)),
+    vscode.commands.registerCommand("agentResume.newAcpChat", () =>
+      openNewAcpChat(acpTree, acpChatManager, context.extensionUri)
+    ),
     ...menuCommand("agentResume.openSession", (nodeOrSession?: unknown) => {
       const session = resolveSession(tree, nodeOrSession);
       if (session) {
@@ -384,7 +387,7 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
       void openAcpChat(acpTree, nodeOrSession, acpChatManager);
     }),
     ...menuCommand("agentResume.newChatSession", (node?: unknown) =>
-      void openNewChatSession(acpTree, tree, node, acpChatManager)
+      void openNewChatSession(acpTree, tree, node, acpChatManager, context.extensionUri)
     ),
     vscode.commands.registerCommand("agentResume.renameAcpChat", (nodeOrRecord?: unknown) =>
       renameAcpChatCommand(acpTree, nodeOrRecord, () => refreshAcpChats(acpTree, false))
@@ -1039,13 +1042,17 @@ async function openAcpChatById(chatId: string, acpChatManager: AcpChatManager): 
   acpChatManager.open(record);
 }
 
-async function openNewAcpChat(acpTree: AcpChatTreeProvider, acpChatManager: AcpChatManager): Promise<void> {
+async function openNewAcpChat(
+  acpTree: AcpChatTreeProvider,
+  acpChatManager: AcpChatManager,
+  extensionUri?: vscode.Uri
+): Promise<void> {
   const projectPath = await pickWorkspaceProject();
   if (!projectPath) {
     return;
   }
 
-  const provider = await pickAcpAgentProvider();
+  const provider = await pickAcpAgentProvider(extensionUri);
   if (!provider) {
     return;
   }
@@ -1059,7 +1066,8 @@ async function openNewChatSession(
   acpTree: AcpChatTreeProvider,
   cliTree: SessionTreeProvider,
   node: unknown,
-  acpChatManager: AcpChatManager
+  acpChatManager: AcpChatManager,
+  extensionUri?: vscode.Uri
 ): Promise<void> {
   const projectPath =
     acpTree.getProjectFromNode(node) ?? cliTree.getProjectFromNode(node) ?? (await pickWorkspaceProject());
@@ -1067,7 +1075,7 @@ async function openNewChatSession(
     return;
   }
 
-  const provider = await pickAcpAgentProvider();
+  const provider = await pickAcpAgentProvider(extensionUri);
   if (!provider) {
     return;
   }
@@ -1105,7 +1113,7 @@ async function resolveProjectForNewSession(): Promise<string | undefined> {
 }
 
 async function newSessionInCurrentWorkspace(context: vscode.ExtensionContext, tree: SessionTreeProvider): Promise<void> {
-  const target = await pickNewSessionTarget();
+  const target = await pickNewSessionTarget(context.extensionUri);
   if (!target) {
     return;
   }
@@ -1129,57 +1137,71 @@ async function newSessionInCurrentWorkspace(context: vscode.ExtensionContext, tr
   void tree;
 }
 
-async function pickNewSessionTarget(): Promise<NewSessionTarget | undefined> {
-  const picked = await vscode.window.showQuickPick(
+function stripCodiconPrefix(label: string): string {
+  return label.replace(/^\$\([^)]+\)\s*/, "");
+}
+
+async function pickNewSessionTarget(extensionUri?: vscode.Uri): Promise<NewSessionTarget | undefined> {
+  const picked = await vscode.window.showQuickPick<vscode.QuickPickItem & { provider: NewSessionTarget }>(
     [
       {
-        label: t("quickpick.newSessionCodexLabel"),
+        label: stripCodiconPrefix(t("quickpick.newSessionCodexLabel")),
         description: t("quickpick.newSessionCodexDescription"),
+        iconPath: agentIconPath(extensionUri, "codex"),
         provider: "codex" as const
       },
       {
-        label: t("quickpick.newSessionClaudeLabel"),
+        label: stripCodiconPrefix(t("quickpick.newSessionClaudeLabel")),
         description: t("quickpick.newSessionClaudeDescription"),
+        iconPath: agentIconPath(extensionUri, "claude"),
         provider: "claude" as const
       },
       {
-        label: t("quickpick.newSessionAgyLabel"),
+        label: stripCodiconPrefix(t("quickpick.newSessionAgyLabel")),
         description: t("quickpick.newSessionAgyDescription"),
+        iconPath: agentIconPath(extensionUri, "agy"),
         provider: "agy" as const
       },
       {
-        label: t("quickpick.newSessionGrokLabel"),
+        label: stripCodiconPrefix(t("quickpick.newSessionGrokLabel")),
         description: t("quickpick.newSessionGrokDescription"),
+        iconPath: agentIconPath(extensionUri, "grok"),
         provider: "grok" as const
       },
       {
-        label: t("quickpick.newSessionOpenCodeLabel"),
+        label: stripCodiconPrefix(t("quickpick.newSessionOpenCodeLabel")),
         description: t("quickpick.newSessionOpenCodeDescription"),
+        iconPath: agentIconPath(extensionUri, "opencode"),
         provider: "opencode" as const
       },
       {
-        label: t("quickpick.newSessionPiLabel"),
+        label: stripCodiconPrefix(t("quickpick.newSessionPiLabel")),
         description: t("quickpick.newSessionPiDescription"),
+        iconPath: agentIconPath(extensionUri, "pi"),
         provider: "pi" as const
       },
       {
-        label: t("quickpick.newSessionPrimeLabel"),
+        label: stripCodiconPrefix(t("quickpick.newSessionPrimeLabel")),
         description: t("quickpick.newSessionPrimeDescription"),
+        iconPath: agentIconPath(extensionUri, "prime"),
         provider: "prime" as const
       },
       {
-        label: t("quickpick.newSessionOmpLabel"),
+        label: stripCodiconPrefix(t("quickpick.newSessionOmpLabel")),
         description: t("quickpick.newSessionOmpDescription"),
+        iconPath: agentIconPath(extensionUri, "omp"),
         provider: "omp" as const
       },
       {
         label: "Cursor CLI",
         description: "Start a Cursor agent session in the selected workspace",
+        iconPath: agentIconPath(extensionUri, "cursor"),
         provider: "cursor" as const
       },
       {
-        label: t("quickpick.newSessionCodexAppLabel"),
+        label: stripCodiconPrefix(t("quickpick.newSessionCodexAppLabel")),
         description: t("quickpick.newSessionCodexAppDescription"),
+        iconPath: agentIconPath(extensionUri, "codex"),
         provider: "codexApp" as const
       },
       {
@@ -1362,8 +1384,9 @@ async function resolveOpenFolderSession(
     return undefined;
   }
 
+  const extensionUri = tree.getSessionTreeItemOptions().extensionUri;
   const picked = await vscode.window.showQuickPick(
-    projectSessions.map((session) => sessionQuickPickLabel(session)),
+    projectSessions.map((session) => sessionQuickPickLabel(session, { extensionUri })),
     {
       title: t("quickpick.selectSessionToResumeTitle"),
       matchOnDescription: true,

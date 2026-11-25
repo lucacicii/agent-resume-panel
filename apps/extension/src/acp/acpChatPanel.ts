@@ -2,6 +2,7 @@ import * as crypto from "node:crypto";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { expandHome } from "../history/pathUtils";
+import { agentUriIconPath } from "../icons/agentIcons";
 import { AcpAgentConnection, AcpPromptBlock } from "./agentConnection";
 import { subscribeSessionUpdates, clearSessionUpdateListeners } from "./sessionUpdateBus";
 import {
@@ -110,6 +111,9 @@ export class AcpChatPanel {
       );
     }
 
+    this.panel.iconPath =
+      agentUriIconPath(this.context.extensionUri, this.record.provider) ??
+      vscode.Uri.joinPath(this.context.extensionUri, "resources", "agent-resume.svg");
     this.panel.webview.html = this.renderHtml();
     this.panel.webview.onDidReceiveMessage((message) => void this.handleMessage(message));
     this.panel.onDidDispose(() => this.dispose());

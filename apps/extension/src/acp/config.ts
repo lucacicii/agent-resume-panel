@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { t } from "../i18n";
 import { expandHome } from "../history/pathUtils";
+import { agentIconPath } from "../icons/agentIcons";
 import { ACP_AGENT_OPTIONS, DEFAULT_ACP_AGENT_LAUNCH } from "./agentRegistry";
 import { AcpAgentLaunchConfig, AcpAgentProvider } from "./types";
 
@@ -35,20 +36,25 @@ const ACP_AGENT_I18N_KEYS: Record<AcpAgentProvider, { label: string; description
   omp: { label: "quickpick.acpAgentOmpLabel", description: "quickpick.acpAgentOmpDescription" }
 };
 
-function buildAcpAgentOptions(): Array<{
-  label: string;
-  description: string;
-  provider: AcpAgentProvider;
-}> {
+function stripCodiconPrefix(label: string): string {
+  return label.replace(/^\$\([^)]+\)\s*/, "");
+}
+
+function buildAcpAgentOptions(extensionUri?: vscode.Uri): Array<
+  vscode.QuickPickItem & {
+    provider: AcpAgentProvider;
+  }
+> {
   return ACP_AGENT_OPTIONS.map((option) => ({
     provider: option.provider,
-    label: t(ACP_AGENT_I18N_KEYS[option.provider].label),
-    description: t(ACP_AGENT_I18N_KEYS[option.provider].description)
+    label: stripCodiconPrefix(t(ACP_AGENT_I18N_KEYS[option.provider].label)),
+    description: t(ACP_AGENT_I18N_KEYS[option.provider].description),
+    iconPath: agentIconPath(extensionUri, option.provider)
   }));
 }
 
-export async function pickAcpAgentProvider(): Promise<AcpAgentProvider | undefined> {
-  const picked = await vscode.window.showQuickPick(buildAcpAgentOptions(), {
+export async function pickAcpAgentProvider(extensionUri?: vscode.Uri): Promise<AcpAgentProvider | undefined> {
+  const picked = await vscode.window.showQuickPick(buildAcpAgentOptions(extensionUri), {
     title: t("quickpick.acpAgentTitle"),
     placeHolder: t("quickpick.acpAgentPlaceHolder")
   });

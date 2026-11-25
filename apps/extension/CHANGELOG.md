@@ -8,6 +8,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.15.0]
+
+#### 新增
+
+- **Agent 官方图标**：为 Codex、Claude、Antigravity、Grok、OpenCode、Pi、Prime Agent、OMP 与 Cursor 接入官方 SVG 图标，并为单色图标提供浅色/深色主题双版本，覆盖会话树、GTD 树、ACP 对话树、ACP 面板标签页及 QuickPick 选择器。
+- **会话预览 Markdown/原文切换**：支持在会话预览面板中切换渲染后的 Markdown 与原始文本视图，并优化预览排版布局。
+- **Antigravity IDE 本地安装脚本**：新增 `pnpm run install:local-antigravity`，并让 `install:local` 自动识别 Antigravity IDE CLI。
+
 ### [2.14.2]
 
 #### 修复
@@ -553,6 +561,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.15.0]
+
+#### Added
+
+- **Official agent SVG icons**: Replaced placeholder codicons with official brand SVGs for Codex, Claude, Antigravity, Grok, OpenCode, Pi, Prime Agent, OMP, and Cursor (with light/dark theme pairs for monochrome marks) across Session, GTD, and ACP trees, ACP Chat panel tabs, and QuickPick menus.
+- **Session preview Markdown/Raw toggle**: Added a Markdown/raw source view toggle in the session preview panel with refined preview layout.
+- **Antigravity IDE local install script**: Added `pnpm run install:local-antigravity` and auto-detection of Antigravity IDE in `install:local`.
 
 ### [2.14.2]
 
