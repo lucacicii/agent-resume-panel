@@ -4,6 +4,8 @@
   const ROW_HEIGHT = 64;
   const PAGE_SIZE = 200;
   let uiStrings = {};
+  /** @type {Record<string, string | { light: string, dark: string }>} */
+  let providerIcons = {};
   /** @type {{ sessions: Array<{provider:string,id:string,title:string,projectPath:string,projectName:string,updatedAtMs:number,updatedAtLabel:string,subtitle:string,gtdStatus?:string,gtdStatusLabel?:string}>, stats: {total:number, withSummary:number, byProvider: Record<string, number>}, gtdStatuses: Array<{status:string,label:string,count?:number}>, untaggedCount: number, filteredTotal: number, hasMore: boolean }} */
   let state = { sessions: [], stats: { total: 0, withSummary: 0, byProvider: {} }, gtdStatuses: [], untaggedCount: 0, filteredTotal: 0, hasMore: false };
 
@@ -122,6 +124,7 @@
         selected.delete(sessionKey(session));
       }
     }
+    updateBulkActionState();
     renderRows();
   });
 
@@ -153,6 +156,7 @@
     const message = event.data;
     if (message.type === "init") {
       uiStrings = message.uiStrings || {};
+      providerIcons = message.providerIcons || {};
       applyStaticUi();
       const incoming = message.sessions || [];
       const stats = message.stats || { total: 0, withSummary: 0, byProvider: {} };
@@ -173,6 +177,7 @@
       selectedGtdFilter = null;
       selected.clear();
       selectAllEl.checked = false;
+      updateBulkActionState();
       renderProviderFilters();
       renderGtdFilters();
       render();
@@ -185,6 +190,7 @@
       state.sessions = message.append ? state.sessions.concat(next) : next;
       state.filteredTotal = typeof message.total === "number" ? message.total : state.sessions.length;
       state.hasMore = Boolean(message.hasMore);
+      updateBulkActionState();
       render();
       return;
     }
@@ -196,6 +202,7 @@
       }
       selected.clear();
       selectAllEl.checked = false;
+      updateBulkActionState();
       render();
     }
   });
@@ -231,6 +238,48 @@
 
   function sessionKey(session) {
     return `${session.provider}:${session.id}`;
+  }
+
+  function updateBulkActionState() {
+    if (removeBtn) {
+      removeBtn.disabled = selected.size === 0;
+    }
+    if (selectAllEl) {
+      selectAllEl.checked =
+        state.sessions.length > 0 && state.sessions.every((session) => selected.has(sessionKey(session)));
+    }
+  }
+
+  function appendProviderIcon(container, provider) {
+    const entry = providerIcons[provider];
+    if (!entry) {
+      return;
+    }
+    if (typeof entry === "string") {
+      const img = document.createElement("img");
+      img.className = "provider-icon";
+      img.src = entry;
+      img.alt = "";
+      img.setAttribute("aria-hidden", "true");
+      container.appendChild(img);
+      return;
+    }
+    if (entry.light) {
+      const imgLight = document.createElement("img");
+      imgLight.className = "provider-icon provider-icon-light";
+      imgLight.src = entry.light;
+      imgLight.alt = "";
+      imgLight.setAttribute("aria-hidden", "true");
+      container.appendChild(imgLight);
+    }
+    if (entry.dark) {
+      const imgDark = document.createElement("img");
+      imgDark.className = "provider-icon provider-icon-dark";
+      imgDark.src = entry.dark;
+      imgDark.alt = "";
+      imgDark.setAttribute("aria-hidden", "true");
+      container.appendChild(imgDark);
+    }
   }
 
 
@@ -287,20 +336,36 @@
     providerFiltersEl.innerHTML = "";
     const providers = Object.keys(state.stats.byProvider || {}).sort();
     for (const provider of providers) {
+      const checked = enabledProviders.has(provider);
       const label = document.createElement("label");
+      label.className = "provider-pill" + (checked ? " active" : "");
+
       const input = document.createElement("input");
       input.type = "checkbox";
-      input.checked = enabledProviders.has(provider);
+      input.className = "sr-only";
+      input.checked = checked;
       input.addEventListener("change", () => {
         if (input.checked) {
           enabledProviders.add(provider);
         } else {
           enabledProviders.delete(provider);
         }
+        label.classList.toggle("active", input.checked);
         requestPage(0);
       });
+
       label.appendChild(input);
-      label.appendChild(document.createTextNode(`${provider} (${state.stats.byProvider[provider]})`));
+      appendProviderIcon(label, provider);
+
+      const name = document.createElement("span");
+      name.textContent = provider;
+      label.appendChild(name);
+
+      const count = document.createElement("span");
+      count.className = "pill-count";
+      count.textContent = String(state.stats.byProvider[provider]);
+      label.appendChild(count);
+
       providerFiltersEl.appendChild(label);
     }
   }
@@ -341,21 +406,26 @@
 
     for (let index = start; index < end; index++) {
       const session = filtered[index];
+      const key = sessionKey(session);
+      const isSelected = selected.has(key);
+
       const row = document.createElement("div");
-      row.className = "row";
+      row.className = "row" + (isSelected ? " selected" : "");
 
       const top = document.createElement("div");
       top.className = "row-top";
 
       const check = document.createElement("input");
       check.type = "checkbox";
-      check.checked = selected.has(sessionKey(session));
+      check.checked = isSelected;
       check.addEventListener("change", () => {
         if (check.checked) {
-          selected.add(sessionKey(session));
+          selected.add(key);
         } else {
-          selected.delete(sessionKey(session));
+          selected.delete(key);
         }
+        row.classList.toggle("selected", check.checked);
+        updateBulkActionState();
       });
 
       const badgeCol = document.createElement("div");
@@ -363,7 +433,11 @@
 
       const badge = document.createElement("span");
       badge.className = "badge";
-      badge.textContent = session.provider;
+      appendProviderIcon(badge, session.provider);
+      const badgeText = document.createElement("span");
+      badgeText.className = "badge-text";
+      badgeText.textContent = session.provider;
+      badge.appendChild(badgeText);
       badgeCol.appendChild(badge);
 
       if (session.gtdStatusLabel) {

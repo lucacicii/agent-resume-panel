@@ -26,6 +26,7 @@ import {
   SessionTreeProvider
 } from "../tree/sessionTree";
 import { relativeTime } from "../util/relativeTime";
+import { buildWebviewAgentIconMap } from "../icons/agentIcons";
 
 interface ManagerSessionPayload {
   provider: string;
@@ -46,11 +47,12 @@ interface ManagerStats {
   byProvider: Record<string, number>;
 }
 
-const WEBVIEW_ASSET_VERSION = "6";
+const WEBVIEW_ASSET_VERSION = "7";
 const MANAGER_PAGE_SIZE = 200;
 let managerPanel: vscode.WebviewPanel | undefined;
 let activeManagerTree: SessionTreeProvider | undefined;
 let activeManagerBuildLoadOptions: (() => HistoryLoadOptions) | undefined;
+let activeManagerExtensionUri: vscode.Uri | undefined;
 
 export async function openSessionManagerPanel(
   context: vscode.ExtensionContext,
@@ -62,9 +64,10 @@ export async function openSessionManagerPanel(
   if (managerPanel) {
     activeManagerTree = tree;
     activeManagerBuildLoadOptions = buildLoadOptions;
+    activeManagerExtensionUri = context.extensionUri;
     managerPanel.title = t("panel.sessionManagerTitle");
     managerPanel.reveal(column);
-    await postManagerInit(managerPanel.webview, tree, buildLoadOptions);
+    await postManagerInit(managerPanel.webview, tree, buildLoadOptions, context.extensionUri);
     return;
   }
 
@@ -75,7 +78,10 @@ export async function openSessionManagerPanel(
     {
       enableScripts: true,
       retainContextWhenHidden: true,
-      localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "media")]
+      localResourceRoots: [
+        vscode.Uri.joinPath(context.extensionUri, "media"),
+        vscode.Uri.joinPath(context.extensionUri, "resources", "agents")
+      ]
     }
   );
 
@@ -97,7 +103,10 @@ export async function restoreSessionManagerPanel(
   panel.title = t("panel.sessionManagerTitle");
   panel.webview.options = {
     enableScripts: true,
-    localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "media")]
+    localResourceRoots: [
+      vscode.Uri.joinPath(context.extensionUri, "media"),
+      vscode.Uri.joinPath(context.extensionUri, "resources", "agents")
+    ]
   };
   attachSessionManagerPanel(panel, context, tree, buildLoadOptions, refreshTree);
 }
@@ -112,12 +121,13 @@ function attachSessionManagerPanel(
   managerPanel = panel;
   activeManagerTree = tree;
   activeManagerBuildLoadOptions = buildLoadOptions;
+  activeManagerExtensionUri = context.extensionUri;
   managerPanel.iconPath = vscode.Uri.joinPath(context.extensionUri, "resources", "agent-resume.svg");
 
   managerPanel.webview.onDidReceiveMessage(async (message) => {
     if (message.type === "ready" || message.type === "resync") {
       await refreshTree();
-      await postManagerInit(managerPanel!.webview, tree, buildLoadOptions);
+      await postManagerInit(managerPanel!.webview, tree, buildLoadOptions, context.extensionUri);
       return;
     }
 
@@ -127,7 +137,7 @@ function attachSessionManagerPanel(
     }
     if (message.type === "remove" && Array.isArray(message.items)) {
       await handleRemoveFromPanel(message.items, buildLoadOptions, refreshTree);
-      await postManagerInit(managerPanel!.webview, tree, buildLoadOptions);
+      await postManagerInit(managerPanel!.webview, tree, buildLoadOptions, context.extensionUri);
       return;
     }
 
@@ -149,10 +159,11 @@ function attachSessionManagerPanel(
     managerPanel = undefined;
     activeManagerTree = undefined;
     activeManagerBuildLoadOptions = undefined;
+    activeManagerExtensionUri = undefined;
   });
 
   managerPanel.webview.html = getWebviewHtml(managerPanel.webview, context.extensionUri);
-  void postManagerInit(managerPanel.webview, tree, buildLoadOptions);
+  void postManagerInit(managerPanel.webview, tree, buildLoadOptions, context.extensionUri);
 }
 
 async function handleExportFromManager(
@@ -246,7 +257,8 @@ async function handleRemoveFromPanel(
 async function postManagerInit(
   webview: vscode.Webview,
   tree: SessionTreeProvider,
-  buildLoadOptions: () => HistoryLoadOptions
+  buildLoadOptions: () => HistoryLoadOptions,
+  extensionUri?: vscode.Uri
 ): Promise<void> {
   try {
     const catalog = loadCatalogSettings();
@@ -267,6 +279,7 @@ async function postManagerInit(
     webview.postMessage({
       type: "init",
       uiStrings: getSessionManagerUiStrings(),
+      ...(extensionUri ? { providerIcons: buildWebviewAgentIconMap(webview, extensionUri) } : {}),
       sessions,
       stats,
       untaggedCount: Math.max(0, stats.total - taggedCount),
@@ -384,7 +397,12 @@ export async function refreshSessionManagerPanel(): Promise<void> {
   }
 
   managerPanel.title = t("panel.sessionManagerTitle");
-  await postManagerInit(managerPanel.webview, activeManagerTree, activeManagerBuildLoadOptions);
+  await postManagerInit(
+    managerPanel.webview,
+    activeManagerTree,
+    activeManagerBuildLoadOptions,
+    activeManagerExtensionUri
+  );
 }
 
 function getNonce(): string {

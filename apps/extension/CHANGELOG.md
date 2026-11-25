@@ -8,6 +8,16 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.15.1]
+
+#### 优化
+
+- **会话管理器与搜索会话页面美化**：统一卡片化布局与圆角胶囊筛选样式，接入官方 Agent SVG 图标（支持浅色/深色主题自动切换），优化列表层级、滚动条与窄屏适配。
+
+#### 修复
+
+- **搜索会话自动重命名后未刷新标题**：`titleUpdated` 消息附带会话标识，自动重命名成功后同步更新搜索列表与预览弹窗标题。
+
 ### [2.15.0]
 
 #### 新增
@@ -561,6 +571,16 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.15.1]
+
+#### Changed
+
+- **Refined Session Manager & Search Sessions UI**: Unified card-based layout, rounded pill filters, theme-aware official agent SVG icons, improved list hierarchy, thin scrollbars, and responsive widths.
+
+#### Fixed
+
+- **Search Sessions title not refreshing after Auto Rename**: Include session `provider`/`id` in `titleUpdated` and update both the Search Sessions list state and preview modal title in place.
 
 ### [2.15.0]
 

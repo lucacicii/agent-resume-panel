@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src {{cspSource}}; script-src 'nonce-{{nonce}}';"
+      content="default-src 'none'; img-src {{cspSource}}; style-src {{cspSource}}; script-src 'nonce-{{nonce}}';"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="{{styleUri}}" />
@@ -12,20 +12,28 @@
   </head>
   <body>
     <div class="panel">
-      <input
-        id="search"
-        class="search"
-        type="text"
-        placeholder="Search title, summary, provider, project, or branch"
-        spellcheck="false"
-      />
-      <section class="projects-section">
-        <div class="section-label">Projects</div>
-        <div id="chips" class="chips"></div>
-      </section>
-      <section class="gtd-section">
-        <div id="gtd-section-label" class="section-label">GTD</div>
-        <div id="gtd-chips" class="chips"></div>
+      <section class="controls-card">
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.35" />
+            <path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" />
+          </svg>
+          <input
+            id="search"
+            class="search"
+            type="text"
+            placeholder="Search title, summary, provider, project, or branch"
+            spellcheck="false"
+          />
+        </div>
+        <section class="projects-section">
+          <div class="section-label">Projects</div>
+          <div id="chips" class="chips"></div>
+        </section>
+        <section class="gtd-section">
+          <div id="gtd-section-label" class="section-label">GTD</div>
+          <div id="gtd-chips" class="chips"></div>
+        </section>
       </section>
       <section class="sessions-section">
         <div class="section-label">Sessions</div>

@@ -36,10 +36,11 @@ import {
   SessionTreeProvider
 } from "../tree/sessionTree";
 import { getPreviewRenderMode, setPreviewRenderMode } from "../preview/previewRenderMode";
+import { buildWebviewAgentIconMap } from "../icons/agentIcons";
 
 const SEARCH_PAGE_SIZE = 50;
 
-const WEBVIEW_ASSET_VERSION = "6";
+const WEBVIEW_ASSET_VERSION = "8";
 
 interface SearchProjectPayload {
   projectPath: string;
@@ -414,6 +415,7 @@ async function postInitMessage(webview: vscode.Webview, tree: SessionTreeProvide
     type: "init",
     uiStrings: getSessionSearchUiStrings(),
     previewUiStrings: getSessionPreviewUiStrings(),
+    providerIcons: buildWebviewAgentIconMap(webview, getExtensionUri()),
     totalSessions,
     untaggedCount: Math.max(0, totalSessions - taggedCount),
     filteredTotal: firstPage.total,
@@ -513,6 +515,7 @@ function getLocalResourceRoots(): vscode.Uri[] {
   const extensionUri = getExtensionUri();
   return [
     vscode.Uri.joinPath(extensionUri, "media"),
+    vscode.Uri.joinPath(extensionUri, "resources", "agents"),
     vscode.Uri.joinPath(extensionUri, "node_modules", "marked"),
     vscode.Uri.joinPath(extensionUri, "node_modules", "dompurify")
   ];

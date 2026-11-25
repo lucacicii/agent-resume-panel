@@ -3,6 +3,8 @@
 
   let uiStrings = {};
   let previewUiStrings = {};
+  /** @type {Record<string, string | { light: string, dark: string }>} */
+  let providerIcons = {};
 
   /** @type {{ projects: Array<{projectPath: string, name: string, sessionCount: number, favorited: boolean, compactPath: string}>, sessions: Array<{provider: string, id: string, title: string, projectPath: string, projectName: string, branch?: string, summary?: string, updatedAtLabel: string, gtdStatus?: string, gtdStatusLabel?: string}>, gtdStatuses: Array<{status: string, label: string, count?: number}>, totalSessions: number, untaggedCount: number, filteredTotal: number, hasMore: boolean }} */
   let state = { projects: [], sessions: [], gtdStatuses: [], totalSessions: 0, untaggedCount: 0, filteredTotal: 0, hasMore: false };
@@ -237,6 +239,7 @@
     if (message.type === "init") {
       uiStrings = message.uiStrings || {};
       previewUiStrings = message.previewUiStrings || {};
+      providerIcons = message.providerIcons || {};
       applyStaticUi();
       const incomingSessions = message.sessions || [];
       const totalSessions = typeof message.totalSessions === "number" ? message.totalSessions : incomingSessions.length;
@@ -310,10 +313,22 @@
     }
 
     if (message.type === "titleUpdated") {
-      previewTitle.textContent = message.title || previewUiStrings.defaultTitle || "Session Preview";
+      const nextTitle = typeof message.title === "string" ? message.title.trim() : "";
+      const targetProvider = message.provider || activePreviewSession?.provider;
+      const targetId = message.id || activePreviewSession?.id;
+      if (targetProvider && targetId && nextTitle) {
+        updateSessionTitle(targetProvider, targetId, nextTitle);
+      }
+      if (
+        !activePreviewSession ||
+        !targetProvider ||
+        !targetId ||
+        (activePreviewSession.provider === targetProvider && activePreviewSession.id === targetId)
+      ) {
+        previewTitle.textContent = nextTitle || previewUiStrings.defaultTitle || "Session Preview";
+      }
       previewRename.disabled = false;
       setAiButtonsDisabled(false);
-      syncPreviewTitle();
       return;
     }
 
@@ -445,6 +460,38 @@
     return button;
   }
 
+  function appendProviderIcon(container, provider) {
+    const entry = providerIcons[provider];
+    if (!entry) {
+      return;
+    }
+    if (typeof entry === "string") {
+      const img = document.createElement("img");
+      img.className = "provider-icon";
+      img.src = entry;
+      img.alt = "";
+      img.setAttribute("aria-hidden", "true");
+      container.appendChild(img);
+      return;
+    }
+    if (entry.light) {
+      const imgLight = document.createElement("img");
+      imgLight.className = "provider-icon provider-icon-light";
+      imgLight.src = entry.light;
+      imgLight.alt = "";
+      imgLight.setAttribute("aria-hidden", "true");
+      container.appendChild(imgLight);
+    }
+    if (entry.dark) {
+      const imgDark = document.createElement("img");
+      imgDark.className = "provider-icon provider-icon-dark";
+      imgDark.src = entry.dark;
+      imgDark.alt = "";
+      imgDark.setAttribute("aria-hidden", "true");
+      container.appendChild(imgDark);
+    }
+  }
+
   function renderSessions() {
     const filtered = state.sessions;
     sessionsEl.innerHTML = "";
@@ -469,7 +516,11 @@
 
       const badge = document.createElement("span");
       badge.className = "provider-badge";
-      badge.textContent = session.provider;
+      appendProviderIcon(badge, session.provider);
+      const badgeText = document.createElement("span");
+      badgeText.className = "provider-badge-text";
+      badgeText.textContent = session.provider;
+      badge.appendChild(badgeText);
 
       const main = document.createElement("div");
       main.className = "session-main";
@@ -797,6 +848,23 @@
 
   function sessionKey(provider, id) {
     return `${provider}:${id}`;
+  }
+
+  function updateSessionTitle(provider, id, title) {
+    const trimmed = title.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    const index = state.sessions.findIndex(
+      (session) => session.provider === provider && session.id === id
+    );
+    if (index < 0) {
+      return;
+    }
+
+    state.sessions[index] = { ...state.sessions[index], title: trimmed };
+    renderSessions();
   }
 
   function updateSessionSummary(provider, id, summary) {
