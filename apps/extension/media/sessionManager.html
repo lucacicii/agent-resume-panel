@@ -4,51 +4,67 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src {{cspSource}}; script-src 'nonce-{{nonce}}';"
+      content="default-src 'none'; img-src {{cspSource}}; style-src {{cspSource}}; script-src 'nonce-{{nonce}}';"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="{{styleUri}}" />
   </head>
   <body>
     <div class="panel">
-      <header class="toolbar">
-        <input
-          id="search"
-          class="search"
-          type="text"
-          placeholder="Filter title, summary, project, provider, branch"
-          spellcheck="false"
-        />
-        <select id="age-filter" class="select" aria-label="Age filter">
-          <option value="all">All ages</option>
-          <option value="7">Older than 7 days</option>
-          <option value="30">Older than 30 days</option>
-          <option value="90">Older than 90 days</option>
-        </select>
-        <button id="refresh" type="button" class="btn">Resync</button>
-      </header>
-      <div id="stats" class="stats"></div>
-      <div id="provider-filters" class="provider-filters"></div>
-      <div id="gtd-filters" class="gtd-filters" aria-label="GTD filter"></div>
-      <div class="bulk-bar">
-        <label class="select-all">
-          <input id="select-all" type="checkbox" />
-          <span>Select filtered</span>
-        </label>
-        <button id="export-selected" type="button" class="btn">Export</button>
-        <button id="hide-selected" type="button" class="btn btn-warn">Remove from panel</button>
-      </div>
-      <div class="list-header">
-        <span class="col-check"></span>
-        <span class="col-provider">Provider</span>
-        <span class="col-title">Title / Summary</span>
-        <span class="col-project">Project</span>
-        <span class="col-time">Updated</span>
-      </div>
-      <div id="list-viewport" class="list-viewport">
-        <div id="list-spacer" class="list-spacer"></div>
-        <div id="list-rows" class="list-rows"></div>
-      </div>
+      <section class="controls-card">
+        <header class="toolbar">
+          <div class="search-wrap">
+            <svg class="search-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.35" />
+              <path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" />
+            </svg>
+            <input
+              id="search"
+              class="search"
+              type="text"
+              placeholder="Filter title, summary, project, provider, branch"
+              spellcheck="false"
+            />
+          </div>
+          <select id="age-filter" class="select" aria-label="Age filter">
+            <option value="all">All ages</option>
+            <option value="7">Older than 7 days</option>
+            <option value="30">Older than 30 days</option>
+            <option value="90">Older than 90 days</option>
+          </select>
+          <button id="refresh" type="button" class="btn">Resync</button>
+        </header>
+        <div class="filters-stack">
+          <div id="provider-filters" class="provider-filters"></div>
+          <div id="gtd-filters" class="gtd-filters" aria-label="GTD filter"></div>
+        </div>
+        <div class="bulk-bar">
+          <div class="bulk-left">
+            <label class="select-all">
+              <input id="select-all" type="checkbox" />
+              <span>Select filtered</span>
+            </label>
+            <div id="stats" class="stats"></div>
+          </div>
+          <div class="bulk-actions">
+            <button id="export-selected" type="button" class="btn">Export</button>
+            <button id="hide-selected" type="button" class="btn btn-warn">Remove from panel</button>
+          </div>
+        </div>
+      </section>
+      <section class="table-card">
+        <div class="list-header">
+          <span class="col-check"></span>
+          <span class="col-provider">Provider</span>
+          <span class="col-title">Title / Summary</span>
+          <span class="col-project">Project</span>
+          <span class="col-time">Updated</span>
+        </div>
+        <div id="list-viewport" class="list-viewport">
+          <div id="list-spacer" class="list-spacer"></div>
+          <div id="list-rows" class="list-rows"></div>
+        </div>
+      </section>
     </div>
     <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
   </body>

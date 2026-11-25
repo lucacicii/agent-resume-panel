@@ -89,7 +89,12 @@ export async function runAutoRename(
       options.panel.title = t("panel.sessionPreviewTitle", newTitle);
     }
 
-    options?.webview?.postMessage({ type: "titleUpdated", title: newTitle });
+    options?.webview?.postMessage({
+      type: "titleUpdated",
+      provider: session.provider,
+      id: session.id,
+      title: newTitle
+    });
     options?.webview?.postMessage({ type: "autoRenameDone" });
     vscode.window.showInformationMessage(t("notification.sessionRenamedTo", newTitle));
   } catch (error) {

@@ -79,3 +79,46 @@ export function fallbackProviderCodicon(provider: AgentProvider): string {
       return "comment-discussion";
   }
 }
+
+export type WebviewAgentIconEntry = string | { light: string; dark: string };
+
+const WEBVIEW_COLOR_PROVIDERS = ["codex", "claude", "agy", "pi", "omp"] as const;
+const WEBVIEW_THEMED_PROVIDERS = ["grok", "opencode", "prime"] as const;
+
+/** Build webview-safe official icon URIs for all integrated agent providers. */
+export function buildWebviewAgentIconMap(
+  webview: vscode.Webview,
+  extensionUri: vscode.Uri
+): Record<string, WebviewAgentIconEntry> {
+  const map: Record<string, WebviewAgentIconEntry> = {};
+
+  for (const provider of WEBVIEW_COLOR_PROVIDERS) {
+    map[provider] = webview
+      .asWebviewUri(vscode.Uri.joinPath(extensionUri, "resources", "agents", `${provider}.svg`))
+      .toString();
+  }
+
+  for (const provider of WEBVIEW_THEMED_PROVIDERS) {
+    map[provider] = {
+      light: webview
+        .asWebviewUri(vscode.Uri.joinPath(extensionUri, "resources", "agents", "light", `${provider}.svg`))
+        .toString(),
+      dark: webview
+        .asWebviewUri(vscode.Uri.joinPath(extensionUri, "resources", "agents", "dark", `${provider}.svg`))
+        .toString()
+    };
+  }
+
+  const cursorPair = {
+    light: webview
+      .asWebviewUri(vscode.Uri.joinPath(extensionUri, "resources", "agents", "light", "cursor.svg"))
+      .toString(),
+    dark: webview
+      .asWebviewUri(vscode.Uri.joinPath(extensionUri, "resources", "agents", "dark", "cursor.svg"))
+      .toString()
+  };
+  map.cursor = cursorPair;
+  map["cursor-ide"] = cursorPair;
+
+  return map;
+}
