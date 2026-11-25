@@ -18,6 +18,7 @@ import { LLM_API_KEY_SECRET } from "../settings/settingsSchema";
 import { t } from "../i18n";
 import { getSessionPreviewUiStrings } from "../webview/uiStrings";
 import { SessionTreeProvider } from "../tree/sessionTree";
+import { getPreviewRenderMode, setPreviewRenderMode } from "./previewRenderMode";
 
 let previewPanel: vscode.WebviewPanel | undefined;
 let llmConfigRefreshRegistered = false;
@@ -64,7 +65,7 @@ export async function openSessionPreviewPanel(
     {
       enableScripts: true,
       retainContextWhenHidden: true,
-      localResourceRoots: [vscode.Uri.joinPath(getExtensionUri(), "media")]
+      localResourceRoots: getLocalResourceRoots()
     }
   );
 
@@ -103,7 +104,7 @@ export async function restoreSessionPreviewPanel(
   panel.title = t("panel.sessionPreviewTitle", session.title);
   panel.webview.options = {
     enableScripts: true,
-    localResourceRoots: [vscode.Uri.joinPath(getExtensionUri(), "media")]
+    localResourceRoots: getLocalResourceRoots()
   };
   attachSessionPreviewPanel(panel, session, tree, refreshTree, context, acpChatManager);
 }
@@ -127,9 +128,14 @@ function attachSessionPreviewPanel(
   previewPanel.iconPath = vscode.Uri.joinPath(getExtensionUri(), "resources", "agent-resume.svg");
   previewPanel.webview.html = getWebviewHtml(previewPanel.webview);
 
-  previewPanel.webview.onDidReceiveMessage(async (message: { type?: string }) => {
+  previewPanel.webview.onDidReceiveMessage(async (message: { type?: string; mode?: unknown }) => {
     if (message.type === "ready") {
       await sendPreviewData(previewPanel!.webview, session);
+      return;
+    }
+
+    if (message.type === "setPreviewRenderMode") {
+      await setPreviewRenderMode(activeContext, message.mode);
       return;
     }
 
@@ -315,6 +321,7 @@ async function sendPreviewData(webview: vscode.Webview, session: AgentSession): 
       showResumeWith: true,
       showHandoff: canHandoffSession(session),
       llmConfigured,
+      renderMode: getPreviewRenderMode(activeContext),
       cachedSummary,
       title: preview.title,
       messages: preview.messages,
@@ -347,6 +354,14 @@ export async function refreshSessionPreviewPanel(): Promise<void> {
 function getWebviewHtml(webview: vscode.Webview): string {
   const extensionUri = getExtensionUri();
   const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "sessionPreview.css"));
+  const markdownStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "previewMarkdown.css"));
+  const markedUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, "node_modules", "marked", "lib", "marked.umd.js")
+  );
+  const purifyUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, "node_modules", "dompurify", "dist", "purify.min.js")
+  );
+  const markdownScriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "previewMarkdown.js"));
   const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "sessionPreview.js"));
   const nonce = getNonce();
 
@@ -355,9 +370,22 @@ function getWebviewHtml(webview: vscode.Webview): string {
     .replaceAll("{{cspSource}}", webview.cspSource)
     .replaceAll("{{nonce}}", nonce)
     .replaceAll("{{styleUri}}", styleUri.toString())
+    .replaceAll("{{markdownStyleUri}}", markdownStyleUri.toString())
+    .replaceAll("{{markedUri}}", markedUri.toString())
+    .replaceAll("{{purifyUri}}", purifyUri.toString())
+    .replaceAll("{{markdownScriptUri}}", markdownScriptUri.toString())
     .replaceAll("{{scriptUri}}", scriptUri.toString());
 
   return html;
+}
+
+function getLocalResourceRoots(): vscode.Uri[] {
+  const extensionUri = getExtensionUri();
+  return [
+    vscode.Uri.joinPath(extensionUri, "media"),
+    vscode.Uri.joinPath(extensionUri, "node_modules", "marked"),
+    vscode.Uri.joinPath(extensionUri, "node_modules", "dompurify")
+  ];
 }
 
 function getExtensionUri(): vscode.Uri {

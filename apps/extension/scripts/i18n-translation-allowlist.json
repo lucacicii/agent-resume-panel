@@ -78,6 +78,7 @@
     "tree.gtd.status.waiting",
     "tree.herdrLive",
     "tree.herdrRecorded",
+    "webview.preview.modeMarkdown",
     "webview.search.sectionGtd",
     "webview.settings.apiKeyPlaceholderConfigured",
     "webview.settings.apiKeyPlaceholderEmpty"

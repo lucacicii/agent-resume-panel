@@ -35,10 +35,11 @@ import {
   enrichSessionsWithTreeSummaries,
   SessionTreeProvider
 } from "../tree/sessionTree";
+import { getPreviewRenderMode, setPreviewRenderMode } from "../preview/previewRenderMode";
 
 const SEARCH_PAGE_SIZE = 50;
 
-const WEBVIEW_ASSET_VERSION = "3";
+const WEBVIEW_ASSET_VERSION = "6";
 
 interface SearchProjectPayload {
   projectPath: string;
@@ -57,6 +58,7 @@ interface WebviewMessage {
   search?: string;
   projectPath?: string | null;
   gtdFilter?: string | null;
+  mode?: unknown;
 }
 
 let searchPanel: vscode.WebviewPanel | undefined;
@@ -89,7 +91,7 @@ export async function searchAndOpenSessions(
     {
       enableScripts: true,
       retainContextWhenHidden: true,
-      localResourceRoots: [vscode.Uri.joinPath(getExtensionUri(), "media")]
+      localResourceRoots: getLocalResourceRoots()
     }
   );
 
@@ -111,7 +113,7 @@ export async function restoreSearchSessionsPanel(
   panel.title = t("panel.searchSessionsTitle");
   panel.webview.options = {
     enableScripts: true,
-    localResourceRoots: [vscode.Uri.joinPath(getExtensionUri(), "media")]
+    localResourceRoots: getLocalResourceRoots()
   };
   attachSearchPanel(panel, context, tree, refreshTree, acpChatManager);
 }
@@ -217,6 +219,11 @@ function attachSearchPanel(
       return;
     }
 
+    if (message.type === "setPreviewRenderMode") {
+      await setPreviewRenderMode(activeSearchContext, message.mode);
+      return;
+    }
+
     if (message.type === "previewClosed") {
       activeSearchPreview = undefined;
     }
@@ -293,6 +300,7 @@ async function handlePreviewMessage(
       showResumeWith: true,
       showHandoff: canHandoffSession(session),
       llmConfigured,
+      renderMode: getPreviewRenderMode(context),
       cachedSummary,
       title: preview.title,
       messages: preview.messages,
@@ -470,6 +478,18 @@ function getWebviewHtml(webview: vscode.Webview): string {
   const styleUri = webview
     .asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "sessionSearch.css"))
     .with({ query: WEBVIEW_ASSET_VERSION });
+  const markdownStyleUri = webview
+    .asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "previewMarkdown.css"))
+    .with({ query: WEBVIEW_ASSET_VERSION });
+  const markedUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, "node_modules", "marked", "lib", "marked.umd.js")
+  );
+  const purifyUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, "node_modules", "dompurify", "dist", "purify.min.js")
+  );
+  const markdownScriptUri = webview
+    .asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "previewMarkdown.js"))
+    .with({ query: WEBVIEW_ASSET_VERSION });
   const scriptUri = webview
     .asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "sessionSearch.js"))
     .with({ query: WEBVIEW_ASSET_VERSION });
@@ -480,9 +500,22 @@ function getWebviewHtml(webview: vscode.Webview): string {
     .replaceAll("{{cspSource}}", webview.cspSource)
     .replaceAll("{{nonce}}", nonce)
     .replaceAll("{{styleUri}}", styleUri.toString())
+    .replaceAll("{{markdownStyleUri}}", markdownStyleUri.toString())
+    .replaceAll("{{markedUri}}", markedUri.toString())
+    .replaceAll("{{purifyUri}}", purifyUri.toString())
+    .replaceAll("{{markdownScriptUri}}", markdownScriptUri.toString())
     .replaceAll("{{scriptUri}}", scriptUri.toString());
 
   return html;
+}
+
+function getLocalResourceRoots(): vscode.Uri[] {
+  const extensionUri = getExtensionUri();
+  return [
+    vscode.Uri.joinPath(extensionUri, "media"),
+    vscode.Uri.joinPath(extensionUri, "node_modules", "marked"),
+    vscode.Uri.joinPath(extensionUri, "node_modules", "dompurify")
+  ];
 }
 
 function getExtensionUri(): vscode.Uri {

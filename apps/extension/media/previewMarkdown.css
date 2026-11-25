@@ -1,0 +1,217 @@
+.preview-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 75%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+}
+
+.preview-mode-btn {
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.preview-mode-btn:hover:not(.active) {
+  background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  color: var(--vscode-foreground);
+}
+
+.preview-mode-btn.active {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font-weight: 600;
+}
+
+.preview-text.markdown-body,
+.preview-summary.markdown-body {
+  white-space: normal;
+  line-height: 1.65;
+  word-break: break-word;
+}
+
+.preview-text.markdown-body > :first-child,
+.preview-summary.markdown-body > :first-child {
+  margin-top: 0;
+}
+
+.preview-text.markdown-body > :last-child,
+.preview-summary.markdown-body > :last-child {
+  margin-bottom: 0;
+}
+
+.preview-text.markdown-body h1,
+.preview-text.markdown-body h2,
+.preview-text.markdown-body h3,
+.preview-text.markdown-body h4,
+.preview-text.markdown-body h5,
+.preview-text.markdown-body h6,
+.preview-summary.markdown-body h1,
+.preview-summary.markdown-body h2,
+.preview-summary.markdown-body h3,
+.preview-summary.markdown-body h4,
+.preview-summary.markdown-body h5,
+.preview-summary.markdown-body h6 {
+  margin: 0.85em 0 0.4em;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.preview-text.markdown-body h1,
+.preview-summary.markdown-body h1 {
+  font-size: 1.35em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 60%, transparent);
+}
+
+.preview-text.markdown-body h2,
+.preview-summary.markdown-body h2 {
+  font-size: 1.2em;
+  padding-bottom: 0.2em;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 60%, transparent);
+}
+
+.preview-text.markdown-body h3,
+.preview-summary.markdown-body h3 {
+  font-size: 1.1em;
+}
+
+.preview-text.markdown-body h4,
+.preview-text.markdown-body h5,
+.preview-text.markdown-body h6,
+.preview-summary.markdown-body h4,
+.preview-summary.markdown-body h5,
+.preview-summary.markdown-body h6 {
+  font-size: 1em;
+}
+
+.preview-text.markdown-body p,
+.preview-text.markdown-body ul,
+.preview-text.markdown-body ol,
+.preview-summary.markdown-body p,
+.preview-summary.markdown-body ul,
+.preview-summary.markdown-body ol {
+  margin: 0.5em 0;
+}
+
+.preview-text.markdown-body ul,
+.preview-text.markdown-body ol,
+.preview-summary.markdown-body ul,
+.preview-summary.markdown-body ol {
+  padding-left: 1.55em;
+}
+
+.preview-text.markdown-body li + li,
+.preview-summary.markdown-body li + li {
+  margin-top: 0.25em;
+}
+
+.preview-text.markdown-body blockquote,
+.preview-summary.markdown-body blockquote {
+  margin: 0.6em 0;
+  padding: 6px 12px;
+  border-left: 3px solid var(--vscode-textBlockQuote-border, var(--vscode-panel-border));
+  border-radius: 0 6px 6px 0;
+  background: var(--vscode-textBlockQuote-background, color-mix(in srgb, var(--vscode-foreground) 4%, transparent));
+  color: var(--vscode-descriptionForeground);
+}
+
+.preview-text.markdown-body code,
+.preview-summary.markdown-body code {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.9em;
+  background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.14));
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 50%, transparent);
+  padding: 0.1em 0.38em;
+  border-radius: 4px;
+}
+
+.preview-text.markdown-body pre,
+.preview-summary.markdown-body pre {
+  white-space: pre;
+  overflow-x: auto;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 75%, transparent);
+  border-radius: 8px;
+  margin: 0.6em 0;
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.14));
+  scrollbar-width: thin;
+  scrollbar-color: var(--vscode-scrollbarSlider-background, rgba(127, 127, 127, 0.35)) transparent;
+}
+
+.preview-text.markdown-body pre code,
+.preview-summary.markdown-body pre code {
+  padding: 0;
+  border: 0;
+  font-size: inherit;
+  background: transparent;
+  white-space: pre;
+}
+
+.preview-text.markdown-body table,
+.preview-summary.markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.6em 0;
+  display: block;
+  overflow-x: auto;
+  font-size: 12px;
+}
+
+.preview-text.markdown-body th,
+.preview-text.markdown-body td,
+.preview-summary.markdown-body th,
+.preview-summary.markdown-body td {
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 80%, transparent);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.preview-text.markdown-body th,
+.preview-summary.markdown-body th {
+  background: var(--vscode-editor-inactiveSelectionBackground, rgba(127, 127, 127, 0.12));
+  font-weight: 600;
+}
+
+.preview-text.markdown-body tbody tr:nth-child(even),
+.preview-summary.markdown-body tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
+}
+
+.preview-text.markdown-body hr,
+.preview-summary.markdown-body hr {
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--vscode-panel-border) 75%, transparent);
+  margin: 0.9em 0;
+}
+
+.preview-text.markdown-body a,
+.preview-summary.markdown-body a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+}
+
+.preview-text.markdown-body a:hover,
+.preview-summary.markdown-body a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.preview-text.markdown-body img,
+.preview-summary.markdown-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
