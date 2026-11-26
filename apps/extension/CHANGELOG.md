@@ -8,6 +8,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.19.1]
+
+#### 修复
+
+- **扩展商店 README 文档链接失效**：将 `apps/extension/README.md` 中的相对路径文档链接（如 Antigravity ACP 合规说明、扩展文档与更新日志）改为完整的 GitHub `blob/develop` 链接，避免经 `vsce package` 打包后在 VS Code Marketplace / Open VSX 详情页解析为 404，并同步更新 README 中的版本标注。
+
 ### [2.19.0]
 
 #### 新增
@@ -608,6 +614,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.19.1]
+
+#### Fixed
+
+- **Broken README Doc Links on Extension Marketplaces**: Replaced relative doc and changelog links in `apps/extension/README.md` (including the Antigravity ACP policy & compliance section) with full GitHub `blob/develop` URLs so `vsce package` no longer rewrites them into 404 links on VS Code Marketplace / Open VSX, and updated the extension version badge in the README.
 
 ### [2.19.0]
 
