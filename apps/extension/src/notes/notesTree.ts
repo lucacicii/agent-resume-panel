@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { relativeTime } from "../util/relativeTime";
 import { NotesStore } from "./notesStore";
 import { gtdStatusLabel } from "../gtd/gtdTree";
+import { noteMatchesProjectScope, ProjectFilterScope } from "../filter/projectFilter";
 
 export type NotesTreeNode =
   | { kind: "libraryRoot"; notes: NoteRecord[] }
@@ -30,10 +31,16 @@ export class NotesTreeProvider implements vscode.TreeDataProvider<NotesTreeNode>
   readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
 
   private filterText = "";
+  private projectFilter?: ProjectFilterScope;
   private sessionsByKey = new Map<string, AgentSession>();
   private projectDisplayName: (projectPath: string) => string = (p) => p;
 
   constructor(private readonly notesStore: NotesStore) {}
+
+  setProjectFilter(filter?: ProjectFilterScope): void {
+    this.projectFilter = filter;
+    this.refresh();
+  }
 
   setProjectDisplayName(resolver: (projectPath: string) => string): void {
     this.projectDisplayName = resolver;
@@ -168,16 +175,17 @@ export class NotesTreeProvider implements vscode.TreeDataProvider<NotesTreeNode>
 
     if (!element) {
       if (!notes.length) {
-        return [this.filterText ? { kind: "filterEmpty" } : { kind: "empty" }];
+        return [this.filterText || this.projectFilter ? { kind: "filterEmpty" } : { kind: "empty" }];
       }
       const libraryNotes = notes
         .filter((note) => note.scope === "library")
         .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
-      return [
-        { kind: "libraryRoot", notes: libraryNotes },
-        { kind: "projectsRoot" },
-        { kind: "sessionsRoot" }
-      ];
+      const roots: NotesTreeNode[] = [];
+      if (!this.projectFilter || libraryNotes.length > 0) {
+        roots.push({ kind: "libraryRoot", notes: libraryNotes });
+      }
+      roots.push({ kind: "projectsRoot" }, { kind: "sessionsRoot" });
+      return roots;
     }
 
     if (element.kind === "libraryRoot") {
@@ -246,12 +254,22 @@ export class NotesTreeProvider implements vscode.TreeDataProvider<NotesTreeNode>
   }
 
   private filteredNotes(): NoteRecord[] {
-    const all = this.notesStore.getAllNotes();
+    let list = this.notesStore.getAllNotes();
+    if (this.projectFilter) {
+      const filter = this.projectFilter;
+      list = list.filter((note) =>
+        noteMatchesProjectScope(
+          note,
+          filter,
+          (provider, sessionId) => this.sessionsByKey.get(`${provider}:${sessionId}`)?.projectPath
+        )
+      );
+    }
     if (!this.filterText) {
-      return all;
+      return list;
     }
     const q = this.filterText.toLowerCase();
-    return all.filter((note) => {
+    return list.filter((note) => {
       const session = note.provider && note.agentSessionId
         ? this.sessionsByKey.get(`${note.provider}:${note.agentSessionId}`)
         : undefined;

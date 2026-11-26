@@ -4,6 +4,11 @@ import { isFavoriteProject } from "../favorites/projectFavorites";
 import { AgentSession } from "../history/types";
 import { runSqliteJson } from "../history/sqlite";
 import { LlmOutputLanguage } from "../llm/languages";
+import {
+  buildProjectRootsSqlWhere,
+  matchesProjectScope,
+  ProjectFilterScope
+} from "../filter/projectFilter";
 import { ProjectSessionSortMode } from "../tree/projectSessionSort";
 import { GtdStatus, GTD_STATUSES } from "./gtd";
 import { CatalogSessionRow, CatalogSettings, SessionSummaryPolicy, toAgentSession } from "./types";
@@ -56,11 +61,15 @@ export async function queryCatalogSessions(
 
 export async function queryVisibleSessionCount(
   dbPath: string,
-  maxCap?: number
+  maxCap?: number,
+  projectFilter?: ProjectFilterScope
 ): Promise<number> {
+  const projectClause = projectFilter
+    ? ` AND (${buildProjectRootsSqlWhere("sessions", projectFilter, escapeSql)})`
+    : "";
   const rows = await runSqliteJson<{ total: number }>(
     dbPath,
-    `SELECT COUNT(*) AS total FROM sessions WHERE hidden = 0;`
+    `SELECT COUNT(*) AS total FROM sessions WHERE hidden = 0${projectClause};`
   );
   const raw = Number(rows[0]?.total) || 0;
   return maxCap != null && Number.isFinite(maxCap) ? Math.min(raw, Math.max(1, Math.floor(maxCap))) : raw;
@@ -74,22 +83,26 @@ export async function queryRecentSessionsPage(
     maxCap?: number;
     outputLanguage?: LlmOutputLanguage;
     summaryPolicy?: SessionSummaryPolicy;
+    projectFilter?: ProjectFilterScope;
   }
 ): Promise<CatalogSessionsPage> {
   const offset = Math.max(0, Math.floor(options.offset ?? 0));
-  const total = await queryVisibleSessionCount(dbPath, options.maxCap);
+  const total = await queryVisibleSessionCount(dbPath, options.maxCap, options.projectFilter);
   const remaining = Math.max(0, total - offset);
   const limit = Math.max(0, Math.min(Math.floor(options.limit), remaining, 5_000));
   if (limit <= 0) {
     return { sessions: [], total };
   }
+  const projectClause = options.projectFilter
+    ? ` AND (${buildProjectRootsSqlWhere("sessions", options.projectFilter, escapeSql)})`
+    : "";
   const rows = await runSqliteJson<CatalogSessionRow>(
     dbPath,
     `SELECT provider, agent_session_id, title, project_path, updated_at_ms, archived,
       message_count, model, branch, source, acp_provider, user_title, hidden, last_synced_at_ms,
       session_summary, session_summary_language, session_summary_at_ms, project_id, native_project_path
      FROM sessions
-     WHERE hidden = 0
+     WHERE hidden = 0${projectClause}
      ORDER BY updated_at_ms DESC, provider ASC, agent_session_id ASC
      LIMIT ${limit} OFFSET ${offset};`
   );
@@ -99,10 +112,23 @@ export async function queryRecentSessionsPage(
   };
 }
 
+interface ProjectGroupAccumulator {
+  groupKey: string;
+  projectPath: string;
+  projectId?: string;
+  sessionCount: number;
+  latestUpdatedAt: number;
+  candidatePaths: Set<string>;
+}
+
 export async function queryProjectGroupSummaries(
   dbPath: string,
-  favoriteProjects: string[] = []
+  favoriteProjects: string[] = [],
+  projectFilter?: ProjectFilterScope
 ): Promise<CatalogProjectGroupSummary[]> {
+  const projectClause = projectFilter
+    ? ` AND (${buildProjectRootsSqlWhere("sessions", projectFilter, escapeSql)})`
+    : "";
   const rows = await runSqliteJson<{
     project_id: string | null;
     project_path: string;
@@ -112,22 +138,12 @@ export async function queryProjectGroupSummaries(
     dbPath,
     `SELECT project_id, project_path, COUNT(*) AS cnt, MAX(updated_at_ms) AS max_u
      FROM sessions
-     WHERE hidden = 0
+     WHERE hidden = 0${projectClause}
      GROUP BY project_id, project_path
      ORDER BY max_u DESC;`
   );
 
-  const groups = new Map<
-    string,
-    {
-      groupKey: string;
-      projectPath: string;
-      projectId?: string;
-      sessionCount: number;
-      latestUpdatedAt: number;
-      candidatePaths: Set<string>;
-    }
-  >();
+  const groups = new Map<string, ProjectGroupAccumulator>();
 
   for (const row of rows) {
     const rawPath = row.project_path?.trim() || process.env.HOME || "";
@@ -157,7 +173,42 @@ export async function queryProjectGroupSummaries(
     }
   }
 
-  return [...groups.values()]
+  // Sessions of one folder can carry different project_id values (same path, one with id, one
+  // without). They must render as a single project node: a path-keyed tree item id would otherwise
+  // be registered twice ("Element with id agentResume.project:<path> is already registered").
+  const byPath = new Map<string, ProjectGroupAccumulator>();
+  for (const group of groups.values()) {
+    const existing = byPath.get(group.projectPath);
+    if (!existing) {
+      byPath.set(group.projectPath, { ...group, candidatePaths: new Set(group.candidatePaths) });
+      continue;
+    }
+    existing.sessionCount += group.sessionCount;
+    if (group.latestUpdatedAt >= existing.latestUpdatedAt) {
+      existing.latestUpdatedAt = group.latestUpdatedAt;
+      existing.projectId = group.projectId;
+      existing.groupKey = group.groupKey;
+    }
+    for (const candidate of group.candidatePaths) {
+      existing.candidatePaths.add(candidate);
+    }
+  }
+
+  return [...byPath.values()]
+    .filter((group) => {
+      if (!projectFilter) {
+        return true;
+      }
+      if (matchesProjectScope(group.projectPath, projectFilter)) {
+        return true;
+      }
+      for (const candidate of group.candidatePaths) {
+        if (matchesProjectScope(candidate, projectFilter)) {
+          return true;
+        }
+      }
+      return false;
+    })
     .map((group) => {
       const candidatePaths = [...group.candidatePaths];
       const favorited =
@@ -220,15 +271,21 @@ export async function queryProjectSessionsPage(
   };
 }
 
-export async function queryGtdCountsFromCatalog(dbPath: string): Promise<Record<GtdStatus, number>> {
+export async function queryGtdCountsFromCatalog(
+  dbPath: string,
+  projectFilter?: ProjectFilterScope
+): Promise<Record<GtdStatus, number>> {
   const counts = Object.fromEntries(GTD_STATUSES.map((status) => [status, 0])) as Record<GtdStatus, number>;
+  const projectClause = projectFilter
+    ? ` AND (${buildProjectRootsSqlWhere("s", projectFilter, escapeSql)})`
+    : "";
   const rows = await runSqliteJson<{ status: string; cnt: number }>(
     dbPath,
     `SELECT g.status AS status, COUNT(*) AS cnt
      FROM session_gtd g
      INNER JOIN sessions s
        ON s.provider = g.provider AND s.agent_session_id = g.agent_session_id
-     WHERE s.hidden = 0
+     WHERE s.hidden = 0${projectClause}
      GROUP BY g.status;`
   );
   for (const row of rows) {
@@ -247,11 +304,15 @@ export async function queryGtdSessionsPage(
     offset?: number;
     outputLanguage?: LlmOutputLanguage;
     summaryPolicy?: SessionSummaryPolicy;
+    projectFilter?: ProjectFilterScope;
   }
 ): Promise<CatalogSessionsPage> {
   const statusLit = escapeSql(options.status);
   const offset = Math.max(0, Math.floor(options.offset ?? 0));
   const limit = Math.max(1, Math.min(Math.floor(options.limit), 5_000));
+  const projectClause = options.projectFilter
+    ? ` AND (${buildProjectRootsSqlWhere("s", options.projectFilter, escapeSql)})`
+    : "";
 
   const countRows = await runSqliteJson<{ total: number }>(
     dbPath,
@@ -259,7 +320,7 @@ export async function queryGtdSessionsPage(
      FROM sessions s
      INNER JOIN session_gtd g
        ON s.provider = g.provider AND s.agent_session_id = g.agent_session_id
-     WHERE s.hidden = 0 AND g.status = '${statusLit}';`
+     WHERE s.hidden = 0 AND g.status = '${statusLit}'${projectClause};`
   );
   const total = Number(countRows[0]?.total) || 0;
   if (offset >= total) {
@@ -274,7 +335,7 @@ export async function queryGtdSessionsPage(
      FROM sessions s
      INNER JOIN session_gtd g
        ON s.provider = g.provider AND s.agent_session_id = g.agent_session_id
-     WHERE s.hidden = 0 AND g.status = '${statusLit}'
+     WHERE s.hidden = 0 AND g.status = '${statusLit}'${projectClause}
      ORDER BY s.updated_at_ms DESC, s.provider ASC, s.agent_session_id ASC
      LIMIT ${limit} OFFSET ${offset};`
   );

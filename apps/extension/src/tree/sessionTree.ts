@@ -10,6 +10,7 @@ import {
   queryRecentSessionsPage
 } from "../catalog/query";
 import { isFavoriteProject } from "../favorites/projectFavorites";
+import { matchesProjectScope, ProjectFilterScope } from "../filter/projectFilter";
 import { LlmOutputLanguage } from "../llm/languages";
 import { formatProjectLabel, pickProjectDisplayPath, projectGroupKey } from "../projects/projectAliases";
 import type { HerdrSessionMatch } from "../herdr/types";
@@ -55,6 +56,8 @@ interface WarningNode {
 
 interface EmptyNode {
   kind: "empty";
+  message?: string;
+  description?: string;
 }
 
 interface ShowMoreRecentNode {
@@ -117,6 +120,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private hasSessionNoteResolver: (session: AgentSession) => boolean = () => false;
   private hasProjectNoteResolver: (projectPath: string) => boolean = () => false;
   private herdrMatchResolver: (session: AgentSession) => HerdrSessionMatch | undefined = () => undefined;
+  private projectFilter?: ProjectFilterScope;
 
   constructor(private readonly extensionUri?: vscode.Uri) {}
 
@@ -199,6 +203,23 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     this.projectSessionVisibleCounts.clear();
     this.cachedProjectSessions.clear();
     this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  setProjectFilter(filter?: ProjectFilterScope): void {
+    this.projectFilter = filter;
+    this.recentVisibleCount = recentInitialLimit;
+    this.projectsVisibleCount = projectsInitialLimit;
+    this.projectSessionVisibleCounts.clear();
+    this.cachedProjectSessions.clear();
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  private filteredMemorySessions(): AgentSession[] {
+    if (!this.projectFilter) {
+      return this.sessions;
+    }
+    const filter = this.projectFilter;
+    return this.sessions.filter((session) => matchesProjectScope(session.projectPath, filter));
   }
 
   setData(sessions: AgentSession[], warnings: string[]): void {
@@ -295,9 +316,15 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
         return item;
       }
       case "empty": {
-        const item = new vscode.TreeItem(t("tree.noSessionsFound"), vscode.TreeItemCollapsibleState.None);
-        item.description = t("tree.noSessionsFoundDescription");
-        item.iconPath = new vscode.ThemeIcon("info");
+        const item = new vscode.TreeItem(
+          element.message ?? t("tree.noSessionsFound"),
+          vscode.TreeItemCollapsibleState.None
+        );
+        const description = element.message ? element.description : t("tree.noSessionsFoundDescription");
+        if (description) {
+          item.description = description;
+        }
+        item.iconPath = new vscode.ThemeIcon(element.message ? "filter" : "info");
         return item;
       }
       case "project": {
@@ -339,15 +366,23 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
       return this.getCatalogChildren(element);
     }
 
+    const memorySessions = this.filteredMemorySessions();
+    const memoryFavorites = this.projectFilter
+      ? this.favoriteProjects.filter((favoritePath) => matchesProjectScope(favoritePath, this.projectFilter!))
+      : this.favoriteProjects;
+
     if (element.kind === "recentRoot") {
-      const visibleSessions: TreeNode[] = this.sessions
+      if (this.projectFilter && memorySessions.length === 0) {
+        return [{ kind: "empty", message: t("tree.currentProjectFilter.emptySessions") }];
+      }
+      const visibleSessions: TreeNode[] = memorySessions
         .slice(0, this.recentVisibleCount)
         .map((session) => ({
           kind: "session" as const,
           session: this.applySummaryOverride(session),
           showProjectName: true
         } satisfies SessionNode));
-      const remaining = Math.max(0, this.sessions.length - visibleSessions.length);
+      const remaining = Math.max(0, memorySessions.length - visibleSessions.length);
       if (remaining > 0) {
         visibleSessions.push({ kind: "showMoreRecent", remaining });
       }
@@ -355,11 +390,11 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     }
 
     if (element.kind === "favoritesRoot") {
-      return buildFavoriteProjectNodes(this.favoriteProjects, this.sessions);
+      return buildFavoriteProjectNodes(memoryFavorites, memorySessions);
     }
 
     if (element.kind === "projectsRoot") {
-      const allProjects = groupByProject(this.sessions, new Set(this.favoriteProjects));
+      const allProjects = groupByProject(memorySessions, new Set(memoryFavorites));
       const visibleProjects: TreeNode[] = allProjects.slice(0, this.projectsVisibleCount);
       const remaining = Math.max(0, allProjects.length - visibleProjects.length);
       if (remaining > 0) {
@@ -389,7 +424,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   }
 
   showMoreRecent(): void {
-    const maxTotal = this.catalogConfig ? this.cachedRecentTotal : this.sessions.length;
+    const maxTotal = this.catalogConfig ? this.cachedRecentTotal : this.filteredMemorySessions().length;
     this.recentVisibleCount = Math.min(maxTotal, this.recentVisibleCount + recentLimitStep);
     this.onDidChangeTreeDataEmitter.fire();
   }
@@ -451,10 +486,14 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
         limit: this.recentVisibleCount,
         offset: 0,
         maxCap: cfg.maxCap,
-        outputLanguage: cfg.outputLanguage
+        outputLanguage: cfg.outputLanguage,
+        projectFilter: this.projectFilter
       });
       this.cachedRecentSessions = page.sessions;
       this.cachedRecentTotal = page.total;
+      if (this.projectFilter && page.sessions.length === 0) {
+        return [{ kind: "empty", message: t("tree.currentProjectFilter.emptySessions") }];
+      }
       const visibleSessions: TreeNode[] = page.sessions.map((session) => ({
         kind: "session" as const,
         session: this.applySummaryOverride(session),
@@ -468,10 +507,17 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     }
 
     if (element.kind === "favoritesRoot" || element.kind === "projectsRoot") {
-      this.cachedProjectGroups = await queryProjectGroupSummaries(cfg.dbPath, this.favoriteProjects);
+      this.cachedProjectGroups = await queryProjectGroupSummaries(
+        cfg.dbPath,
+        this.favoriteProjects,
+        this.projectFilter
+      );
       if (element.kind === "favoritesRoot") {
         const withSessions = this.cachedProjectGroups.filter((g) => g.favorited);
-        const emptyFavorites = this.favoriteProjects
+        const scopedFavorites = this.projectFilter
+          ? this.favoriteProjects.filter((favoritePath) => matchesProjectScope(favoritePath, this.projectFilter!))
+          : this.favoriteProjects;
+        const emptyFavorites = scopedFavorites
           .filter(
             (favoritePath) =>
               !withSessions.some(
@@ -732,17 +778,26 @@ interface ProjectGroup {
 }
 
 export function buildProjectList(sessions: AgentSession[], favoriteProjects: string[] = []): ProjectGroup[] {
-  const byGroup = groupSessionsByProject(sessions);
+  // One folder can yield several logical groups (same projectPath, different projectId). Merge by
+  // display path: the tree renders one node per folder and keys its item id by that path, so two
+  // nodes for one folder collide ("Element with id agentResume.project:<path> is already registered").
+  const byPath = new Map<string, AgentSession[]>();
+  for (const projectSessions of groupSessionsByProject(sessions).values()) {
+    const projectPath = pickProjectDisplayPath(projectSessions);
+    const bucket = byPath.get(projectPath);
+    if (bucket) {
+      bucket.push(...projectSessions);
+    } else {
+      byPath.set(projectPath, [...projectSessions]);
+    }
+  }
 
-  return [...byGroup.values()]
-    .map((projectSessions) => {
-      const projectPath = pickProjectDisplayPath(projectSessions);
-      return {
-        projectPath,
-        sessions: projectSessions.sort((a, b) => b.updatedAt - a.updatedAt),
-        favorited: isFavoriteAmong(favoriteProjects, projectPath, projectSessions)
-      };
-    })
+  return [...byPath.entries()]
+    .map(([projectPath, projectSessions]) => ({
+      projectPath,
+      sessions: projectSessions.sort((a, b) => b.updatedAt - a.updatedAt),
+      favorited: isFavoriteAmong(favoriteProjects, projectPath, projectSessions)
+    }))
     .sort((a, b) => latest(b.sessions) - latest(a.sessions) || a.projectPath.localeCompare(b.projectPath));
 }
 

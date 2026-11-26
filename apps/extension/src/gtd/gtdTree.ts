@@ -5,6 +5,7 @@ import { AgentSession } from "../history";
 import { t } from "../i18n";
 import { LlmOutputLanguage } from "../llm/languages";
 import { buildSessionTreeItem, SessionTreeItemOptions } from "../tree/sessionTree";
+import { matchesProjectScope, ProjectFilterScope } from "../filter/projectFilter";
 import { SessionGtdStore } from "./sessionGtdStore";
 
 const gtdInitialLimit = 20;
@@ -15,7 +16,8 @@ type GtdTreeNode =
   | { kind: "session"; session: AgentSession }
   | { kind: "showMoreStatus"; status: GtdStatus; remaining: number }
   | { kind: "warning"; message: string }
-  | { kind: "empty" };
+  | { kind: "empty" }
+  | { kind: "filterEmpty" };
 export class GtdTreeProvider implements vscode.TreeDataProvider<GtdTreeNode> {
   private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<GtdTreeNode | undefined | null | void>();
   readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
@@ -26,12 +28,28 @@ export class GtdTreeProvider implements vscode.TreeDataProvider<GtdTreeNode> {
   private catalogConfig?: { dbPath: string; outputLanguage?: LlmOutputLanguage };
   private visibleCounts = new Map<GtdStatus, number>();
   private cachedSessionsByStatus = new Map<GtdStatus, AgentSession[]>();
+  private projectFilter?: ProjectFilterScope;
 
   constructor(private readonly gtdStore: SessionGtdStore) {}
 
   setSessionTreeOptions(options: SessionTreeItemOptions): void {
     this.sessionTreeOptions = options;
     this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  setProjectFilter(filter?: ProjectFilterScope): void {
+    this.projectFilter = filter;
+    this.visibleCounts.clear();
+    this.cachedSessionsByStatus.clear();
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  private filteredMemorySessions(): AgentSession[] {
+    if (!this.projectFilter) {
+      return this.sessions;
+    }
+    const filter = this.projectFilter;
+    return this.sessions.filter((session) => matchesProjectScope(session.projectPath, filter));
   }
 
   setCatalogSource(config: { dbPath: string; outputLanguage?: LlmOutputLanguage; warnings?: string[] }): void {
@@ -95,6 +113,11 @@ export class GtdTreeProvider implements vscode.TreeDataProvider<GtdTreeNode> {
         item.iconPath = new vscode.ThemeIcon("info");
         return item;
       }
+      case "filterEmpty": {
+        const item = new vscode.TreeItem(t("tree.currentProjectFilter.emptyGtd"), vscode.TreeItemCollapsibleState.None);
+        item.iconPath = new vscode.ThemeIcon("filter");
+        return item;
+      }
       case "status": {
         const item = new vscode.TreeItem(
           gtdStatusLabel(element.status),
@@ -130,12 +153,13 @@ export class GtdTreeProvider implements vscode.TreeDataProvider<GtdTreeNode> {
         roots.push(...this.warnings.map((message) => ({ kind: "warning" as const, message })));
       }
 
+      const memorySessions = this.filteredMemorySessions();
       const counts = this.catalogConfig
-        ? await queryGtdCountsFromCatalog(this.catalogConfig.dbPath)
-        : this.gtdStore.countByStatus(this.sessions);
+        ? await queryGtdCountsFromCatalog(this.catalogConfig.dbPath, this.projectFilter)
+        : this.gtdStore.countByStatus(memorySessions);
       const hasTagged = GTD_STATUSES.some((status) => counts[status] > 0);
       if (!hasTagged && !this.warnings.length) {
-        roots.push({ kind: "empty" });
+        roots.push(this.projectFilter ? { kind: "filterEmpty" } : { kind: "empty" });
       }
 
       roots.push(
@@ -155,7 +179,8 @@ export class GtdTreeProvider implements vscode.TreeDataProvider<GtdTreeNode> {
           status: element.status,
           limit,
           offset: 0,
-          outputLanguage: this.catalogConfig.outputLanguage
+          outputLanguage: this.catalogConfig.outputLanguage,
+          projectFilter: this.projectFilter
         });
         this.cachedSessionsByStatus.set(element.status, page.sessions);
         const nodes: GtdTreeNode[] = page.sessions.map((session) => ({ kind: "session" as const, session }));
@@ -166,7 +191,7 @@ export class GtdTreeProvider implements vscode.TreeDataProvider<GtdTreeNode> {
         return nodes;
       }
 
-      const allForStatus = this.gtdStore.sessionsForStatus(this.sessions, element.status);
+      const allForStatus = this.gtdStore.sessionsForStatus(this.filteredMemorySessions(), element.status);
       const visible: GtdTreeNode[] = allForStatus
         .slice(0, limit)
         .map((session) => ({ kind: "session" as const, session }));

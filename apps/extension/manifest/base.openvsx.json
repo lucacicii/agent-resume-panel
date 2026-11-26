@@ -2589,6 +2589,11 @@
         "category": "Agent Resume"
       },
       {
+        "command": "agentResume.toggleCurrentProjectFilter",
+        "title": "Toggle Current Project Filter",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.openSession",
         "title": "Resume Session",
         "category": "Agent Resume"
@@ -2711,6 +2716,18 @@
         "title": "Clear Notes Filter",
         "category": "Agent Resume",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "agentResume.enableCurrentProjectFilter",
+        "title": "Filter: Current Project",
+        "category": "Agent Resume",
+        "icon": "$(folder)"
+      },
+      {
+        "command": "agentResume.disableCurrentProjectFilter",
+        "title": "Filter: Showing Current Project (Click to Show All)",
+        "category": "Agent Resume",
+        "icon": "$(folder-active)"
       },
       {
         "command": "agentResume.refreshNotes",

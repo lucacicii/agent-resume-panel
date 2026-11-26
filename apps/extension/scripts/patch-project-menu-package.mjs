@@ -160,9 +160,35 @@ function patchManifest() {
     ...expandBlock([projectMoreTrigger])
   ];
 
+  const currentProjectFilterTitleEntries = [
+    "agentResume.sessions",
+    "agentResume.acpChats",
+    "agentResume.gtd",
+    "agentResume.notes"
+  ].flatMap((viewId) => [
+    {
+      command: "agentResume.enableCurrentProjectFilter",
+      when: `view == ${viewId} && !agentResume.currentProjectFilter.enabled`,
+      group: "navigation@-1"
+    },
+    {
+      command: "agentResume.disableCurrentProjectFilter",
+      when: `view == ${viewId} && agentResume.currentProjectFilter.enabled`,
+      group: "navigation@-1"
+    }
+  ]);
+
   const previousTitle = pkg.contributes.menus["view/title"] ?? [];
   pkg.contributes.menus["view/title"] = [
-    ...previousTitle.filter((entry) => !String(entry.when ?? "").includes("view == agentResume.notes")),
+    ...previousTitle.filter((entry) => {
+      const when = String(entry.when ?? "");
+      const cmd = String(entry.command ?? "");
+      return (
+        !when.includes("view == agentResume.notes") &&
+        !/^agentResume\.(?:(?:zh-cn|ja)\.)?(?:enable|disable)CurrentProjectFilter$/.test(cmd)
+      );
+    }),
+    ...expandBlock(currentProjectFilterTitleEntries),
     ...expandBlock(notesTitleEntries),
     {
       command: "agentResume.openSettings",

@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { formatProjectLabel } from "../projects/projectAliases";
 import { acpRelativeTime } from "../util/relativeTime";
 import { agentIconPath } from "../icons/agentIcons";
+import { matchesProjectScope, ProjectFilterScope } from "../filter/projectFilter";
 import { AcpSessionRecord } from "./types";
 
 type AcpChatTreeNode =
@@ -12,6 +13,7 @@ type AcpChatTreeNode =
   | { kind: "projectsRoot" }
   | { kind: "warning"; message: string }
   | { kind: "empty" }
+  | { kind: "filterEmpty" }
   | { kind: "project"; projectPath: string; records: AcpSessionRecord[] }
   | { kind: "chat"; record: AcpSessionRecord; showProjectName?: boolean };
 
@@ -25,12 +27,27 @@ export class AcpChatTreeProvider implements vscode.TreeDataProvider<AcpChatTreeN
   private warnings: string[] = [];
   private recentVisibleCount = recentInitialLimit;
   private projectAliasResolver: (projectPath: string) => string | undefined = () => undefined;
+  private projectFilter?: ProjectFilterScope;
 
   constructor(private readonly extensionUri?: vscode.Uri) {}
 
   setProjectAliasResolver(resolver: (projectPath: string) => string | undefined): void {
     this.projectAliasResolver = resolver;
     this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  setProjectFilter(filter?: ProjectFilterScope): void {
+    this.projectFilter = filter;
+    this.recentVisibleCount = recentInitialLimit;
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  private filteredRecords(): AcpSessionRecord[] {
+    if (!this.projectFilter) {
+      return this.records;
+    }
+    const filter = this.projectFilter;
+    return this.records.filter((record) => matchesProjectScope(record.projectPath, filter));
   }
 
   getProjectDisplayName(projectPath: string): string {
@@ -89,6 +106,11 @@ export class AcpChatTreeProvider implements vscode.TreeDataProvider<AcpChatTreeN
         item.iconPath = new vscode.ThemeIcon("info");
         return item;
       }
+      case "filterEmpty": {
+        const item = new vscode.TreeItem(t("tree.currentProjectFilter.emptyAcp"), vscode.TreeItemCollapsibleState.None);
+        item.iconPath = new vscode.ThemeIcon("filter");
+        return item;
+      }
       case "project": {
         const alias = this.projectAliasResolver(element.projectPath);
         const item = new vscode.TreeItem(
@@ -107,26 +129,28 @@ export class AcpChatTreeProvider implements vscode.TreeDataProvider<AcpChatTreeN
   }
 
   getChildren(element?: AcpChatTreeNode): AcpChatTreeNode[] {
+    const records = this.filteredRecords();
+
     if (!element) {
       const roots: AcpChatTreeNode[] = [];
       if (this.warnings.length) {
         roots.push(...this.warnings.map((message) => ({ kind: "warning" as const, message })));
       }
-      if (!this.records.length && !this.warnings.length) {
-        roots.push({ kind: "empty" });
+      if (!records.length && !this.warnings.length) {
+        roots.push(this.projectFilter ? { kind: "filterEmpty" } : { kind: "empty" });
       }
       roots.push({ kind: "recentRoot" }, { kind: "projectsRoot" });
       return roots;
     }
 
     if (element.kind === "recentRoot") {
-      return this.records
+      return records
         .slice(0, this.recentVisibleCount)
         .map((record) => ({ kind: "chat" as const, record, showProjectName: true }));
     }
 
     if (element.kind === "projectsRoot") {
-      return groupByProject(this.records);
+      return groupByProject(records);
     }
 
     if (element.kind === "project") {

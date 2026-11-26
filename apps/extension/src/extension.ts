@@ -98,6 +98,7 @@ import {
   ProjectSessionSortMode,
   setProjectSessionSortMode
 } from "./tree/projectSessionSort";
+import { CurrentProjectFilterController } from "./filter/currentProjectFilter";
 import { getLlmConfig, isOutputLanguageFollowingUi } from "./llm/config";
 import { migrateSummariesFromGlobalState } from "./llm/summaryMigration";
 import { executeHandoffCommand } from "./handoff/handoffCommand";
@@ -291,11 +292,34 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
     showCollapseAll: true
   });
 
+  const currentProjectFilter = new CurrentProjectFilterController(context);
+  const applyCurrentProjectFilterDescriptions = () => {
+    const desc = currentProjectFilter.getDescriptionLabel();
+    treeView.description = desc;
+    acpTreeView.description = desc;
+    gtdTreeView.description = desc;
+    if (notesTreeView) {
+      notesTreeView.description = desc;
+    }
+  };
+  const applyCurrentProjectFilter = () => {
+    const scope = currentProjectFilter.getActiveScope();
+    tree.setProjectFilter(scope);
+    acpTree.setProjectFilter(scope);
+    gtdTree?.setProjectFilter(scope);
+    notesTree?.setProjectFilter(scope);
+    applyCurrentProjectFilterDescriptions();
+  };
+  void currentProjectFilter.initialize();
+  applyCurrentProjectFilter();
+
   context.subscriptions.push(
     treeView,
     acpTreeView,
     gtdTreeView,
     notesTreeView,
+    currentProjectFilter,
+    currentProjectFilter.onDidChange(() => applyCurrentProjectFilter()),
     herdrTracker,
     herdrTracker.onDidChange(() => {
       tree.refresh();
@@ -359,6 +383,21 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
     vscode.commands.registerCommand("agentResume.refresh", () => refresh(tree, true)),
     vscode.commands.registerCommand("agentResume.refreshGtd", () => refresh(tree, true)),
     vscode.commands.registerCommand("agentResume.refreshAcpChats", () => refreshAcpChats(acpTree, true)),
+    ...menuCommand("agentResume.enableCurrentProjectFilter", async () => {
+      await currentProjectFilter.setEnabled(true);
+      if (currentProjectFilter.getWorkspaceRoots().length === 0) {
+        void vscode.window.showInformationMessage(t("notification.currentProjectFilterNoWorkspace"));
+      }
+    }),
+    ...menuCommand("agentResume.disableCurrentProjectFilter", async () => {
+      await currentProjectFilter.setEnabled(false);
+    }),
+    vscode.commands.registerCommand("agentResume.toggleCurrentProjectFilter", async () => {
+      const next = await currentProjectFilter.toggle();
+      if (next && currentProjectFilter.getWorkspaceRoots().length === 0) {
+        void vscode.window.showInformationMessage(t("notification.currentProjectFilterNoWorkspace"));
+      }
+    }),
     vscode.commands.registerCommand("agentResume.search", () =>
       searchAndOpen(context, tree, () => refresh(tree, false), acpChatManager)
     ),
@@ -674,7 +713,9 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
         replaceAcpStoreWatcher();
       }
       if (event.affectsConfiguration("agentResume.uiLanguage")) {
-        void refreshAllLocalizedUi(false);
+        void refreshAllLocalizedUi(false).then(() => {
+          applyCurrentProjectFilterDescriptions();
+        });
         if (isOutputLanguageFollowingUi()) {
           void refresh(tree, false);
         }

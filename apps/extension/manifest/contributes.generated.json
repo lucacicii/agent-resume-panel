@@ -269,6 +269,30 @@
       "icon": "$(clear-all)"
     },
     {
+      "command": "agentResume.zh-cn.enableCurrentProjectFilter",
+      "title": "筛选：仅看当前项目",
+      "category": "Agent Resume",
+      "icon": "$(folder)"
+    },
+    {
+      "command": "agentResume.ja.enableCurrentProjectFilter",
+      "title": "フィルター: 現在のプロジェクト",
+      "category": "Agent Resume",
+      "icon": "$(folder)"
+    },
+    {
+      "command": "agentResume.zh-cn.disableCurrentProjectFilter",
+      "title": "筛选：当前项目（点击显示全部）",
+      "category": "Agent Resume",
+      "icon": "$(folder-active)"
+    },
+    {
+      "command": "agentResume.ja.disableCurrentProjectFilter",
+      "title": "フィルター: 現在のプロジェクト（クリックで全表示）",
+      "category": "Agent Resume",
+      "icon": "$(folder-active)"
+    },
+    {
       "command": "agentResume.zh-cn.refreshNotes",
       "title": "刷新笔记",
       "category": "Agent Resume",
@@ -740,6 +764,126 @@
         "command": "agentResume.openSettings",
         "when": "view == agentResume.gtd",
         "group": "navigation@1"
+      },
+      {
+        "command": "agentResume.enableCurrentProjectFilter",
+        "when": "view == agentResume.sessions && !agentResume.currentProjectFilter.enabled && agentResume.uiLocale == en",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.disableCurrentProjectFilter",
+        "when": "view == agentResume.sessions && agentResume.currentProjectFilter.enabled && agentResume.uiLocale == en",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.enableCurrentProjectFilter",
+        "when": "view == agentResume.acpChats && !agentResume.currentProjectFilter.enabled && agentResume.uiLocale == en",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.disableCurrentProjectFilter",
+        "when": "view == agentResume.acpChats && agentResume.currentProjectFilter.enabled && agentResume.uiLocale == en",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.enableCurrentProjectFilter",
+        "when": "view == agentResume.gtd && !agentResume.currentProjectFilter.enabled && agentResume.uiLocale == en",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.disableCurrentProjectFilter",
+        "when": "view == agentResume.gtd && agentResume.currentProjectFilter.enabled && agentResume.uiLocale == en",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.enableCurrentProjectFilter",
+        "when": "view == agentResume.notes && !agentResume.currentProjectFilter.enabled && agentResume.uiLocale == en",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.disableCurrentProjectFilter",
+        "when": "view == agentResume.notes && agentResume.currentProjectFilter.enabled && agentResume.uiLocale == en",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.zh-cn.enableCurrentProjectFilter",
+        "when": "view == agentResume.sessions && !agentResume.currentProjectFilter.enabled && agentResume.uiLocale == 'zh-cn'",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.zh-cn.disableCurrentProjectFilter",
+        "when": "view == agentResume.sessions && agentResume.currentProjectFilter.enabled && agentResume.uiLocale == 'zh-cn'",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.zh-cn.enableCurrentProjectFilter",
+        "when": "view == agentResume.acpChats && !agentResume.currentProjectFilter.enabled && agentResume.uiLocale == 'zh-cn'",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.zh-cn.disableCurrentProjectFilter",
+        "when": "view == agentResume.acpChats && agentResume.currentProjectFilter.enabled && agentResume.uiLocale == 'zh-cn'",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.zh-cn.enableCurrentProjectFilter",
+        "when": "view == agentResume.gtd && !agentResume.currentProjectFilter.enabled && agentResume.uiLocale == 'zh-cn'",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.zh-cn.disableCurrentProjectFilter",
+        "when": "view == agentResume.gtd && agentResume.currentProjectFilter.enabled && agentResume.uiLocale == 'zh-cn'",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.zh-cn.enableCurrentProjectFilter",
+        "when": "view == agentResume.notes && !agentResume.currentProjectFilter.enabled && agentResume.uiLocale == 'zh-cn'",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.zh-cn.disableCurrentProjectFilter",
+        "when": "view == agentResume.notes && agentResume.currentProjectFilter.enabled && agentResume.uiLocale == 'zh-cn'",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.ja.enableCurrentProjectFilter",
+        "when": "view == agentResume.sessions && !agentResume.currentProjectFilter.enabled && agentResume.uiLocale == 'ja'",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.ja.disableCurrentProjectFilter",
+        "when": "view == agentResume.sessions && agentResume.currentProjectFilter.enabled && agentResume.uiLocale == 'ja'",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.ja.enableCurrentProjectFilter",
+        "when": "view == agentResume.acpChats && !agentResume.currentProjectFilter.enabled && agentResume.uiLocale == 'ja'",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.ja.disableCurrentProjectFilter",
+        "when": "view == agentResume.acpChats && agentResume.currentProjectFilter.enabled && agentResume.uiLocale == 'ja'",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.ja.enableCurrentProjectFilter",
+        "when": "view == agentResume.gtd && !agentResume.currentProjectFilter.enabled && agentResume.uiLocale == 'ja'",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.ja.disableCurrentProjectFilter",
+        "when": "view == agentResume.gtd && agentResume.currentProjectFilter.enabled && agentResume.uiLocale == 'ja'",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.ja.enableCurrentProjectFilter",
+        "when": "view == agentResume.notes && !agentResume.currentProjectFilter.enabled && agentResume.uiLocale == 'ja'",
+        "group": "navigation@-1"
+      },
+      {
+        "command": "agentResume.ja.disableCurrentProjectFilter",
+        "when": "view == agentResume.notes && agentResume.currentProjectFilter.enabled && agentResume.uiLocale == 'ja'",
+        "group": "navigation@-1"
       },
       {
         "command": "agentResume.filterNotes",

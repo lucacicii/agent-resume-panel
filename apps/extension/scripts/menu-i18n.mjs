@@ -33,6 +33,8 @@ export const CONTEXT_MENU_COMMAND_SPECS = [
   { base: "agentResume.importNotes", key: "menu.notes.import", icon: "$(desktop-download)" },
   { base: "agentResume.filterNotes", key: "menu.notes.filter", icon: "$(filter)" },
   { base: "agentResume.clearNotesFilter", key: "menu.notes.clearFilter", icon: "$(clear-all)" },
+  { base: "agentResume.enableCurrentProjectFilter", key: "menu.filterCurrentProject.enable", icon: "$(folder)" },
+  { base: "agentResume.disableCurrentProjectFilter", key: "menu.filterCurrentProject.disable", icon: "$(folder-active)" },
   { base: "agentResume.refreshNotes", key: "menu.notes.refresh", icon: "$(refresh)" },
   { base: "agentResume.openNotesFolder", key: "menu.notes.openFolder", icon: "$(folder-opened)" },
   { base: "agentResume.insertNoteImage", key: "menu.notes.insertImage" },

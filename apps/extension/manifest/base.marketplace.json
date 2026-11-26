@@ -1170,6 +1170,23 @@
         "category": "Agent Resume"
       },
       {
+        "command": "agentResume.enableCurrentProjectFilter",
+        "title": "Filter: Current Project",
+        "category": "Agent Resume",
+        "icon": "$(folder)"
+      },
+      {
+        "command": "agentResume.disableCurrentProjectFilter",
+        "title": "Filter: Showing Current Project (Click to Show All)",
+        "category": "Agent Resume",
+        "icon": "$(folder-active)"
+      },
+      {
+        "command": "agentResume.toggleCurrentProjectFilter",
+        "title": "Toggle Current Project Filter",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.reportIssue",
         "title": "Report Issue",
         "category": "Agent Resume"
