@@ -649,6 +649,9 @@ function formatHerdrBadge(match: HerdrSessionMatch): string {
     if (match.agentState === "done") {
       return t("tree.herdrDone");
     }
+    if (match.agentState === "idle") {
+      return t("tree.herdrIdle");
+    }
     return t("tree.herdrLive");
   }
   return t("tree.herdrRecorded");
