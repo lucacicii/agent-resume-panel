@@ -471,7 +471,7 @@
             "never"
           ],
           "default": "auto",
-          "description": "Whether New Session commands start inside Herdr: auto (when project matches a Herdr Space), always, or never."
+          "description": "Whether New Session commands start inside Herdr: auto (start in Herdr when local herdr-core is running, auto-creating a Space if needed), always, or never."
         },
         "agentResume.showArchivedCodex": {
           "type": "boolean",

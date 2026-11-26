@@ -120,12 +120,18 @@ export interface HcFrame {
   payload: Buffer;
 }
 
+export interface HcAppTab {
+  id?: string;
+  terminals?: Array<{ terminal?: string }>;
+}
+
 export interface HcAppSpace {
   id: string;
   name: string;
   folder: string;
   machine?: string | null;
   active?: boolean;
+  tabs?: HcAppTab[];
 }
 
 export interface HcAppDoc {

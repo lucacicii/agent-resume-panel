@@ -2,6 +2,11 @@ import { TextDecoder } from "node:util";
 import * as vscode from "vscode";
 import type { HcAttachStream } from "../herdr/hcClient";
 import type { HerdrSessionTracker } from "../herdr/herdrSessionTracker";
+import {
+  deriveSpaceNameFromFolder,
+  isHerdrNameConflictError,
+  resolveUniqueHerdrTerminalName
+} from "../herdr/naming";
 import type { AgentSession } from "../history";
 import { t } from "../i18n";
 import { buildResumeCommand } from "./commandBuilder";
@@ -65,7 +70,7 @@ export function shouldAutoResumeInHerdr(session: AgentSession): boolean {
   return Boolean(activeTracker.resolve(session));
 }
 
-export function shouldStartNewSessionInHerdr(projectPath: string): boolean {
+export function shouldStartNewSessionInHerdr(_projectPath?: string): boolean {
   if (!activeTracker || !activeTracker.isDaemonAvailable()) {
     return false;
   }
@@ -74,13 +79,7 @@ export function shouldStartNewSessionInHerdr(projectPath: string): boolean {
     return false;
   }
   const mode = config.get<string>("herdrNewSessionMode", "auto");
-  if (mode === "never") {
-    return false;
-  }
-  if (mode === "always") {
-    return true;
-  }
-  return Boolean(projectPath && activeTracker.getSpaceByFolder(projectPath));
+  return mode !== "never";
 }
 
 export function shouldUseHerdrForHandoff(): boolean {
@@ -273,6 +272,17 @@ export async function openHerdrResume(
       if (tracker.herdrApp.isAvailable()) {
         await tracker.herdrApp.keepTerminalInSpace(address, targetSpaceId).catch(() => undefined);
       }
+    } else if (session.projectPath && tracker.herdrApp.isAvailable()) {
+      const ensured = await tracker.herdrApp
+        .ensureSpaceForTerminal(
+          deriveSpaceNameFromFolder(session.projectPath),
+          session.projectPath,
+          address
+        )
+        .catch(() => undefined);
+      if (ensured?.spaceId) {
+        spaceId = ensured.spaceId;
+      }
     }
 
     await tracker.markLaunchedInHerdr(session, { address, spaceId });
@@ -319,24 +329,6 @@ export async function openHerdrResume(
   return true;
 }
 
-function sanitizeHerdrTerminalName(raw?: string): string | undefined {
-  if (!raw) {
-    return undefined;
-  }
-  const normalized = raw
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^[^a-z0-9]+/, "")
-    .replace(/-+$/, "")
-    .slice(0, 32)
-    .replace(/-+$/, "");
-  if (!normalized || /^[ts]\d+$/i.test(normalized)) {
-    return undefined;
-  }
-  return normalized;
-}
-
 export async function launchCommandInHerdr(options: {
   cwd: string;
   command: string;
@@ -349,7 +341,11 @@ export async function launchCommandInHerdr(options: {
     return false;
   }
 
-  const safeName = sanitizeHerdrTerminalName(options.name);
+  const liveNames = tracker
+    .getTerminals()
+    .filter((term) => term.state === "live" && term.name)
+    .map((term) => term.name as string);
+  const uniqueName = resolveUniqueHerdrTerminalName(options.name, liveNames);
   const targetSpaceId =
     options.spaceId ||
     (options.cwd ? tracker.getSpaceByFolder(options.cwd)?.id : undefined);
@@ -359,32 +355,86 @@ export async function launchCommandInHerdr(options: {
 
   const bridgeApi = tracker.getBridgeApi();
   if (display === "auto" && bridgeApi) {
-    await bridgeApi.runAndOpen({
-      cwd: options.cwd || undefined,
-      line: options.command,
-      name: safeName,
-      labels: options.labels,
-      spaceId: targetSpaceId
-    });
+    let res: { address: string; spaceId?: string };
+    try {
+      res = await bridgeApi.runAndOpen({
+        cwd: options.cwd || undefined,
+        line: options.command,
+        name: uniqueName,
+        labels: options.labels,
+        spaceId: targetSpaceId
+      });
+    } catch (err) {
+      if (uniqueName && isHerdrNameConflictError(err)) {
+        res = await bridgeApi.runAndOpen({
+          cwd: options.cwd || undefined,
+          line: options.command,
+          name: undefined,
+          labels: options.labels,
+          spaceId: targetSpaceId
+        });
+      } else {
+        throw err;
+      }
+    }
+    if (!res.spaceId && options.cwd && tracker.herdrApp.isAvailable()) {
+      await tracker.herdrApp
+        .ensureSpaceForTerminal(
+          deriveSpaceNameFromFolder(options.cwd),
+          options.cwd,
+          res.address
+        )
+        .catch(() => undefined);
+      await tracker.refresh();
+    }
     return true;
   }
 
-  const created = await tracker.client.runTerminal({
-    cwd: options.cwd || undefined,
-    line: options.command,
-    name: safeName,
-    keep: true,
-    labels: options.labels
-  });
+  let created;
+  try {
+    created = await tracker.client.runTerminal({
+      cwd: options.cwd || undefined,
+      line: options.command,
+      name: uniqueName,
+      keep: true,
+      labels: options.labels
+    });
+  } catch (err) {
+    if (uniqueName && isHerdrNameConflictError(err)) {
+      created = await tracker.client.runTerminal({
+        cwd: options.cwd || undefined,
+        line: options.command,
+        name: undefined,
+        keep: true,
+        labels: options.labels
+      });
+    } else {
+      throw err;
+    }
+  }
 
-  if (targetSpaceId && tracker.herdrApp.isAvailable()) {
-    await tracker.herdrApp.keepTerminalInSpace(created.address, targetSpaceId).catch(() => undefined);
+  let resolvedSpaceId = targetSpaceId;
+  if (tracker.herdrApp.isAvailable()) {
+    if (resolvedSpaceId) {
+      await tracker.herdrApp.keepTerminalInSpace(created.address, resolvedSpaceId).catch(() => undefined);
+    } else if (options.cwd) {
+      const ensured = await tracker.herdrApp
+        .ensureSpaceForTerminal(
+          deriveSpaceNameFromFolder(options.cwd),
+          options.cwd,
+          created.address
+        )
+        .catch(() => undefined);
+      if (ensured?.spaceId) {
+        resolvedSpaceId = ensured.spaceId;
+      }
+    }
   }
   void tracker.refresh();
 
   if (display === "herdrApp" && tracker.herdrApp.isAvailable()) {
-    if (targetSpaceId) {
-      await tracker.herdrApp.selectSpace(targetSpaceId).catch(() => undefined);
+    if (resolvedSpaceId) {
+      await tracker.herdrApp.selectSpace(resolvedSpaceId).catch(() => undefined);
     }
     await tracker.herdrApp.activateHerdrApp();
     return true;
