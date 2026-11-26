@@ -8,6 +8,13 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.17.0]
+
+#### 新增
+
+- **Antigravity (`agy`) ACP 支持**：新增 `agy` 作为 ACP Chat 代理（默认启动命令 `agy acp`），支持在 ACP 对话面板、设置项（`agentResume.acp.agents.agy.*`）、编辑器标题栏新建会话（`acp:agy`）与会话目录中使用，同时支持 en/zh-cn/ja 多语言。
+- **Antigravity ACP 合规边界与文档说明**：保持纯薄客户端直连未修改的官方 `agy acp`，不触碰或代理 OAuth 凭证、不启用向 `agy` 的 ACP Handoff，并在 README 与 ACP Chat 文档中补充政策与合规说明。
+
 ### [2.16.0]
 
 #### 新增
@@ -584,6 +591,13 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.17.0]
+
+#### Added
+
+- **Antigravity (`agy`) ACP Support**: Added `agy` as an ACP Chat provider (default launch `agy acp`) across the ACP Chat panel, settings (`agentResume.acp.agents.agy.*`), editor title-bar new session (`acp:agy`), session catalog, and `en`/`zh-cn`/`ja` locales.
+- **Antigravity ACP Policy & Compliance**: Keeps integration strictly within the thin-client boundary (unmodified `agy acp` over standard stdio, no OAuth extraction/proxying, ACP Handoff excluded for `agy`) and documents policy & compliance details in README and ACP Chat docs.
 
 ### [2.16.0]
 

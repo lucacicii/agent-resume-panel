@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel",
   "publisher": "wuzhengzhe",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, Prime Agent, OMP, and Cursor CLI sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Cursor IDE composer metadata is indexed too.",
-  "version": "2.16.0",
+  "version": "2.17.0",
   "icon": "resources/icon.png",
   "private": true,
   "author": "lucacicii",
