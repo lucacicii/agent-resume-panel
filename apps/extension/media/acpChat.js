@@ -432,6 +432,13 @@
     header.append(author, copyBtn);
   }
 
+  function scrollThinkingBodyToBottom(body) {
+    if (!body) {
+      return;
+    }
+    body.scrollTop = body.scrollHeight;
+  }
+
   function renderThinking(card, thinkingText, isStreaming) {
     const trimmed = (thinkingText || "").trim();
     let block = card.querySelector(".thinking-block");
@@ -442,11 +449,15 @@
     }
 
     const isActivelyThinking = Boolean(isStreaming && !card.dataset.hasAnswerText);
+    const wasOpen = Boolean(block?.open);
     if (!block) {
       block = document.createElement("details");
       block.className = "thinking-block";
       block.open = isActivelyThinking;
       block.addEventListener("toggle", () => {
+        if (block.open && block.classList.contains("is-thinking")) {
+          scrollThinkingBodyToBottom(block.querySelector(".thinking-body"));
+        }
         if (block.dataset.programmatic === "1") {
           return;
         }
@@ -487,7 +498,13 @@
       body.className = "thinking-body";
       block.appendChild(body);
     }
-    body.textContent = thinkingText;
+    const textChanged = body.textContent !== thinkingText;
+    if (textChanged) {
+      body.textContent = thinkingText;
+    }
+    if (block.open && (textChanged || isActivelyThinking || !wasOpen)) {
+      scrollThinkingBodyToBottom(body);
+    }
   }
 
   function setMessageText(card, message) {
