@@ -7,9 +7,9 @@ Browse, search, and resume **Codex / Claude Code / Antigravity / Grok Build / Op
 | | Link |
 |---|---|
 | **Install** | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) |
-| **Docs** | [docs/panel](../../docs/panel/README.md) |
+| **Docs** | [docs/panel](https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/panel/README.md) |
 
-Extension version: **2.17.0** · [Changelog](CHANGELOG.md)
+Extension version: **2.17.0** · [Changelog](https://github.com/lucacicii/agent-resume-panel/blob/develop/apps/extension/CHANGELOG.md)
 
 > **No cloud · Local-first**  
 > Session index, notes, and ACP chats are stored on your machine under **`~/.agent-resume-panel`**.  
@@ -32,7 +32,7 @@ Extension version: **2.17.0** · [Changelog](CHANGELOG.md)
 | **Resume targets** | Terminal, Claude/Codex panels, Ghostty, Codex App, Herdr (`Herdr Core Bridge`) |
 | **Prime Agent** | Prime Agent CLI sync, preview, `prime-agent --resume` terminal resume, and ACP Chat via `prime-agent --mode acp` |
 | **OMP** | OMP CLI sync (`~/.omp/agent/sessions`), preview, `omp -r` terminal resume, and ACP Chat via `omp acp` |
-| **Antigravity** | Antigravity CLI sync, preview, terminal resume, and compliant thin-client ACP Chat via unmodified `agy acp` (see [ACP Chat docs](../../docs/panel/acp-chat.md#antigravity-acp-policy--compliance)) |
+| **Antigravity** | Antigravity CLI sync, preview, terminal resume, and compliant thin-client ACP Chat via unmodified `agy acp` (see [ACP Chat docs](https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/panel/acp-chat.md#antigravity-acp-policy--compliance)) |
 | **Cursor** | Cursor CLI sync, preview, terminal resume, and copied `cursor-agent` command; Cursor IDE composer headers open the recorded project (command resume is not available) |
 
 ### Quick start
@@ -45,7 +45,7 @@ Extension version: **2.17.0** · [Changelog](CHANGELOG.md)
 
 | | Link |
 |---|------|
-| VS Code extension docs | [docs/panel](../../docs/panel/README.md) |
+| VS Code extension docs | [docs/panel](https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/panel/README.md) |
 | Companion extension | [Herdr Core Bridge](https://github.com/lucacicii/herdr-bridge) ([Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.herdr-core-bridge) · [Open VSX](https://open-vsx.org/extension/lucacicii/herdr-core-bridge)) — live `hc` PTYs, Spaces & two-way session sync |
 | Discord community | [discord.gg/CG2esx7K7](https://discord.gg/CG2esx7K7) |
 | Report issues | [Issues](https://github.com/lucacicii/agent-resume-panel/issues) |
@@ -61,9 +61,9 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 | | 链接 |
 |---|---|
 | **安装** | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) |
-| **文档** | [docs/panel](../../docs/panel/README.md) |
+| **文档** | [docs/panel](https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/panel/README.md) |
 
-扩展版本：**2.17.0** · [更新日志](CHANGELOG.md)
+扩展版本：**2.17.0** · [更新日志](https://github.com/lucacicii/agent-resume-panel/blob/develop/apps/extension/CHANGELOG.md)
 
 > **无云端 · 纯本机存储**  
 > 数据默认保存在 **`~/.agent-resume-panel`**。可选 LLM Assist 需自行配置 API。
@@ -81,7 +81,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 | **恢复目标** | 终端、Claude/Codex 面板、Ghostty、Codex App、Herdr（`Herdr Core Bridge`） |
 | **Prime Agent** | Prime Agent CLI 同步、预览、`prime-agent --resume` 终端恢复，以及 `prime-agent --mode acp` ACP 聊天 |
 | **OMP** | OMP CLI 同步（`~/.omp/agent/sessions`）、预览、`omp -r` 终端恢复，以及 `omp acp` ACP 聊天 |
-| **Antigravity** | Antigravity CLI 同步、预览、终端恢复，以及基于未修改官方 `agy acp` 的合规薄客户端 ACP 聊天（详见 [ACP Chat 文档](../../docs/panel/acp-chat.md#antigravity-acp-政策与合规说明)） |
+| **Antigravity** | Antigravity CLI 同步、预览、终端恢复，以及基于未修改官方 `agy acp` 的合规薄客户端 ACP 聊天（详见 [ACP Chat 文档](https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/panel/acp-chat.md#antigravity-acp-政策与合规说明)） |
 | **Cursor** | Cursor CLI 支持同步、预览、终端恢复与复制 `cursor-agent` 命令；Cursor IDE Composer 仅打开记录的项目，不支持命令恢复 |
 
 ### 快速开始
@@ -94,7 +94,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 
 | | 链接 |
 |---|------|
-| VS Code 扩展文档 | [docs/panel](../../docs/panel/README.md) |
+| VS Code 扩展文档 | [docs/panel](https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/panel/README.md) |
 | 配套扩展 | [Herdr Core Bridge](https://github.com/lucacicii/herdr-bridge)（[Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.herdr-core-bridge) · [Open VSX](https://open-vsx.org/extension/lucacicii/herdr-core-bridge)）— 实时 `hc` 终端、Spaces 与双向会话联动 |
 | Discord 社区 | [discord.gg/CG2esx7K7](https://discord.gg/CG2esx7K7) |
 | 问题反馈 | [Issues](https://github.com/lucacicii/agent-resume-panel/issues) |
