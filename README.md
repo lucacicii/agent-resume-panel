@@ -28,7 +28,7 @@ Core library: [`packages/core/`](packages/core/) (`@agent-resume/core`).
 |-----------------|-------------------------|-----------------------------|
 | **Codex (CLI & App)** | History transcripts, multi-turn messages, session titles, workspace directories | VS Code Terminal, Ghostty, Codex App, Official Panel |
 | **Claude Code** | Native CLI project sessions under `~/.claude/projects` | VS Code Terminal, Ghostty, Official Extension Panel |
-| **Antigravity / AGY** | Antigravity agent CLI execution logs and workspace sessions | Integrated Terminal, Ghostty |
+| **Antigravity / AGY** | Antigravity agent CLI execution logs and workspace sessions | Integrated Terminal, Ghostty, ACP Chat |
 | **Grok Build** | Task logs and build agent execution history | Integrated Terminal, Ghostty |
 | **OpenCode & Pi** | Universal CLI transcripts and multi-agent interaction logs | Integrated Terminal, Ghostty |
 | **Prime Agent & OMP** | Prime Agent and OMP CLI session transcripts | Integrated Terminal, Ghostty, ACP Chat |
@@ -55,7 +55,7 @@ Core library: [`packages/core/`](packages/core/) (`@agent-resume/core`).
    - **Custom Environment & Arguments**: Configure preset flags and environment parameters per target.
 
 3. **ACP Chat ([docs/panel/acp-chat.md](docs/panel/acp-chat.md))**:
-   - **In-Editor Agent Client Protocol Panel**: Connect directly to local ACP-compliant agents (e.g., Claude Code, Codex, OpenCode, Pi, Prime Agent, OMP, or Grok).
+   - **In-Editor Agent Client Protocol Panel**: Connect directly to local ACP-compliant agents (e.g., Claude Code, Codex, Antigravity, OpenCode, Pi, Prime Agent, OMP, or Grok).
    - **Streamed Thinking & Tool Call Approval**: View live agent thought processes and manually approve or reject tool execution requests.
    - **Live File Diffs**: Review code edits directly within editor diff tabs before applying.
 
@@ -72,6 +72,21 @@ Core library: [`packages/core/`](packages/core/) (`@agent-resume/core`).
    - **Auto Summary**: Condense lengthy multi-turn conversations into concise bulleted digests.
    - **Auto Rename**: Automatically generate clean, human-readable session titles from transcript contents.
    - **Handoff Brief**: Generate structured handover summaries to easily transfer context to another agent or teammate.
+
+---
+
+### Antigravity ACP Policy & Compliance
+
+Google's **Antigravity Terms of Service** distinguish between official/interactive thin clients and unauthorized wrappers or credential proxies:
+
+- **Policy Boundary**: Under consumer OAuth (`oauth-personal`), you may not extract, cache, or proxy OAuth credentials for external API routing, nor wrap `agy acp` inside an outer third-party agent harness (injecting external system prompts, external tool definitions, cross-model context replay, or unattended automated loops). Outer harnesses and automated pipelines should instead authenticate via `GEMINI_API_KEY` or Google Cloud / Gemini Enterprise Agent Platform mechanisms.
+- **How Agent Resume Panel Stays Compliant**:
+  1. **Unmodified `agy acp` over standard stdio**: Spawns the locally installed official `agy acp` binary directly via standard ACP JSON-RPC (`initialize`, `session/new`, `session/load`/`resume`, `session/prompt`).
+  2. **No OAuth extraction or proxying**: Never reads, extracts, stores, or forwards Antigravity OAuth tokens, and never exposes an OpenAI/Claude-compatible API proxy.
+  3. **Human-driven thin chat UI**: Acts purely as an in-editor chat interface where the user prompts Antigravity directly; it does not inject outer system prompts, override Antigravity's built-in tools, or run unattended agent loops.
+  4. **No ACP Handoff to `agy`**: ACP Handoff deliberately excludes `agy` (`supportsAcp: false`) so cross-model summaries are not automatically injected into `agy acp` sessions (only manual CLI/clipboard handoff remains).
+
+> Users remain responsible for ensuring their own configuration and usage comply with the latest Google Antigravity Terms of Service.
 
 ---
 
@@ -150,7 +165,7 @@ pnpm run install:local # Build VSIX & install to local VS Code/Cursor
 |-----------------|----------------|----------------|
 | **Codex (CLI & App)** | 历史对话 JSON/JSONL 记录、多轮消息、会话标题、项目路径 | VS Code 内置终端、Ghostty、Codex App、官方插件面板 |
 | **Claude Code** | 位于 `~/.claude/projects` 的原生 CLI 项目会话 | VS Code 内置终端、Ghostty、官方插件面板 |
-| **Antigravity / AGY** | Antigravity agent CLI 运行日志与项目会话 | 内置终端、Ghostty 外部终端 |
+| **Antigravity / AGY** | Antigravity agent CLI 运行日志与项目会话 | 内置终端、Ghostty 外部终端、ACP Chat |
 | **Grok Build** | Grok 构建 Agent 的任务日志与执行历史 | 内置终端、Ghostty 外部终端 |
 | **OpenCode & Pi** | 通用 CLI 对话记录与多 Agent 交互日志 | 内置终端、Ghostty 外部终端 |
 | **Prime Agent & OMP** | Prime Agent 与 OMP CLI 对话记录 | 内置终端、Ghostty、ACP Chat |
@@ -177,7 +192,7 @@ pnpm run install:local # Build VSIX & install to local VS Code/Cursor
    - **自定义环境与参数**：支持为不同恢复目标预设命令行参数与环境变量。
 
 3. **ACP Chat ([docs/panel/acp-chat.md](docs/panel/acp-chat.md))**:
-   - **编辑器旁 ACP 面板**：直接连接本地符合 Agent Client Protocol (ACP) 协议的 Agent（如 Claude Code、Codex、OpenCode、Pi、Prime Agent、OMP、Grok）。
+   - **编辑器旁 ACP 面板**：直接连接本地符合 Agent Client Protocol (ACP) 协议的 Agent（如 Claude Code、Codex、Antigravity、OpenCode、Pi、Prime Agent、OMP、Grok）。
    - **流式思考与工具审核**：实时展示 Agent 的思考过程（Thinking），支持手动 Approve / Reject 工具执行请求。
    - **代码变更实时 Diff**：在应用修改前，直接在编辑器 Diff 标签页中预览代码变动。
 
@@ -194,6 +209,21 @@ pnpm run install:local # Build VSIX & install to local VS Code/Cursor
    - **Auto Summary (自动摘要)**：一键将冗长复杂的会话总结为精炼的要点。
    - **Auto Rename (智能重命名)**：根据对话正文自动生成简短易读的会话标题。
    - **Handoff Brief (交接简报)**：生成结构化的交接 Brief，方便快速将上下文传递给其他 Agent 或同事。
+
+---
+
+### Antigravity ACP 使用政策与合规说明
+
+Google 的 **Antigravity 服务条款** 对“交互式薄客户端”与“外层套壳/凭证代理”划分了明确边界：
+
+- **政策红线**：在使用个人消费级 OAuth（`oauth-personal`）时，禁止提取、复用或反代 OAuth 凭证提供给第三方转发服务，也禁止将 `agy acp` 包装进外层第三方 Agent 框架中（例如注入外部 system prompt、注入外部工具定义、自动重放跨模型上下文或运行无人值守自动化循环）。若需接入外层框架或自动化流水线，应使用 `GEMINI_API_KEY` 或 Google Cloud / Gemini Enterprise Agent Platform 等官方认证通道。
+- **本插件如何在合规范围内使用 Antigravity ACP**：
+  1. **直接调用未修改的官方 `agy acp`**：仅通过标准 ACP stdio JSON-RPC（`initialize`、`session/new`、`session/load`/`resume`、`session/prompt`）拉起本机安装的官方 `agy acp` 进程。
+  2. **不读取、不提取、不代理 OAuth 凭证**：完全不触碰 Antigravity 的登录凭据，也不提供 OpenAI/Claude 兼容中转接口。
+  3. **纯人工驱动的薄客户端 UI**：仅作为编辑器内聊天面板，由用户本人直接发起对话；不注入外层系统提示词、不接管或替换 Antigravity 原生工具，也不执行无人值守循环。
+  4. **主动禁用向 `agy` 的 ACP Handoff**：已刻意将 `agy` 从 ACP Handoff 目标中移除（`supportsAcp: false`），避免将其他模型的总结上下文自动注入 `agy acp` 会话（仅保留 CLI/剪贴板方式）。
+
+> 请注意：用户仍需确保自身的实际使用方式与配置符合最新的 Google Antigravity 服务条款。
 
 ---
 

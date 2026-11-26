@@ -32,6 +32,7 @@ Extension version: **2.16.0** · [Changelog](CHANGELOG.md)
 | **Resume targets** | Terminal, Claude/Codex panels, Ghostty, Codex App, Herdr (`Herdr Core Bridge`) |
 | **Prime Agent** | Prime Agent CLI sync, preview, `prime-agent --resume` terminal resume, and ACP Chat via `prime-agent --mode acp` |
 | **OMP** | OMP CLI sync (`~/.omp/agent/sessions`), preview, `omp -r` terminal resume, and ACP Chat via `omp acp` |
+| **Antigravity** | Antigravity CLI sync, preview, terminal resume, and compliant thin-client ACP Chat via unmodified `agy acp` (see [ACP Chat docs](../../docs/panel/acp-chat.md#antigravity-acp-policy--compliance)) |
 | **Cursor** | Cursor CLI sync, preview, terminal resume, and copied `cursor-agent` command; Cursor IDE composer headers open the recorded project (command resume is not available) |
 
 ### Quick start
@@ -80,6 +81,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 | **恢复目标** | 终端、Claude/Codex 面板、Ghostty、Codex App、Herdr（`Herdr Core Bridge`） |
 | **Prime Agent** | Prime Agent CLI 同步、预览、`prime-agent --resume` 终端恢复，以及 `prime-agent --mode acp` ACP 聊天 |
 | **OMP** | OMP CLI 同步（`~/.omp/agent/sessions`）、预览、`omp -r` 终端恢复，以及 `omp acp` ACP 聊天 |
+| **Antigravity** | Antigravity CLI 同步、预览、终端恢复，以及基于未修改官方 `agy acp` 的合规薄客户端 ACP 聊天（详见 [ACP Chat 文档](../../docs/panel/acp-chat.md#antigravity-acp-政策与合规说明)） |
 | **Cursor** | Cursor CLI 支持同步、预览、终端恢复与复制 `cursor-agent` 命令；Cursor IDE Composer 仅打开记录的项目，不支持命令恢复 |
 
 ### 快速开始

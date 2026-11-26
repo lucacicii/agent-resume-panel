@@ -18,7 +18,7 @@ const BASELINES = {
     views: 4
   },
   marketplace: {
-    commands: 178,
+    commands: 182,
     menuEntries: 20800,
     submenus: 13,
     activationEvents: 42,

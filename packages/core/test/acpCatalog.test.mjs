@@ -54,6 +54,19 @@ test("upsertAcpSessionInCatalog writes chat row with acp_provider and transcript
   assert.equal(session.source, "acp");
   assert.equal(session.messageCount, 3);
 
+  await upsertAcpSessionInCatalog(dbPath, dir, {
+    id: "chat-agy-1",
+    title: "Hello Antigravity ACP",
+    projectPath: "/tmp/project",
+    acpProvider: "agy",
+    updatedAt: 1_700_000_000_001,
+    messageCount: 1,
+    model: "agy"
+  });
+  const agySession = await getSessionById(dbPath, "chat", "chat-agy-1");
+  assert.equal(agySession?.acpProvider, "agy");
+  await deleteAcpSessionFromCatalog(dbPath, "chat-agy-1");
+
   const refs = buildAcpTranscriptRefs(dir, "chat-1");
   assert.match(refs, /"kind":"acp"/);
   assert.match(refs, /threads/);

@@ -48,7 +48,7 @@ export const CLI_HANDOFF_TARGETS: HandoffTargetProvider[] = [
 export const ACP_HANDOFF_TARGETS: AcpAgentProvider[] = ["codex", "claude", "grok", "opencode", "pi", "prime", "omp"];
 
 export function isAcpHandoffTarget(provider: HandoffTargetProvider): provider is AcpAgentProvider {
-  return provider !== "agy";
+  return HANDOFF_TARGET_META[provider].supportsAcp;
 }
 
 export function resolveDeliveryChannelForSource(

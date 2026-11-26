@@ -18,6 +18,7 @@ Typical launch configurations include:
 
 - Codex  
 - Claude  
+- Antigravity  
 - Grok  
 - OpenCode  
 - Pi  
@@ -47,6 +48,16 @@ Commands and args for each agent are configurable under ACP settings.
 - Optional **auto-approve permissions** exists for convenience — only enable if you trust the agent and workspace.  
 - ACP chats and attachments are stored locally under panel home; they are not uploaded unless *you* configure an agent that talks to a remote service.
 
+#### Antigravity ACP policy & compliance
+
+Google's Antigravity Terms of Service prohibit extracting/proxying consumer OAuth (`oauth-personal`) credentials or wrapping `agy acp` inside an outer third-party agent harness (injecting external system prompts, external tool definitions, cross-model context replay, or unattended automated loops). Outer harnesses should use `GEMINI_API_KEY` or Google Cloud / Gemini Enterprise Agent Platform auth instead.
+
+**Agent Resume Panel** stays within the compliant thin-client boundary by:
+1. Launching the unmodified local `agy acp` binary directly via standard ACP stdio.
+2. Never reading, extracting, or proxying OAuth credentials or exposing an API relay.
+3. Acting strictly as a human-driven chat UI (no injected outer system prompts, no tool hijacking, no automated loops).
+4. Excluding `agy` from ACP Handoff (`supportsAcp: false`) so cross-model context is not automatically injected into `agy acp` sessions.
+
 ### Related settings
 
 - Per-agent command / args  
@@ -73,6 +84,7 @@ See also [Settings & data](settings-and-data.md) and [LLM Assist / Handoff](llm-
 
 - Codex  
 - Claude  
+- Antigravity  
 - Grok  
 - OpenCode  
 - Pi  
@@ -101,6 +113,16 @@ See also [Settings & data](settings-and-data.md) and [LLM Assist / Handoff](llm-
 - Agent 可能请求文件或终端权限，请按最小权限处理。  
 - 可选的 **自动批准权限** 仅建议在信任 Agent 与工作区时开启。  
 - ACP 聊天与附件保存在本机面板目录；除非你配置的 Agent 本身会访问远端服务，否则不会上传。
+
+#### Antigravity ACP 政策与合规说明
+
+Google 的 Antigravity 服务条款禁止在使用个人消费级 OAuth（`oauth-personal`）时提取/反代凭证，或将 `agy acp` 包装到外层第三方 Agent 框架中（注入外部 system prompt、外部工具定义、跨模型上下文重放或无人值守自动循环）。如需接入外层框架或自动化流水线，请改用 `GEMINI_API_KEY` 或 Google Cloud / Gemini Enterprise Agent Platform 认证。
+
+**Agent Resume Panel** 通过以下约束保持在官方允许的薄客户端合规范围内：
+1. 仅通过标准 ACP stdio 直接启动本机未修改的官方 `agy acp`。
+2. 不读取、不提取、不代理任何 OAuth 凭证，也不提供 API 中转服务。
+3. 仅作为人类用户直接交互的聊天 UI（不注入外层系统提示词、不劫持原生工具、不跑自动化循环）。
+4. 刻意禁用向 `agy` 的 ACP Handoff（`supportsAcp: false`），避免把其他模型的对话上下文自动注入 `agy acp` 会话。
 
 ### 相关设置
 

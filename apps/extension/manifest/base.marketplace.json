@@ -252,6 +252,21 @@
           ],
           "description": "Launch arguments for Claude ACP agent."
         },
+        "agentResume.acp.agents.agy.command": {
+          "type": "string",
+          "default": "agy",
+          "description": "Launch command for Antigravity ACP agent."
+        },
+        "agentResume.acp.agents.agy.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "acp"
+          ],
+          "description": "Launch arguments for Antigravity ACP agent."
+        },
         "agentResume.acp.agents.grok.command": {
           "type": "string",
           "default": "grok",
@@ -486,6 +501,7 @@
             "acp",
             "acp:codex",
             "acp:claude",
+            "acp:agy",
             "acp:grok",
             "acp:opencode",
             "acp:pi",

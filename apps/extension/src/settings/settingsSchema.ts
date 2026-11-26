@@ -82,6 +82,7 @@ export function getSettingSections(): SettingSection[] {
             "acp",
             "acp:codex",
             "acp:claude",
+            "acp:agy",
             "acp:grok",
             "acp:opencode",
             "acp:pi",
@@ -101,6 +102,7 @@ export function getSettingSections(): SettingSection[] {
             acp: t("settings.enum.editorNewSessionProviderAcp"),
             "acp:codex": "ACP · Codex",
             "acp:claude": "ACP · Claude",
+            "acp:agy": "ACP · Antigravity",
             "acp:grok": "ACP · Grok Build",
             "acp:opencode": "ACP · OpenCode",
             "acp:pi": "ACP · Pi",
@@ -514,6 +516,26 @@ export function getSettingSections(): SettingSection[] {
               description: t("settings.fieldAcpClaudeLaunchArgsDescription"),
               type: "stringArray",
               default: ["-y", "@agentclientprotocol/claude-agent-acp@latest"]
+            }
+          ]
+        },
+        {
+          id: "agy",
+          title: t("settings.groupAcpAgyTitle"),
+          fields: [
+            {
+              key: "acp.agents.agy.command",
+              label: t("settings.fieldAcpLaunchCommandLabel"),
+              description: t("settings.fieldAcpAgyLaunchCommandDescription"),
+              type: "string",
+              default: "agy"
+            },
+            {
+              key: "acp.agents.agy.args",
+              label: t("settings.fieldAcpLaunchArgsLabel"),
+              description: t("settings.fieldAcpAgyLaunchArgsDescription"),
+              type: "stringArray",
+              default: ["acp"]
             }
           ]
         },

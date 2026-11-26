@@ -149,6 +149,7 @@ function isAcpEditorProvider(
 const VALID_ACP_PROVIDERS = new Set<AcpAgentProvider>([
   "codex",
   "claude",
+  "agy",
   "grok",
   "opencode",
   "pi",

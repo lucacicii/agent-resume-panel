@@ -66,6 +66,7 @@ interface ModesState {
 const PROVIDER_LABELS: Record<AcpAgentProvider, string> = {
   codex: "Codex",
   claude: "Claude",
+  agy: "Antigravity",
   grok: "Grok Build",
   opencode: "OpenCode",
   pi: "Pi",

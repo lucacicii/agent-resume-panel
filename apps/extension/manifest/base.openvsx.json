@@ -269,6 +269,21 @@
           ],
           "description": "Launch arguments for Claude ACP agent."
         },
+        "agentResume.acp.agents.agy.command": {
+          "type": "string",
+          "default": "agy",
+          "description": "Launch command for Antigravity ACP agent."
+        },
+        "agentResume.acp.agents.agy.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "acp"
+          ],
+          "description": "Launch arguments for Antigravity ACP agent."
+        },
         "agentResume.acp.agents.grok.command": {
           "type": "string",
           "default": "grok",
@@ -503,6 +518,7 @@
             "acp",
             "acp:codex",
             "acp:claude",
+            "acp:agy",
             "acp:grok",
             "acp:opencode",
             "acp:pi",
@@ -2568,28 +2584,8 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.zh-cn.newPrimeSession",
-        "title": "新建 Prime Agent 会话",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.ja.newPrimeSession",
-        "title": "新しい Prime Agent セッション",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.newOmpSession",
         "title": "New OMP Session",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.zh-cn.newOmpSession",
-        "title": "新建 OMP 会话",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.ja.newOmpSession",
-        "title": "新しい OMP セッション",
         "category": "Agent Resume"
       },
       {

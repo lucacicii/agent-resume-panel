@@ -29,6 +29,7 @@ export function autoApprovePermissions(): boolean {
 const ACP_AGENT_I18N_KEYS: Record<AcpAgentProvider, { label: string; description: string }> = {
   codex: { label: "quickpick.acpAgentCodexLabel", description: "quickpick.acpAgentCodexDescription" },
   claude: { label: "quickpick.acpAgentClaudeLabel", description: "quickpick.acpAgentClaudeDescription" },
+  agy: { label: "quickpick.acpAgentAgyLabel", description: "quickpick.acpAgentAgyDescription" },
   grok: { label: "quickpick.acpAgentGrokLabel", description: "quickpick.acpAgentGrokDescription" },
   opencode: { label: "quickpick.acpAgentOpenCodeLabel", description: "quickpick.acpAgentOpenCodeDescription" },
   pi: { label: "quickpick.acpAgentPiLabel", description: "quickpick.acpAgentPiDescription" },
