@@ -8,6 +8,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.18.0]
+
+#### 新增
+
+- **「仅看当前项目」全局快速筛选（Toggle）**：在 Sessions、ACP Chats、GTD、Notes 四个侧边栏视图标题栏新增联动开关（`$(folder)` / `$(folder-active)`）及 `agentResume.toggleCurrentProjectFilter` 命令，按当前打开工作区路径（含子目录、符号链接与多根工作区）过滤会话、ACP 对话、GTD 分组计数及 Notes（含关联当前项目的 Library 任务笔记），并在视图副标题展示当前筛选范围。
+
 ### [2.17.0]
 
 #### 新增
@@ -591,6 +597,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.18.0]
+
+#### Added
+
+- **Global Current Project Filter Toggle**: Added a synchronized `Filter: Current Project` toggle button (`$(folder)` / `$(folder-active)`) across the Sessions, ACP Chats, GTD, and Notes view title bars (plus `agentResume.toggleCurrentProjectFilter`). Filters SQLite catalog queries and tree data by the open workspace folders (including nested subdirectories, symlinks, multi-root workspaces, and project-linked Library task notes) with live view description indicators and `en`/`zh-cn`/`ja` localization.
 
 ### [2.17.0]
 
