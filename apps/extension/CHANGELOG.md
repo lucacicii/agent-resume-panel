@@ -8,6 +8,17 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.19.0]
+
+#### 新增
+
+- **后台自动重命名（带去重保护）**：支持通过 `agentResume.llm.autoRenameBackground` 在刷新后或 Herdr 会话变为空闲时，自动在后台为最近 24 小时内未重命名的会话生成标题，并对已处理会话进行去重。
+- **Herdr 新建会话自动创建 Space**：在本地 `herdr-core` 运行时，`agentResume.herdrNewSessionMode` 为 `auto` 也会直接通过 Herdr 启动 New Session；若项目路径尚无匹配的 Herdr Space，则自动创建以目录名命名的 Space 并移入终端。
+
+#### 修复
+
+- **Herdr New Session 终端重名回退**：启动新建会话前对 live 终端名称自动去重（如 `pi-new-2`）并在名称冲突时回退无名创建，避免同一 Agent 启动第二个会话时回退到普通 VS Code 终端。
+
 ### [2.18.0]
 
 #### 新增
@@ -597,6 +608,17 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.19.0]
+
+#### Added
+
+- **Background Auto-Rename with Deduplication**: Added `agentResume.llm.autoRenameBackground` to automatically rename unnamed sessions from the last 24 hours in the background after refresh or when a Herdr session becomes idle, with deduplication.
+- **Auto-Create Herdr Space on New Session**: In `auto` mode, New Session commands now start in Herdr whenever local `herdr-core` is running; if no Space matches the project folder, a Space named after the folder is automatically created and attached.
+
+#### Fixed
+
+- **Herdr New Session Name Collisions**: Deduplicates live terminal names (e.g. `pi-new-2`) and retries without an explicit name on conflict so launching a second session for the same provider stays in Herdr instead of falling back to a plain VS Code terminal.
 
 ### [2.18.0]
 
