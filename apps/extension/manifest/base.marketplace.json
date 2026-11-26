@@ -576,6 +576,11 @@
           "maximum": 500000,
           "description": "Maximum characters of conversation sent to the LLM."
         },
+        "agentResume.llm.autoRenameBackground": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically rename unnamed sessions from the last 24 hours in the background after refresh or when a Herdr session becomes idle. Requires LLM configuration."
+        },
         "agentResume.projectMenu.mainActions": {
           "type": "array",
           "items": {

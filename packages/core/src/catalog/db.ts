@@ -1,7 +1,12 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { runSqlite } from "../sqlite";
-import { EXTENSION_MIGRATION_SQL, EXTENSION_SCHEMA_SQL, NOTE_ARCHIVE_SCHEMA_SQL } from "./extensionSchema";
+import {
+  AUTO_RENAME_STATE_SCHEMA_SQL,
+  EXTENSION_MIGRATION_SQL,
+  EXTENSION_SCHEMA_SQL,
+  NOTE_ARCHIVE_SCHEMA_SQL
+} from "./extensionSchema";
 import { ensureProjectsCatalogSchema } from "./projects";
 
 async function runIdempotentStatements(dbPath: string, sql: string): Promise<void> {
@@ -56,6 +61,7 @@ export async function ensureExtensionCatalogSchema(dbPath: string): Promise<void
     await runIdempotentStatements(target, EXTENSION_SCHEMA_SQL);
     await runIdempotentStatements(target, EXTENSION_MIGRATION_SQL);
     await runIdempotentStatements(target, NOTE_ARCHIVE_SCHEMA_SQL);
+    await runIdempotentStatements(target, AUTO_RENAME_STATE_SCHEMA_SQL);
     await ensureProjectsCatalogSchema(target);
     verifiedExtensionCatalogPaths.add(target);
   })().finally(() => {

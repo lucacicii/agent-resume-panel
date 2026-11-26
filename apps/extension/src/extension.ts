@@ -100,6 +100,7 @@ import {
 } from "./tree/projectSessionSort";
 import { CurrentProjectFilterController } from "./filter/currentProjectFilter";
 import { getLlmConfig, isOutputLanguageFollowingUi } from "./llm/config";
+import { BackgroundAutoRenameController } from "./llm/backgroundAutoRename";
 import { migrateSummariesFromGlobalState } from "./llm/summaryMigration";
 import { executeHandoffCommand } from "./handoff/handoffCommand";
 import { CLI_HANDOFF_TARGETS, handoffCommandId } from "./menu/handoffMenu";
@@ -177,6 +178,7 @@ let notesTree: NotesTreeProvider | undefined;
 let notesTreeView: vscode.TreeView<import("./notes/notesTree").NotesTreeNode> | undefined;
 let recentApiSessions: AgentSession[] = [];
 let onDidChangeSessionsEmitter: vscode.EventEmitter<void> | undefined;
+let backgroundAutoRename: BackgroundAutoRenameController | undefined;
 
 export interface AgentResumeSessionSummary {
   provider: AgentProvider;
@@ -227,6 +229,17 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
   gtdTree = new GtdTreeProvider(sessionGtdStore);
   notesTree = new NotesTreeProvider(notesStore);
   const acpChatManager = new AcpChatManager(context, () => refreshAcpChats(acpTree, false));
+  backgroundAutoRename = new BackgroundAutoRenameController({
+    context,
+    onHerdrBecameIdle: () => {
+      void refresh(tree, false);
+    },
+    onSessionRenamed: () => {
+      tree.refresh();
+      gtdTree?.refresh();
+      onDidChangeSessionsEmitter?.fire();
+    }
+  });
   let acpStoreWatcher: vscode.Disposable | undefined;
   let acpStoreWatcherHome: string | undefined;
   let acpStoreRefreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -324,7 +337,9 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
     herdrTracker.onDidChange(() => {
       tree.refresh();
       gtdTree?.refresh();
+      backgroundAutoRename?.onHerdrTerminalsChanged(herdrTracker.getTerminals());
     }),
+    backgroundAutoRename,
     { dispose: () => setHerdrSessionTracker(undefined) },
     { dispose: () => disposeBuiltInHerdrTerminals() },
     { dispose: () => acpChatManager.dispose() },
@@ -869,6 +884,7 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
 }
 
 export function deactivate(): void {
+  backgroundAutoRename = undefined;
   // AcpChatManager disposes via context.subscriptions.
 }
 
@@ -912,6 +928,7 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
     notesTree?.setProjectDisplayName((projectPath) => tree.getProjectDisplayName(projectPath));
     notesTree?.refresh();
     onDidChangeSessionsEmitter?.fire();
+    backgroundAutoRename?.scheduleScan(catalog.dbPath);
     if (showToast) {
       const totalVisible = await queryVisibleSessionCount(catalog.dbPath, maxCap);
       vscode.window.showInformationMessage(t("notification.syncedCliSessions", totalVisible));

@@ -680,6 +680,13 @@ export function getSettingSections(): SettingSection[] {
           default: 120000,
           minimum: 1000,
           maximum: 500000
+        },
+        {
+          key: "llm.autoRenameBackground",
+          label: t("settings.fieldLlmAutoRenameBackgroundLabel"),
+          description: t("settings.fieldLlmAutoRenameBackgroundDescription"),
+          type: "boolean",
+          default: false
         }
       ]
     },

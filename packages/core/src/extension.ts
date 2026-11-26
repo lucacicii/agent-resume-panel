@@ -144,3 +144,14 @@ export {
   ensureExtensionCatalogSchema,
   resetCatalogSchemaCache
 } from "./catalog/db";
+export {
+  AUTO_RENAME_CLAIM_TTL_MS,
+  AUTO_RENAME_MAX_ATTEMPTS,
+  listBackgroundAutoRenameCandidates,
+  claimSessionAutoRename,
+  markSessionAutoRenameDone,
+  markSessionAutoRenameSkipped,
+  markSessionAutoRenameFailed,
+  setUserTitleIfUnsetInCatalog
+} from "./catalog/autoRenameState";
+export type { AutoRenameCandidateQueryOptions } from "./catalog/autoRenameState";

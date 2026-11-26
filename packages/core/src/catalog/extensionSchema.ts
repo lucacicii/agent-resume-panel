@@ -13,6 +13,23 @@ CREATE TABLE IF NOT EXISTS note_archive (
 `;
 
 /**
+ * Cross-window deduplication and retry state for background auto-renaming.
+ */
+export const AUTO_RENAME_STATE_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS session_auto_rename_state (
+  provider TEXT NOT NULL,
+  agent_session_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  claimed_at_ms INTEGER,
+  updated_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (provider, agent_session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_session_auto_rename_status ON session_auto_rename_state(status);
+`;
+
+/**
  * Frozen mirror of src/catalog/db.ts (VS Code extension catalog schema).
  * Keep in sync manually when the extension schema changes intentionally.
  */
