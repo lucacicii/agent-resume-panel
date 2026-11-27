@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { AgentSession } from "../types";
 import { appendJsonLine, isNodeError, readJsonLines } from "../jsonl";
+import { preservedTimestampMs, writeFilePreservingMtime } from "./preserveTimes";
 
 interface AntigravityHistoryRow {
   display?: string;
@@ -31,8 +32,8 @@ export async function renameAgySession(
 
   await appendJsonLine(path.join(root, "history.jsonl"), {
     display: title,
-    timestamp: Date.now(),
-    workspace: session.projectPath,
+    timestamp: preservedTimestampMs(session.updatedAt),
+    workspace: session.nativeProjectPath || session.projectPath,
     conversationId: session.id
   });
 }
@@ -105,5 +106,5 @@ async function updateTaskTitle(taskPath: string, title: string): Promise<void> {
     nextLines.unshift(`# ${title}`, "");
   }
 
-  await fs.writeFile(taskPath, `${nextLines.join("\n")}\n`, "utf8");
+  await writeFilePreservingMtime(taskPath, `${nextLines.join("\n")}\n`);
 }

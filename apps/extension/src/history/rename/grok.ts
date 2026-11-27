@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { AgentSession } from "../types";
 import { isNodeError } from "../jsonl";
+import { writeFilePreservingMtime } from "./preserveTimes";
 
 interface GrokSummary {
   info?: {
@@ -18,7 +19,7 @@ export async function renameGrokSession(grokHome: string, session: AgentSession,
 
   const summary = JSON.parse(await fs.readFile(summaryPath, "utf8")) as GrokSummary;
   summary.generated_title = title;
-  await fs.writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+  await writeFilePreservingMtime(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
 }
 
 async function findSummaryPath(root: string, sessionId: string): Promise<string | undefined> {

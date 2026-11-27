@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { t } from "../../i18n";
 import { AgentSession } from "../types";
 import { readJsonLines } from "../jsonl";
 import { PreviewHomes, PreviewMessage, SessionPreviewResult } from "./types";
@@ -34,7 +35,7 @@ const METADATA_BLOCK = /<(?:ADDITIONAL_METADATA|USER_SETTINGS_CHANGE|CONVERSATIO
  */
 export async function previewAgySession(session: AgentSession, homes: PreviewHomes): Promise<SessionPreviewResult> {
   if (!session.id || path.basename(session.id) !== session.id) {
-    throw new Error("Antigravity transcript not available for this session.");
+    throw new Error(t("error.agyTranscriptUnavailable"));
   }
 
   const roots = candidateAgyRoots(homes.antigravityHome);
@@ -49,7 +50,7 @@ export async function previewAgySession(session: AgentSession, homes: PreviewHom
   // The transcript survived but holds no turn yet: an empty session, not a
   // missing one.
   if (sawTranscript) {
-    return finalizePreviewMessages(session.title, []);
+    return finalizePreviewMessages(session.title, [], t("warning.agyEmptyTranscript"));
   }
 
   // No transcript at all (a conversation interrupted before its first log
@@ -66,7 +67,7 @@ export async function previewAgySession(session: AgentSession, homes: PreviewHom
     }
   }
 
-  throw new Error("Antigravity transcript not available for this session.");
+  throw new Error(t("error.agyTranscriptUnavailable"));
 }
 
 /**

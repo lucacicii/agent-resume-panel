@@ -8,6 +8,5 @@ export async function renameAcpSession(panelHome: string, session: AgentSession,
   }
 
   record.title = title;
-  record.updatedAt = Date.now();
   await updateAcpRecord(panelHome, record);
 }

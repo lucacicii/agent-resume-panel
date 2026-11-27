@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { AgentSession } from "../types";
 import { isNodeError } from "../jsonl";
+import { preservedTimestampMs, writeFilePreservingMtime } from "./preserveTimes";
 
 interface JsonlSessionHeader {
   type?: string;
@@ -12,6 +13,7 @@ interface JsonlSessionInfoEntry {
   type?: string;
   name?: string;
   timestamp?: string;
+  updatedAt?: string;
 }
 
 export async function renamePiSession(piHome: string, session: AgentSession, title: string): Promise<void> {
@@ -65,6 +67,24 @@ async function renameJsonlSession(
   if (!matchedHeader) {
     throw new Error(`${providerLabel} session header does not match ${session.id}.`);
   }
+  let bodyMaxMs = 0;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const entry = JSON.parse(trimmed) as JsonlSessionInfoEntry;
+      if (entry.type === "title" || entry.type === "session_info") {
+        continue;
+      }
+      const parsed = Date.parse(entry.timestamp || entry.updatedAt || "");
+      if (Number.isFinite(parsed) && parsed > bodyMaxMs) {
+        bodyMaxMs = parsed;
+      }
+    } catch {
+      // ignore malformed lines
+    }
+  }
+
   let updated = false;
   const nextLines = lines.map((line) => {
     const trimmed = line.trim();
@@ -81,7 +101,7 @@ async function renameJsonlSession(
 
     if (entry.type === "title") {
       updated = true;
-      return JSON.stringify({ ...entry, title, updatedAt: new Date().toISOString() });
+      return JSON.stringify({ ...entry, title });
     }
     if (entry.type !== "session_info") {
       return line;
@@ -92,10 +112,15 @@ async function renameJsonlSession(
   });
 
   if (!updated) {
-    nextLines.splice(sessionHeaderIndex + 1, 0, JSON.stringify({ type: "session_info", name: title, timestamp: new Date().toISOString() }));
+    const preservedMs = bodyMaxMs || preservedTimestampMs(session.updatedAt);
+    const infoEntry: JsonlSessionInfoEntry = { type: "session_info", name: title };
+    if (preservedMs > 0) {
+      infoEntry.timestamp = new Date(preservedMs).toISOString();
+    }
+    nextLines.splice(sessionHeaderIndex + 1, 0, JSON.stringify(infoEntry));
   }
 
-  await fs.writeFile(sessionPath, `${nextLines.join("\n")}\n`, "utf8");
+  await writeFilePreservingMtime(sessionPath, `${nextLines.join("\n")}\n`);
 }
 
 async function findJsonlSessionFile(root: string, sessionId: string): Promise<string | undefined> {

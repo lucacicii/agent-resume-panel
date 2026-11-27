@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { AgentSession } from "../types";
 import { escapeSqlLiteral, runSqlite } from "../sqlite";
+import { writeFilePreservingMtime } from "./preserveTimes";
 
 interface CodexIndexRow {
   id: string;
@@ -76,7 +77,7 @@ async function updateSessionIndex(indexPath: string, sessionId: string, title: s
 
   if (changed) {
     const output = nextLines.join("\n");
-    await fs.writeFile(indexPath, output.endsWith("\n") ? output : `${output}\n`, "utf8");
+    await writeFilePreservingMtime(indexPath, output.endsWith("\n") ? output : `${output}\n`);
   }
 }
 

@@ -439,3 +439,35 @@ test("purgeRetiredAlmaCatalog deletes Alma sessions and Alma-only projects", asy
   const sync = await runSqliteJson(dbPath, "SELECT COUNT(*) AS c FROM sync_state WHERE provider='alma';");
   assert.equal(Number(sync[0].c), 0);
 });
+
+test("JSONL title and session_info metadata timestamps do not override session body updatedAt", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agent-resume-jsonl-title-ts-"));
+  const piHome = path.join(root, "pi");
+  const ompHome = path.join(root, "omp");
+  const bodyIso = "2026-01-02T03:04:05.000Z";
+  const bodyMs = Date.parse(bodyIso);
+  const laterRenameIso = "2026-11-26T18:00:00.000Z";
+
+  await jsonl(path.join(piHome, "sessions", "pi-renamed.jsonl"), [
+    { type: "session", id: "pi-renamed", cwd: "/tmp/pi", timestamp: "2026-01-02T03:00:00.000Z" },
+    { type: "session_info", name: "Renamed Pi", timestamp: laterRenameIso },
+    { type: "message", timestamp: bodyIso, message: { role: "user", content: "Pi body" } }
+  ]);
+  await jsonl(path.join(ompHome, "sessions", "omp-renamed.jsonl"), [
+    { type: "title", v: 1, title: "Renamed OMP", updatedAt: laterRenameIso },
+    { type: "session", version: 3, id: "omp-renamed", cwd: "/tmp/omp", timestamp: "2026-01-02T03:00:00.000Z" },
+    { type: "message", timestamp: bodyIso, message: { role: "user", content: [{ type: "text", text: "OMP body" }] } }
+  ]);
+
+  const result = await loadAllAgentSessions(buildSyncOptions({
+    panelHome: path.join(root, "panel"),
+    agentHomes: { piHome, ompHome }
+  }));
+
+  const piSession = result.sessions.find((s) => s.provider === "pi" && s.id === "pi-renamed");
+  const ompSession = result.sessions.find((s) => s.provider === "omp" && s.id === "omp-renamed");
+  assert.equal(piSession?.updatedAt, bodyMs);
+  assert.equal(piSession?.title, "Renamed Pi");
+  assert.equal(ompSession?.updatedAt, bodyMs);
+  assert.equal(ompSession?.title, "Renamed OMP");
+});
