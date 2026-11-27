@@ -14,6 +14,7 @@ interface PanelSettingsFile {
     apiKey?: string;
     outputLanguage?: string;
     maxContextChars?: number;
+    requestTimeoutMs?: number;
   };
   /** Conversation model; omitted fields fall back to llm at runtime. */
   chatLlm?: {

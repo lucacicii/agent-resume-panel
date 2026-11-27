@@ -1,6 +1,7 @@
 import { expandHome } from "../history/pathUtils";
 import * as vscode from "vscode";
 import { loadAcpMessages } from "../acp/store";
+import { t } from "../i18n";
 import { AcpSessionRecord } from "../acp/types";
 import { PreviewMessage } from "../history/preview/types";
 import { HandoffSessionContext } from "./types";
@@ -36,7 +37,7 @@ export async function loadAcpHandoffContext(
   }
 
   if (!messages.length) {
-    throw new Error("ACP chat has no messages to hand off.");
+    throw new Error(t("error.handoffAcpEmptySession"));
   }
 
   const truncated = messages.length > MAX_ACP_HANDOFF_MESSAGES;

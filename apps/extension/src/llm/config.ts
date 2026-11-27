@@ -21,6 +21,7 @@ export interface LlmConfig {
   model: string;
   outputLanguage: LlmOutputLanguage;
   maxContextChars: number;
+  requestTimeoutMs: number;
   apiKey: string;
 }
 
@@ -30,6 +31,7 @@ export interface LlmConfigOverrides {
   outputLanguage?: string;
   apiKey?: string;
   maxContextChars?: number;
+  requestTimeoutMs?: number;
 }
 
 export function normalizeBaseUrl(baseUrl: string): string {
@@ -105,7 +107,13 @@ export async function getLlmConfig(
     return undefined;
   }
 
-  let panelLlm: { baseUrl?: string; model?: string; outputLanguage?: string; maxContextChars?: number } = {};
+  let panelLlm: {
+    baseUrl?: string;
+    model?: string;
+    outputLanguage?: string;
+    maxContextChars?: number;
+    requestTimeoutMs?: number;
+  } = {};
   try {
     const panel = await loadPanelSettingsFile();
     panelLlm = panel.llm;
@@ -143,6 +151,12 @@ export async function getLlmConfig(
       readLlmSettingWithPanelFallback("llm.maxContextChars", panelLlm.maxContextChars, 120000)
     );
 
+  const requestTimeoutMs =
+    overrides?.requestTimeoutMs ??
+    Number(
+      readLlmSettingWithPanelFallback("llm.requestTimeoutMs", panelLlm.requestTimeoutMs, 60_000)
+    );
+
   if (!baseUrl || !model) {
     return undefined;
   }
@@ -152,6 +166,7 @@ export async function getLlmConfig(
     model,
     outputLanguage,
     maxContextChars: Number.isFinite(maxContextChars) ? maxContextChars : 120000,
+    requestTimeoutMs: Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0 ? requestTimeoutMs : 60_000,
     apiKey
   };
 }
@@ -237,6 +252,9 @@ export function llmOverridesFromDraft(draft?: Record<string, unknown>): LlmConfi
   }
   if (typeof draft["llm.maxContextChars"] === "number") {
     overrides.maxContextChars = draft["llm.maxContextChars"];
+  }
+  if (typeof draft["llm.requestTimeoutMs"] === "number") {
+    overrides.requestTimeoutMs = draft["llm.requestTimeoutMs"];
   }
 
   return Object.keys(overrides).length ? overrides : undefined;

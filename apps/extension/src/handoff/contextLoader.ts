@@ -1,4 +1,5 @@
 import { AgentSession } from "../history";
+import { t } from "../i18n";
 import { loadSessionPreview } from "../history/preview";
 import { loadRenameHomes } from "../history/rename/homes";
 import { HandoffSessionContext } from "./types";
@@ -7,7 +8,7 @@ export async function loadCliHandoffContext(session: AgentSession): Promise<Hand
   const preview = await loadSessionPreview(session, loadRenameHomes());
 
   if (!preview.messages.length) {
-    throw new Error("Session has no messages to hand off.");
+    throw new Error(t("error.handoffEmptySession"));
   }
 
   const truncationWarning = preview.truncated

@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { LlmConfig } from "../llm/config";
 import { chatCompletion } from "../llm/client";
 import { formatTranscript, truncateTranscript } from "../llm/transcript";
@@ -10,7 +11,7 @@ export async function generateHandoffBrief(
   maxBriefTokens: number
 ): Promise<HandoffBrief> {
   if (!context.messages.length) {
-    throw new Error("Session has no messages to hand off.");
+    throw new Error(t("error.handoffEmptySession"));
   }
 
   const transcript = truncateTranscript(formatTranscript(context.messages), config.maxContextChars);
@@ -20,7 +21,8 @@ export async function generateHandoffBrief(
       { role: "system", content: buildHandoffSystemPrompt(config.outputLanguage) },
       { role: "user", content: buildHandoffUserPrompt(transcript, config.outputLanguage) }
     ],
-    maxBriefTokens
+    maxBriefTokens,
+    { attempts: 3 }
   );
 
   return {

@@ -3,13 +3,14 @@ import { AcpChatManager } from "../acp/acpChatManager";
 import { t } from "../i18n";
 import { getLlmConfig, readAgentResumeSetting } from "../llm/config";
 import { loadAcpHandoffContext } from "./acpContextLoader";
-import { composeHandoffMessage } from "./briefComposer";
+import { buildFallbackBrief, composeHandoffMessage } from "./briefComposer";
 import { loadCliHandoffContext } from "./contextLoader";
 import { writeHandoffFile } from "./delivery/handoffFileWriter";
 import { getHandoffDeliverer } from "./delivery/registry";
 import { generateHandoffBrief } from "./generator";
 import { resolveDeliveryChannelForSource } from "./targets";
 import {
+  HandoffBrief,
   HandoffResult,
   HandoffSource,
   HandoffTargetProvider,
@@ -38,13 +39,27 @@ export async function runHandoff(
       : await loadAcpHandoffContext(source.record, options.panelHome);
 
   const maxBriefTokens = readAgentResumeSetting("handoff.maxBriefTokens", 4000);
-  const attachRecentVerbatim = readAgentResumeSetting("handoff.attachRecentVerbatim", 5);
-  const brief = await generateHandoffBrief(handoffContext, llmConfig, maxBriefTokens);
+  const configuredVerbatim = readAgentResumeSetting("handoff.attachRecentVerbatim", 5);
+
+  let brief: HandoffBrief;
+  let briefFailure: string | undefined;
+  try {
+    brief = await generateHandoffBrief(handoffContext, llmConfig, maxBriefTokens);
+  } catch (error) {
+    briefFailure = error instanceof Error ? error.message : String(error);
+    brief = buildFallbackBrief(briefFailure);
+  }
+
   const composedMessage = composeHandoffMessage({
     brief,
     context: handoffContext,
-    attachRecentVerbatim
+    // Without the summary the verbatim tail is the only remaining context.
+    attachRecentVerbatim: briefFailure ? Math.max(configuredVerbatim, 12) : configuredVerbatim
   });
+
+  if (briefFailure) {
+    vscode.window.showWarningMessage(t("notification.handoffBriefFallback", briefFailure));
+  }
 
   const projectPath =
     source.kind === "cli" ? source.session.projectPath : source.record.projectPath;

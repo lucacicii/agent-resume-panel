@@ -7,6 +7,23 @@ interface ComposeHandoffMessageOptions {
   attachRecentVerbatim: number;
 }
 
+/**
+ * Deterministic stand-in for the LLM brief: the handoff itself must not fail
+ * because the summarizing request failed, so the receiving agent gets the
+ * failure reason plus the verbatim transcript tail.
+ */
+export function buildFallbackBrief(reason: string): HandoffBrief {
+  return {
+    body: [
+      `Note: the automatic handoff summary could not be generated (${reason}).`,
+      "",
+      "Next step:",
+      "Continue from the last user request in the recent verbatim exchanges below."
+    ].join("\n"),
+    truncated: false
+  };
+}
+
 export function composeHandoffMessage(options: ComposeHandoffMessageOptions): string {
   const { brief, context, attachRecentVerbatim } = options;
   const parts: string[] = [
