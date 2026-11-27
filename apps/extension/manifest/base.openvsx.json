@@ -2782,6 +2782,21 @@
         "category": "Agent Resume"
       },
       {
+        "command": "agentResume.linkHerdrTerminal",
+        "title": "Link Herdr Terminal…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.unlinkHerdrTerminal",
+        "title": "Unlink Herdr Terminal",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.revealInHerdrTerminal",
+        "title": "Reveal in Herdr",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.sortProjectSessionsUpdatedDesc",
         "title": "Sort by Updated (Newest First)",
         "category": "Agent Resume"

@@ -387,6 +387,36 @@
       "category": "Agent Resume"
     },
     {
+      "command": "agentResume.zh-cn.linkHerdrTerminal",
+      "title": "关联 Herdr 终端…",
+      "category": "Agent Resume"
+    },
+    {
+      "command": "agentResume.ja.linkHerdrTerminal",
+      "title": "Herdr ターミナルをリンク…",
+      "category": "Agent Resume"
+    },
+    {
+      "command": "agentResume.zh-cn.unlinkHerdrTerminal",
+      "title": "解除关联 Herdr 终端",
+      "category": "Agent Resume"
+    },
+    {
+      "command": "agentResume.ja.unlinkHerdrTerminal",
+      "title": "Herdr ターミナルのリンクを解除",
+      "category": "Agent Resume"
+    },
+    {
+      "command": "agentResume.zh-cn.revealInHerdrTerminal",
+      "title": "在 Herdr 中定位",
+      "category": "Agent Resume"
+    },
+    {
+      "command": "agentResume.ja.revealInHerdrTerminal",
+      "title": "Herdr で表示",
+      "category": "Agent Resume"
+    },
+    {
       "command": "agentResume.zh-cn.sortProjectSessionsUpdatedDesc",
       "title": "按更新时间排序（最新优先）",
       "category": "Agent Resume"
@@ -2683,6 +2713,21 @@
         "group": "navigation@60"
       },
       {
+        "command": "agentResume.revealInHerdrTerminal",
+        "when": "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp|cursor|chat)/ && agentResume.herdrAvailable && agentResume.uiLocale == en",
+        "group": "navigation@61"
+      },
+      {
+        "command": "agentResume.linkHerdrTerminal",
+        "when": "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp|cursor|chat)/ && agentResume.herdrAvailable && agentResume.uiLocale == en",
+        "group": "navigation@62"
+      },
+      {
+        "command": "agentResume.unlinkHerdrTerminal",
+        "when": "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp|cursor|chat)/ && agentResume.herdrAvailable && agentResume.uiLocale == en",
+        "group": "navigation@63"
+      },
+      {
         "command": "agentResume.zh-cn.openInHerdr",
         "when": "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp|cursor|chat)/ && agentResume.uiLocale == 'zh-cn'",
         "group": "navigation@60"
@@ -2703,6 +2748,21 @@
         "group": "navigation@60"
       },
       {
+        "command": "agentResume.zh-cn.revealInHerdrTerminal",
+        "when": "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp|cursor|chat)/ && agentResume.herdrAvailable && agentResume.uiLocale == 'zh-cn'",
+        "group": "navigation@61"
+      },
+      {
+        "command": "agentResume.zh-cn.linkHerdrTerminal",
+        "when": "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp|cursor|chat)/ && agentResume.herdrAvailable && agentResume.uiLocale == 'zh-cn'",
+        "group": "navigation@62"
+      },
+      {
+        "command": "agentResume.zh-cn.unlinkHerdrTerminal",
+        "when": "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp|cursor|chat)/ && agentResume.herdrAvailable && agentResume.uiLocale == 'zh-cn'",
+        "group": "navigation@63"
+      },
+      {
         "command": "agentResume.ja.openInHerdr",
         "when": "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp|cursor|chat)/ && agentResume.uiLocale == 'ja'",
         "group": "navigation@60"
@@ -2721,6 +2781,21 @@
         "command": "agentResume.ja.openInCodexIdePanel",
         "when": "view == agentResume.sessions && viewItem == agentResume.session.codex && agentResume.codexIdePanelResume.enabled && agentResume.uiLocale == 'ja'",
         "group": "navigation@60"
+      },
+      {
+        "command": "agentResume.ja.revealInHerdrTerminal",
+        "when": "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp|cursor|chat)/ && agentResume.herdrAvailable && agentResume.uiLocale == 'ja'",
+        "group": "navigation@61"
+      },
+      {
+        "command": "agentResume.ja.linkHerdrTerminal",
+        "when": "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp|cursor|chat)/ && agentResume.herdrAvailable && agentResume.uiLocale == 'ja'",
+        "group": "navigation@62"
+      },
+      {
+        "command": "agentResume.ja.unlinkHerdrTerminal",
+        "when": "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp|cursor|chat)/ && agentResume.herdrAvailable && agentResume.uiLocale == 'ja'",
+        "group": "navigation@63"
       },
       {
         "submenu": "agentResume.handoffTo",

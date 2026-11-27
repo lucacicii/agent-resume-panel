@@ -133,6 +133,21 @@ export function buildSessionMenuContributionBlocks() {
         when:
           "view == agentResume.sessions && viewItem == agentResume.session.codex && agentResume.codexIdePanelResume.enabled",
         group: "navigation@60"
+      },
+      {
+        command: "agentResume.revealInHerdrTerminal",
+        when: `${SESSION_VIEW_WHEN} && agentResume.herdrAvailable`,
+        group: "navigation@61"
+      },
+      {
+        command: "agentResume.linkHerdrTerminal",
+        when: `${SESSION_VIEW_WHEN} && agentResume.herdrAvailable`,
+        group: "navigation@62"
+      },
+      {
+        command: "agentResume.unlinkHerdrTerminal",
+        when: `${SESSION_VIEW_WHEN} && agentResume.herdrAvailable`,
+        group: "navigation@63"
       }
     ],
     moreSessionMenu: buildMoreSessionMenuEntries(),
