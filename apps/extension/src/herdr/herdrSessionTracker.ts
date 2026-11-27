@@ -4,11 +4,13 @@ import type { AgentSession } from "../history/types";
 import { HcClient, type HcEventStream } from "./hcClient";
 import { HerdrAppClient } from "./herdrApp";
 import {
+  detectTerminalProvider,
   extractSessionIdFromTerminal,
   herdrSessionKey,
   matchSessionToHerdr,
   normalizeDirPath
 } from "./matcher";
+import { createRunningSessionLookup, type RunningSessionLookup } from "./runningSession";
 import type {
   HcAppDoc,
   HcAppSpace,
@@ -63,11 +65,14 @@ export class HerdrSessionTracker implements vscode.Disposable {
   private refreshDebounceTimer: ReturnType<typeof setTimeout> | undefined;
   private bridgeApi: HerdrBridgeApi | undefined;
   private bridgeSub: vscode.Disposable | undefined;
+  private readonly adoptingLabels = new Set<string>();
+  private readonly attemptedAdoptions = new Set<string>();
   private disposed = false;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
-    socketPath = ""
+    socketPath = "",
+    private readonly running: RunningSessionLookup = createRunningSessionLookup({})
   ) {
     this.client = new HcClient(socketPath);
     this.loadRecordedSessions();
@@ -200,6 +205,7 @@ export class HerdrSessionTracker implements vscode.Disposable {
     }
     this.spaceNames = nextNames;
     await this.recordMatchedFromTerminals();
+    await this.adoptRunningSessions();
     this.onDidChangeEmitter.fire();
   }
 
@@ -232,7 +238,102 @@ export class HerdrSessionTracker implements vscode.Disposable {
   }
 
   resolve(session: AgentSession): HerdrSessionMatch | undefined {
-    return matchSessionToHerdr(session, this.terminals, this.spaceNames, this.recorded);
+    return matchSessionToHerdr(
+      session,
+      this.terminals,
+      this.spaceNames,
+      this.recorded,
+      (term, provider) => this.running.resolve(term, provider)
+    );
+  }
+
+  /** Session a live terminal runs now, when the provider exposes per-TTY session records. */
+  runningSessionOf(term: HcTerminal, provider: string): string | undefined {
+    return this.running.resolve(term, provider);
+  }
+
+  /**
+   * The other session this terminal demonstrably runs, or undefined when it runs `session`,
+   * runs something unresolvable, or runs a different agent entirely.
+   *
+   * Cross-provider check matters: a tty that once hosted omp still has an omp record after the
+   * user starts agy in it, and comparing that stale record would reject a valid link.
+   */
+  runsOtherSession(
+    term: HcTerminal,
+    session: Pick<AgentSession, "provider" | "id">
+  ): string | undefined {
+    if (detectTerminalProvider(term) !== session.provider) {
+      return undefined;
+    }
+    const running = this.running.resolve(term, session.provider);
+    return running && running !== session.id ? running : undefined;
+  }
+
+  /**
+   * Terminals whose `alma.session` label names this session, live or finished.
+   *
+   * Finished ones matter for unlink: `recordMatchedFromTerminals` re-records any labelled
+   * terminal, so leaving a finished terminal's label in place resurrects the badge.
+   */
+  labeledTerminals(session: Pick<AgentSession, "provider" | "id">): HcTerminal[] {
+    return this.terminals.filter((term) => {
+      const extracted = extractSessionIdFromTerminal(term);
+      return (
+        extracted?.id === session.id &&
+        (extracted.provider ?? session.provider) === session.provider
+      );
+    });
+  }
+
+  /**
+   * A live terminal in the session's project that nothing can attribute.
+   *
+   * Deliberately not part of {@link resolve}: every other caller reads a match as "this session
+   * lives in that terminal" (reveal, auto-resume, unlink). Only the tree badge wants to say
+   * "there is an unattributed terminal here".
+   */
+  unlinkedTerminal(session: AgentSession): HerdrSessionMatch | undefined {
+    if (!this.daemonAvailable) {
+      return undefined;
+    }
+    const dirs = new Set(
+      [session.projectPath, session.nativeProjectPath].map((p) => normalizeDirPath(p)).filter(Boolean)
+    );
+    if (dirs.size === 0) {
+      return undefined;
+    }
+    for (const term of this.terminals) {
+      if (term.state !== "live" || extractSessionIdFromTerminal(term)) {
+        continue;
+      }
+      const provider = detectTerminalProvider(term);
+      if (provider !== session.provider) {
+        continue;
+      }
+      if (this.running.resolve(term, provider) !== undefined) {
+        continue;
+      }
+      const termDirs = [
+        normalizeDirPath(term.foreground?.cwd),
+        normalizeDirPath(term.cwd),
+        normalizeDirPath(term.labels?.workspace)
+      ].filter(Boolean);
+      if (!termDirs.some((d) => dirs.has(d))) {
+        continue;
+      }
+      const spaceId = term.labels?.["herdr.space"];
+      return {
+        kind: "unlinked",
+        address: term.address,
+        spaceId,
+        spaceName: spaceId ? this.spaceNames.get(spaceId) : undefined,
+        agentState: term.status?.state,
+        statusMsg: term.status?.msg,
+        statusMs: term.status_ms ?? term.created_ms
+      };
+    }
+    return undefined;
   }
 
   async markLaunchedInHerdr(
@@ -249,6 +350,15 @@ export class HerdrSessionTracker implements vscode.Disposable {
       spaceName,
       updatedAt: Date.now()
     });
+    await this.saveRecordedSessions();
+    this.onDidChangeEmitter.fire();
+  }
+
+  async forgetSession(session: Pick<AgentSession, "provider" | "id">): Promise<void> {
+    const key = herdrSessionKey(session.provider, session.id);
+    if (!this.recorded.delete(key)) {
+      return;
+    }
     await this.saveRecordedSessions();
     this.onDidChangeEmitter.fire();
   }
@@ -272,11 +382,72 @@ export class HerdrSessionTracker implements vscode.Disposable {
       this.terminals = list.terminals ?? [];
       this.updateSpaces(doc);
       await this.recordMatchedFromTerminals();
+      await this.adoptRunningSessions();
     } catch {
       this.daemonAvailable = false;
       this.terminals = [];
     }
     this.onDidChangeEmitter.fire();
+  }
+
+  /**
+   * Rewrites a stale `alma.session` label to the session its terminal actually runs.
+   *
+   * A TUI started with `/new` keeps the old label in the same PTY, so the label starts naming
+   * a session that ended. The per-TTY record of the running provider is authoritative, and the
+   * cwd must match so a recycled tty cannot steal an unrelated label.
+   *
+   * Each terminal/session pair is attempted once. Something else on this machine re-asserts the
+   * old label within a second (observed: a foreign write reverts the label ~1 s after ours, and
+   * leaves unrelated labels alone), so retrying on every refresh would ping-pong with it at
+   * event rate. A lost race costs nothing: `resolve` reads the tty record, not the label.
+   */
+  private async adoptRunningSessions(): Promise<void> {
+    if (!this.daemonAvailable) {
+      return;
+    }
+    for (const term of this.terminals) {
+      if (term.state !== "live" || this.adoptingLabels.has(term.address)) {
+        continue;
+      }
+      const labelId = extractSessionIdFromTerminal(term)?.id;
+      if (!labelId) {
+        continue;
+      }
+      const provider = detectTerminalProvider(term);
+      if (!provider) {
+        continue;
+      }
+      const record = this.running.record(term, provider);
+      if (!record || record.sessionId === labelId) {
+        continue;
+      }
+      const attemptKey = `${term.address}|${record.sessionId}`;
+      if (this.attemptedAdoptions.has(attemptKey)) {
+        continue;
+      }
+      const termCwd = normalizeDirPath(
+        term.foreground?.cwd || term.cwd || term.labels?.workspace
+      );
+      if (!termCwd || normalizeDirPath(record.cwd) !== termCwd) {
+        continue;
+      }
+      this.attemptedAdoptions.add(attemptKey);
+      this.adoptingLabels.add(term.address);
+      try {
+        await this.client.setLabels(term.address, {
+          "alma.session": herdrSessionKey(provider, record.sessionId)
+        });
+        await this.markLaunchedInHerdr(
+          { provider, id: record.sessionId },
+          { address: term.address, spaceId: term.labels?.["herdr.space"] }
+        );
+      } catch {
+        // hc unreachable or the terminal vanished
+      } finally {
+        this.adoptingLabels.delete(term.address);
+      }
+    }
   }
 
   private updateSpaces(doc?: HcAppDoc): void {

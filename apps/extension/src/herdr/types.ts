@@ -148,7 +148,7 @@ export interface HerdrRecordedSession {
 }
 
 export interface HerdrSessionMatch {
-  kind: "live" | "finished" | "recorded";
+  kind: "live" | "finished" | "recorded" | "unlinked";
   address?: string;
   spaceId?: string;
   spaceName?: string;

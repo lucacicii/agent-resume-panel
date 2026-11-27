@@ -1,7 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AgentSession } from "../history/types";
+import type { AgentProvider, AgentSession } from "../history/types";
 import type { HcTerminal, HerdrRecordedSession, HerdrSessionMatch } from "./types";
+
+/** Resolves the session a live terminal is running right now, per provider home. */
+export type RunningSessionResolver = (term: HcTerminal, provider: string) => string | undefined;
 
 export function herdrSessionKey(provider: string, id: string): string {
   return `${provider}:${id}`;
@@ -32,7 +35,7 @@ export function cleanTerminalTitle(title: string): string {
   return cleaned.replace(/\s+/g, " ").trim();
 }
 
-export function detectTerminalProvider(term: HcTerminal): string | undefined {
+export function detectTerminalProvider(term: HcTerminal): AgentProvider | undefined {
   const sessionLabel = term.labels?.["alma.session"];
   if (sessionLabel) {
     const prefix = sessionLabel.split(":")[0]?.trim().toLowerCase();
@@ -52,7 +55,7 @@ export function detectTerminalProvider(term: HcTerminal): string | undefined {
   return normalizeProviderAlias(raw.toLowerCase());
 }
 
-function normalizeProviderAlias(norm: string): string | undefined {
+function normalizeProviderAlias(norm: string): AgentProvider | undefined {
   if (norm.includes("claude")) {
     return "claude";
   }
@@ -171,7 +174,8 @@ export function matchSessionToHerdr(
   session: Pick<AgentSession, "provider" | "id" | "title" | "projectPath" | "nativeProjectPath">,
   terminals: HcTerminal[],
   spaceNames: Map<string, string>,
-  recordedMap: Map<string, HerdrRecordedSession>
+  recordedMap: Map<string, HerdrRecordedSession>,
+  resolveRunning?: RunningSessionResolver
 ): HerdrSessionMatch | undefined {
   // Prefer live terminals over finished ones.
   const ordered = [...terminals].sort((a, b) => {
@@ -180,7 +184,10 @@ export function matchSessionToHerdr(
     return (b.status_ms ?? b.created_ms) - (a.status_ms ?? a.created_ms);
   });
 
-  // 1. Exact session ID match (alma.session or argv resume flag)
+  // 1. Exact session ID match (alma.session or argv resume flag).
+  // A label goes stale when the TUI runs `/new` inside the same PTY: it keeps naming the
+  // session that just ended. When the terminal's provider can tell us what it is running
+  // right now, trust that over the label.
   for (const term of ordered) {
     const extracted = extractSessionIdFromTerminal(term);
     if (!extracted) {
@@ -189,10 +196,31 @@ export function matchSessionToHerdr(
     if (extracted.id !== session.id) {
       continue;
     }
+    const labelProvider = extracted.provider ?? session.provider;
     if (extracted.provider && extracted.provider !== session.provider) {
       continue;
     }
+    const running = resolveRunning?.(term, labelProvider);
+    if (running && running !== session.id) {
+      continue;
+    }
     return buildMatchFromTerminal(term, spaceNames);
+  }
+
+  // 1b. Follow the terminal: a live terminal whose tracked session is this one, whatever
+  // its label says (covers the session adopted after `/new`).
+  if (resolveRunning) {
+    for (const term of ordered) {
+      if (term.state !== "live") {
+        continue;
+      }
+      if (detectTerminalProvider(term) !== session.provider) {
+        continue;
+      }
+      if (resolveRunning(term, session.provider) === session.id) {
+        return buildMatchFromTerminal(term, spaceNames);
+      }
+    }
   }
 
   // 2. Fallback: canonical directory + provider + title overlap
@@ -206,6 +234,10 @@ export function matchSessionToHerdr(
   if (targetDirs.size > 0 && normalizedTitle.length >= 8) {
     for (const term of ordered) {
       if (detectTerminalProvider(term) !== session.provider) {
+        continue;
+      }
+      const running = resolveRunning?.(term, session.provider);
+      if (running && running !== session.id) {
         continue;
       }
       const termDirs = [

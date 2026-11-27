@@ -31,14 +31,18 @@ import { agentIconPath } from "./icons/agentIcons";
 import { openCodexAppProject } from "./terminal/codexApp";
 import { openInGhostty, openProjectInGhostty } from "./terminal/ghosttyTerminal";
 import { HerdrSessionTracker } from "./herdr/herdrSessionTracker";
+import { createRunningSessionLookup, defaultRunningSessionHomes } from "./herdr/runningSession";
 import {
   disposeBuiltInHerdrTerminals,
   getHerdrSessionTracker,
+  linkHerdrTerminal,
   openHerdrResume,
   restoreBuiltInHerdrTerminals,
+  revealHerdrTerminal,
   sendTextToActiveHerdrTerminal,
   setHerdrSessionTracker,
-  setHerdrTerminalWorkspaceState
+  setHerdrTerminalWorkspaceState,
+  unlinkHerdrTerminal
 } from "./terminal/herdrTerminal";
 import { consumePendingResumeForWorkspace, storePendingResume } from "./terminal/pendingResume";
 import { openClaudeCodePanelResumeFlow, shouldResumeClaudeInPanel } from "./terminal/claudeCodePanel";
@@ -199,6 +203,7 @@ export interface AgentResumeTerminalQuery {
 export interface AgentResumePanelApi {
   readonly version: 1;
   readonly onDidChangeSessions: vscode.Event<void>;
+  listSessions(): AgentResumeSessionSummary[];
   findSessionForTerminal(query: AgentResumeTerminalQuery): AgentResumeSessionSummary | undefined;
 }
 
@@ -277,12 +282,26 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
   const initialConfig = vscode.workspace.getConfiguration("agentResume");
   const herdrTracker = new HerdrSessionTracker(
     context,
-    initialConfig.get<string>("herdrSocketPath", "")
+    initialConfig.get<string>("herdrSocketPath", ""),
+    createRunningSessionLookup({
+      ...defaultRunningSessionHomes(),
+      omp: expandHome(initialConfig.get<string>("ompHome", "~/.omp/agent"))
+    })
   );
   setHerdrSessionTracker(herdrTracker);
   setHerdrTerminalWorkspaceState(context.workspaceState);
+  const applyHerdrAvailability = (): void => {
+    void vscode.commands.executeCommand(
+      "setContext",
+      "agentResume.herdrAvailable",
+      herdrTracker.isDaemonAvailable()
+    );
+  };
   if (initialConfig.get<boolean>("herdrEnabled", true)) {
-    void herdrTracker.initialize().then(() => restoreBuiltInHerdrTerminals());
+    void herdrTracker.initialize().then(() => {
+      applyHerdrAvailability();
+      return restoreBuiltInHerdrTerminals();
+    });
   }
   void applyProjectMenuContextFromConfig();
   void applySessionMenuContextFromConfig();
@@ -338,6 +357,7 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
       tree.refresh();
       gtdTree?.refresh();
       backgroundAutoRename?.onHerdrTerminalsChanged(herdrTracker.getTerminals());
+      applyHerdrAvailability();
     }),
     backgroundAutoRename,
     { dispose: () => setHerdrSessionTracker(undefined) },
@@ -486,6 +506,15 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
     ),
     ...menuCommand("agentResume.openInHerdr", (nodeOrSession?: unknown) =>
       openSessionInHerdr(tree, nodeOrSession, context)
+    ),
+    ...menuCommand("agentResume.linkHerdrTerminal", (nodeOrSession?: unknown) =>
+      runHerdrSessionAction(tree, nodeOrSession, linkHerdrTerminal)
+    ),
+    ...menuCommand("agentResume.unlinkHerdrTerminal", (nodeOrSession?: unknown) =>
+      runHerdrSessionAction(tree, nodeOrSession, unlinkHerdrTerminal)
+    ),
+    ...menuCommand("agentResume.revealInHerdrTerminal", (nodeOrSession?: unknown) =>
+      runHerdrSessionAction(tree, nodeOrSession, revealHerdrTerminal)
     ),
     ...menuCommand("agentResume.openInCodexApp", (nodeOrSession?: unknown) =>
       openSessionInCodexApp(tree, nodeOrSession)
@@ -797,18 +826,32 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
     })
   );
 
+  const collectApiSessions = (): AgentSession[] => {
+    const merged = new Map<string, AgentSession>();
+    for (const s of recentApiSessions) {
+      merged.set(`${s.provider}:${s.id}`, s);
+    }
+    for (const s of tree.getSessions()) {
+      merged.set(`${s.provider}:${s.id}`, s);
+    }
+    return [...merged.values()];
+  };
+  const toApiSessionSummary = (session: AgentSession): AgentResumeSessionSummary => ({
+    provider: session.provider,
+    id: session.id,
+    title: session.title,
+    projectPath: session.projectPath,
+    summary: session.sessionSummary
+  });
+
   return {
     version: 1,
     onDidChangeSessions: onDidChangeSessionsEmitter.event,
+    listSessions(): AgentResumeSessionSummary[] {
+      return collectApiSessions().map(toApiSessionSummary);
+    },
     findSessionForTerminal(query: AgentResumeTerminalQuery): AgentResumeSessionSummary | undefined {
-      const merged = new Map<string, AgentSession>();
-      for (const s of recentApiSessions) {
-        merged.set(`${s.provider}:${s.id}`, s);
-      }
-      for (const s of tree.getSessions()) {
-        merged.set(`${s.provider}:${s.id}`, s);
-      }
-      const sessions = [...merged.values()];
+      const sessions = collectApiSessions();
       if (sessions.length === 0) {
         return undefined;
       }
@@ -1369,6 +1412,19 @@ async function openSessionInHerdr(
   await openHerdrResume(session, context);
 }
 
+function runHerdrSessionAction(
+  tree: SessionTreeProvider,
+  nodeOrSession: unknown,
+  action: (session: AgentSession) => Promise<boolean>
+): void {
+  const session = resolveSession(tree, nodeOrSession);
+  if (!session) {
+    return;
+  }
+
+  void action(session);
+}
+
 function openSessionInCodexApp(tree: SessionTreeProvider, nodeOrSession: unknown): void {
   const session = resolveSession(tree, nodeOrSession);
   if (!session) {
@@ -1525,7 +1581,7 @@ function applyProjectAndGtdResolvers(
     if (!enabled) {
       return undefined;
     }
-    return getHerdrSessionTracker()?.resolve(session);
+    return getHerdrSessionTracker()?.resolve(session) ?? getHerdrSessionTracker()?.unlinkedTerminal(session);
   });
   gtdTreeProvider.setSessionTreeOptions(tree.getSessionTreeItemOptions());
 }

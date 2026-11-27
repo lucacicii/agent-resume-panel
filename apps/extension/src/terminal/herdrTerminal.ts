@@ -2,6 +2,7 @@ import { TextDecoder } from "node:util";
 import * as vscode from "vscode";
 import type { HcAttachStream } from "../herdr/hcClient";
 import type { HerdrSessionTracker } from "../herdr/herdrSessionTracker";
+import type { HcTerminal } from "../herdr/types";
 import {
   deriveSpaceNameFromFolder,
   isHerdrNameConflictError,
@@ -289,6 +290,16 @@ export async function openHerdrResume(
     void tracker.refresh();
   }
 
+  await openHerdrTerminalByAddress(tracker, address, spaceId, session.title);
+  return true;
+}
+
+async function openHerdrTerminalByAddress(
+  tracker: HerdrSessionTracker,
+  address: string,
+  spaceId: string | undefined,
+  title: string
+): Promise<void> {
   const display = vscode.workspace
     .getConfiguration("agentResume")
     .get<string>("herdrResumeDisplay", "auto");
@@ -298,14 +309,14 @@ export async function openHerdrResume(
       await tracker.herdrApp.selectSpace(spaceId).catch(() => undefined);
     }
     await tracker.herdrApp.activateHerdrApp();
-    return true;
+    return;
   }
 
   const bridgeApi = tracker.getBridgeApi();
   if (display === "auto" && bridgeApi) {
     try {
       await bridgeApi.openTerminal(address);
-      return true;
+      return;
     } catch {
       // fall back to built-in Pseudoterminal
     }
@@ -318,14 +329,125 @@ export async function openHerdrResume(
   if (display === "auto" && hasHerdrBridge) {
     try {
       await vscode.commands.executeCommand("herdrBridge.openTerminal", address);
-      return true;
+      return;
     } catch {
       // fall back to built-in Pseudoterminal if command fails
     }
   }
 
-  const shortTitle = session.title.length > 32 ? `${session.title.slice(0, 31)}...` : session.title;
+  const shortTitle = title.length > 32 ? `${title.slice(0, 31)}...` : title;
   openBuiltInHerdrPseudoterminal(tracker, address, shortTitle);
+}
+
+function herdrSessionLabel(session: Pick<AgentSession, "provider" | "id">): string {
+  return `${session.provider}:id:${session.id}`;
+}
+
+function describeHerdrTerminal(term: HcTerminal): string {
+  const name = term.name?.trim() || term.title?.trim() || term.address;
+  return term.state ? `${name} · ${term.state}` : name;
+}
+
+export async function revealHerdrTerminal(session: AgentSession): Promise<boolean> {
+  const tracker = activeTracker;
+  if (!tracker || !tracker.isDaemonAvailable()) {
+    vscode.window.showWarningMessage(t("warning.herdrDaemonOffline"));
+    return false;
+  }
+  const match = tracker.resolve(session);
+  if (match?.kind !== "live" || !match.address) {
+    vscode.window.showWarningMessage(t("warning.herdrNoLiveTerminal"));
+    return false;
+  }
+  await openHerdrTerminalByAddress(tracker, match.address, match.spaceId, session.title);
+  return true;
+}
+
+export async function linkHerdrTerminal(session: AgentSession): Promise<boolean> {
+  const tracker = activeTracker;
+  if (!tracker || !tracker.isDaemonAvailable()) {
+    vscode.window.showWarningMessage(t("warning.herdrDaemonOffline"));
+    return false;
+  }
+  const live = tracker.getTerminals().filter((term) => term.state === "live");
+  if (live.length === 0) {
+    vscode.window.showWarningMessage(t("warning.herdrNoLiveTerminal"));
+    return false;
+  }
+  const picked = await vscode.window.showQuickPick(
+    live.map((term) => ({
+      label: describeHerdrTerminal(term),
+      description: term.cwd ?? "",
+      detail: term.address,
+      term
+    })),
+    {
+      title: t("dialog.linkHerdrTerminalTitle"),
+      placeHolder: t("dialog.linkHerdrTerminalPlaceholder"),
+      matchOnDescription: true,
+      matchOnDetail: true
+    }
+  );
+  if (!picked) {
+    return false;
+  }
+  const address = picked.term.address;
+  const running = tracker.runsOtherSession(picked.term, session);
+  if (running) {
+    // The terminal demonstrably runs another session, so the label would be a lie that the next
+    // `/new`-aware lookup contradicts; say so instead of writing it and looking successful.
+    vscode.window.showWarningMessage(
+      t("warning.herdrTerminalRunsOtherSession", session.provider, running)
+    );
+    return false;
+  }
+  try {
+    await tracker.client.setLabels(address, { "alma.session": herdrSessionLabel(session) });
+  } catch (error) {
+    vscode.window.showErrorMessage(
+      t("error.herdrLabelWriteFailed", error instanceof Error ? error.message : String(error))
+    );
+    return false;
+  }
+  const spaceId = tracker.getSpaceByFolder(picked.term.cwd || session.projectPath || "")?.id;
+  await tracker.markLaunchedInHerdr(session, { address, spaceId });
+  void tracker.refresh();
+  vscode.window.showInformationMessage(t("notification.herdrLinked", picked.label));
+  return true;
+}
+
+export async function unlinkHerdrTerminal(session: AgentSession): Promise<boolean> {
+  const tracker = activeTracker;
+  if (!tracker || !tracker.isDaemonAvailable()) {
+    vscode.window.showWarningMessage(t("warning.herdrDaemonOffline"));
+    return false;
+  }
+  // One session can be labelled onto several terminals, and a finished terminal's label keeps
+  // resurrecting the badge through recordMatchedFromTerminals, so clear every label naming it.
+  const addresses = tracker.labeledTerminals(session).map((term) => term.address);
+  for (const address of addresses) {
+    try {
+      await tracker.client.setLabels(address, { "alma.session": "" });
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        t("error.herdrLabelWriteFailed", error instanceof Error ? error.message : String(error))
+      );
+      return false;
+    }
+  }
+  await tracker.forgetSession(session);
+  if (addresses.length > 0) {
+    await tracker.refresh();
+    const remaining = tracker.labeledTerminals(session).length;
+    if (remaining > 0) {
+      vscode.window.showWarningMessage(t("warning.herdrUnlinkLabelStuck", remaining));
+    }
+  }
+  vscode.window.showInformationMessage(
+    addresses.length > 0
+      ? t("notification.herdrUnlinkedMany", addresses.length)
+      : t("notification.herdrUnlinked")
+  );
   return true;
 }
 

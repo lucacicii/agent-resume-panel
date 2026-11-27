@@ -639,6 +639,9 @@ export function buildSessionTreeItem(session: AgentSession, options: SessionTree
 }
 
 function formatHerdrBadge(match: HerdrSessionMatch): string {
+  if (match.kind === "unlinked") {
+    return t("tree.herdrUnlinked");
+  }
   if (match.kind === "live") {
     if (match.agentState === "blocked" || match.agentState === "error") {
       return t("tree.herdrNeedsYou");
@@ -667,10 +670,11 @@ function sessionDescription(
     session.provider === "chat" && session.acpProvider
       ? t("tree.descriptionAcp", session.acpProvider, relativeTime(session.updatedAt))
       : t("tree.descriptionProvider", provider, relativeTime(session.updatedAt));
-  const parts = [time];
+  const parts: string[] = [];
   if (herdrMatch) {
     parts.push(formatHerdrBadge(herdrMatch));
   }
+  parts.push(time);
   if (hasNote) {
     parts.push(t("tree.hasNote"));
   }
@@ -716,7 +720,13 @@ function buildProjectTooltip(projectPath: string, alias?: string, hasNote = fals
 
 function formatHerdrTooltip(match: HerdrSessionMatch): string {
   const details = [
-    match.kind === "live" ? "live" : match.kind === "finished" ? "finished" : "recorded",
+    match.kind === "unlinked"
+      ? "unlinked"
+      : match.kind === "live"
+        ? "live"
+        : match.kind === "finished"
+          ? "finished"
+          : "recorded",
     match.address,
     match.spaceName ? `space:${match.spaceName}` : undefined,
     match.kind === "live" && match.agentState ? match.agentState : undefined,
