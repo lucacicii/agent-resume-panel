@@ -9,7 +9,7 @@ Browse, search, and resume **Codex / Claude Code / Antigravity / Grok Build / Op
 | **Install** | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) |
 | **Docs** | [docs/panel](https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/panel/README.md) |
 
-Extension version: **2.19.1** · [Changelog](https://github.com/lucacicii/agent-resume-panel/blob/develop/apps/extension/CHANGELOG.md)
+Extension version: **2.20.0** · [Changelog](https://github.com/lucacicii/agent-resume-panel/blob/develop/apps/extension/CHANGELOG.md)
 
 > **No cloud · Local-first**  
 > Session index, notes, and ACP chats are stored on your machine under **`~/.agent-resume-panel`**.  
@@ -63,7 +63,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 | **安装** | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) |
 | **文档** | [docs/panel](https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/panel/README.md) |
 
-扩展版本：**2.19.1** · [更新日志](https://github.com/lucacicii/agent-resume-panel/blob/develop/apps/extension/CHANGELOG.md)
+扩展版本：**2.20.0** · [更新日志](https://github.com/lucacicii/agent-resume-panel/blob/develop/apps/extension/CHANGELOG.md)
 
 > **无云端 · 纯本机存储**  
 > 数据默认保存在 **`~/.agent-resume-panel`**。可选 LLM Assist 需自行配置 API。

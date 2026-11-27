@@ -8,6 +8,19 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.20.0]
+
+#### 新增
+
+- **Herdr 终端关联、解绑与定位及扩展 API**：在会话菜单新增「关联 Herdr 终端」「取消关联 Herdr 终端」「在 Herdr 终端中显示」命令（支持 `en`/`zh-cn`/`ja`）；`AgentResumePanelApi` v1 新增 `linkSessionToTerminal` 与 `unlinkSessionFromTerminal` 供 `Herdr Core Bridge` 复用相同的安全校验与语义，`listSessions` 附带 `updatedAt` 并按最近时间倒序返回；解绑时写入 `alma.session.unlinked` 墓碑标记以防带恢复参数的终端被重新自动关联，重新关联或接管时自动清除并写入规范的三段式标签。
+
+#### 修复
+
+- **Herdr 实时会话解析与空闲状态徽标**：每次匹配重新读取终端 `tty` 记录，避免同一 PTY 执行 `/new` 后仍沿用旧会话标签；仅自动接管确实正在运行目标会话的实时终端，拒绝关联运行其他会话的终端；解绑时清除所有指向该会话的终端标签，并为 `idle` 状态实时终端显示区分未匹配会话的 `Herdr 空闲` 徽标。
+- **重命名会话保留原有时间戳**：重命名写入任务/索引/摘要文件时保留原 `mtime` 与会话 `updatedAt`；`sessionSync` 计算最后活跃时间时忽略标题与 `session_info` 记录，并将文本缓存键同时绑定 `ctime` 与 `mtime`。
+- **Handoff 摘要请求失败容错**：`chatCompletion` 自动重试瞬时传输错误并保留底层 `cause` 详情，支持 `llm.requestTimeoutMs`（5s–600s）；请求失败时回退为包含失败原因与更长原文尾部的确定性摘要并发出提示，不再直接中止 Handoff，同时补充空会话错误翻译。
+- **ACP Chat 思考过程块自动滚动**：流式生成思考过程时自动滚动到最新内容。
+
 ### [2.19.1]
 
 #### 修复
@@ -614,6 +627,19 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.20.0]
+
+#### Added
+
+- **Herdr Terminal Link/Unlink/Reveal Commands & Extension API**: Added `linkHerdrTerminal`, `unlinkHerdrTerminal`, and `revealInHerdrTerminal` session menu commands with `en`/`zh-cn`/`ja` localization; extended `AgentResumePanelApi` v1 with `linkSessionToTerminal` and `unlinkSessionFromTerminal` (sharing the runs-other-session guard and `forgetSession` semantics with `Herdr Core Bridge`), plus `updatedAt` on session summaries sorted most-recent-first; unlinking now writes an `alma.session.unlinked` tombstone to prevent resume-flag argv from resurrecting a removed link, while linking or live adoption clears it and writes the canonical 3-part `<provider>:id:<id>` label.
+
+#### Fixed
+
+- **Herdr Live Session Resolution & Idle Badge**: Re-reads the terminal's `tty` record on every match so `/new` in the same PTY no longer keeps the ended session's label; only adopts live terminals demonstrably running the session and refuses to link terminals running another session; clears all labels naming a session on unlink and renders a distinct `Herdr Idle` badge for idle live matches.
+- **Preserve Session Timestamps on Rename**: Preserves file `mtime` and stamps rewritten summary/index/task metadata with the session's `updatedAt` instead of `Date.now()`; excludes title and `session_info` entries from last-activity timestamps in `sessionSync` and keys its text cache on both `ctime` and `mtime`.
+- **Handoff Brief Resilience & Timeouts**: Retries transient transport failures in `chatCompletion` while preserving the underlying `cause`, honors `llm.requestTimeoutMs` (clamped 5s–600s), falls back to a deterministic brief containing the failure reason and a longer verbatim tail instead of aborting handoff, and translates empty-session errors.
+- **ACP Chat Thinking Block Auto-Scroll**: Automatically scrolls the thinking block to keep the latest streamed content visible.
 
 ### [2.19.1]
 
