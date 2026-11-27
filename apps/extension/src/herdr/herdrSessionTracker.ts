@@ -7,6 +7,7 @@ import {
   detectTerminalProvider,
   extractSessionIdFromTerminal,
   herdrSessionKey,
+  herdrSessionLabel,
   matchSessionToHerdr,
   normalizeDirPath
 } from "./matcher";
@@ -436,7 +437,8 @@ export class HerdrSessionTracker implements vscode.Disposable {
       this.adoptingLabels.add(term.address);
       try {
         await this.client.setLabels(term.address, {
-          "alma.session": herdrSessionKey(provider, record.sessionId)
+          "alma.session": herdrSessionLabel(provider, record.sessionId),
+          "alma.session.unlinked": ""
         });
         await this.markLaunchedInHerdr(
           { provider, id: record.sessionId },

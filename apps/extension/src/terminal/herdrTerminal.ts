@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import type { HcAttachStream } from "../herdr/hcClient";
 import type { HerdrSessionTracker } from "../herdr/herdrSessionTracker";
 import type { HcTerminal } from "../herdr/types";
+import { herdrSessionLabel } from "../herdr/matcher";
 import {
   deriveSpaceNameFromFolder,
   isHerdrNameConflictError,
@@ -339,10 +340,6 @@ async function openHerdrTerminalByAddress(
   openBuiltInHerdrPseudoterminal(tracker, address, shortTitle);
 }
 
-function herdrSessionLabel(session: Pick<AgentSession, "provider" | "id">): string {
-  return `${session.provider}:id:${session.id}`;
-}
-
 function describeHerdrTerminal(term: HcTerminal): string {
   const name = term.name?.trim() || term.title?.trim() || term.address;
   return term.state ? `${name} · ${term.state}` : name;
@@ -361,6 +358,81 @@ export async function revealHerdrTerminal(session: AgentSession): Promise<boolea
   }
   await openHerdrTerminalByAddress(tracker, match.address, match.spaceId, session.title);
   return true;
+}
+
+export type HerdrLinkOutcome =
+  | { ok: true }
+  | { ok: false; reason: "runs-other-session"; detail: string }
+  | { ok: false; reason: "write-failed"; detail: string };
+
+export type HerdrUnlinkOutcome = { ok: true } | { ok: false; reason: "write-failed"; detail: string };
+
+/**
+ * Link one session onto one terminal, with the guard the interactive command uses: a
+ * terminal that demonstrably runs another session refuses the label instead of writing
+ * one that the next `/new`-aware lookup contradicts.
+ */
+export async function linkSessionToTerminalByAddress(
+  tracker: HerdrSessionTracker,
+  session: Pick<AgentSession, "provider" | "id">,
+  address: string
+): Promise<HerdrLinkOutcome> {
+  const term = tracker.getTerminals().find((candidate) => candidate.address === address);
+  if (term) {
+    const running = tracker.runsOtherSession(term, session);
+    if (running) {
+      return { ok: false, reason: "runs-other-session", detail: running };
+    }
+  }
+  try {
+    await tracker.client.setLabels(address, {
+      "alma.session": herdrSessionLabel(session.provider, session.id),
+      "alma.session.unlinked": ""
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      reason: "write-failed",
+      detail: error instanceof Error ? error.message : String(error)
+    };
+  }
+  const spaceId = tracker.getSpaceByFolder(term?.cwd || term?.labels?.workspace || "")?.id;
+  await tracker.markLaunchedInHerdr(session, { address, spaceId });
+  void tracker.refresh();
+  return { ok: true };
+}
+
+/**
+ * Remove one terminal's link to a session. The empty value removes the `alma.session` key
+ * and the tombstone stops the id being re-derived from the resume flag in argv until a
+ * new link or a live adoption writes the label again. The session's recorded Herdr entry
+ * is dropped only when no other terminal still carries the label.
+ */
+export async function unlinkSessionFromTerminalByAddress(
+  tracker: HerdrSessionTracker,
+  session: Pick<AgentSession, "provider" | "id">,
+  address: string
+): Promise<HerdrUnlinkOutcome> {
+  try {
+    await tracker.client.setLabels(address, {
+      "alma.session": "",
+      "alma.session.unlinked": String(Date.now())
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      reason: "write-failed",
+      detail: error instanceof Error ? error.message : String(error)
+    };
+  }
+  const remaining = tracker
+    .labeledTerminals(session)
+    .filter((term) => term.address !== address);
+  if (remaining.length === 0) {
+    await tracker.forgetSession(session);
+  }
+  await tracker.refresh();
+  return { ok: true };
 }
 
 export async function linkHerdrTerminal(session: AgentSession): Promise<boolean> {
@@ -392,26 +464,17 @@ export async function linkHerdrTerminal(session: AgentSession): Promise<boolean>
     return false;
   }
   const address = picked.term.address;
-  const running = tracker.runsOtherSession(picked.term, session);
-  if (running) {
-    // The terminal demonstrably runs another session, so the label would be a lie that the next
-    // `/new`-aware lookup contradicts; say so instead of writing it and looking successful.
-    vscode.window.showWarningMessage(
-      t("warning.herdrTerminalRunsOtherSession", session.provider, running)
-    );
+  const result = await linkSessionToTerminalByAddress(tracker, session, address);
+  if (!result.ok) {
+    if (result.reason === "runs-other-session") {
+      vscode.window.showWarningMessage(
+        t("warning.herdrTerminalRunsOtherSession", session.provider, result.detail)
+      );
+    } else {
+      vscode.window.showErrorMessage(t("error.herdrLabelWriteFailed", result.detail));
+    }
     return false;
   }
-  try {
-    await tracker.client.setLabels(address, { "alma.session": herdrSessionLabel(session) });
-  } catch (error) {
-    vscode.window.showErrorMessage(
-      t("error.herdrLabelWriteFailed", error instanceof Error ? error.message : String(error))
-    );
-    return false;
-  }
-  const spaceId = tracker.getSpaceByFolder(picked.term.cwd || session.projectPath || "")?.id;
-  await tracker.markLaunchedInHerdr(session, { address, spaceId });
-  void tracker.refresh();
   vscode.window.showInformationMessage(t("notification.herdrLinked", picked.label));
   return true;
 }
@@ -427,7 +490,10 @@ export async function unlinkHerdrTerminal(session: AgentSession): Promise<boolea
   const addresses = tracker.labeledTerminals(session).map((term) => term.address);
   for (const address of addresses) {
     try {
-      await tracker.client.setLabels(address, { "alma.session": "" });
+      await tracker.client.setLabels(address, {
+        "alma.session": "",
+        "alma.session.unlinked": String(Date.now())
+      });
     } catch (error) {
       vscode.window.showErrorMessage(
         t("error.herdrLabelWriteFailed", error instanceof Error ? error.message : String(error))

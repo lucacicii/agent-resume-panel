@@ -10,6 +10,11 @@ export function herdrSessionKey(provider: string, id: string): string {
   return `${provider}:${id}`;
 }
 
+/** The canonical `alma.session` label value: `<provider>:id:<id>`. */
+export function herdrSessionLabel(provider: string, id: string): string {
+  return `${provider}:id:${id}`;
+}
+
 export function normalizeDirPath(dir?: string): string {
   if (!dir) {
     return "";
@@ -101,6 +106,13 @@ export function extractSessionIdFromTerminal(
     } else if (parts.length === 2 && parts[1].trim()) {
       return { provider: normalizeProviderAlias(parts[0].toLowerCase()), id: parts[1].trim() };
     }
+  }
+
+  // A previous unlink left a tombstone: the user said this terminal is not associated
+  // with the session its resume flag names. An explicit label still wins above; only the
+  // argv guess below is suppressed.
+  if (term.labels?.["alma.session.unlinked"]) {
+    return undefined;
   }
 
   const argv = [...(term.foreground?.argv ?? []), ...(term.argv ?? [])];
@@ -233,6 +245,9 @@ export function matchSessionToHerdr(
 
   if (targetDirs.size > 0 && normalizedTitle.length >= 8) {
     for (const term of ordered) {
+      if (term.labels?.["alma.session.unlinked"]) {
+        continue;
+      }
       if (detectTerminalProvider(term) !== session.provider) {
         continue;
       }

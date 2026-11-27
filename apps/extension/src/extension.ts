@@ -36,14 +36,18 @@ import {
   disposeBuiltInHerdrTerminals,
   getHerdrSessionTracker,
   linkHerdrTerminal,
+  linkSessionToTerminalByAddress,
   openHerdrResume,
   restoreBuiltInHerdrTerminals,
   revealHerdrTerminal,
   sendTextToActiveHerdrTerminal,
   setHerdrSessionTracker,
   setHerdrTerminalWorkspaceState,
-  unlinkHerdrTerminal
+  unlinkHerdrTerminal,
+  unlinkSessionFromTerminalByAddress
 } from "./terminal/herdrTerminal";
+
+import type { HerdrLinkOutcome, HerdrUnlinkOutcome } from "./terminal/herdrTerminal";
 import { consumePendingResumeForWorkspace, storePendingResume } from "./terminal/pendingResume";
 import { openClaudeCodePanelResumeFlow, shouldResumeClaudeInPanel } from "./terminal/claudeCodePanel";
 import {
@@ -190,6 +194,7 @@ export interface AgentResumeSessionSummary {
   title: string;
   projectPath: string;
   summary?: string;
+  updatedAt: number;
 }
 
 export interface AgentResumeTerminalQuery {
@@ -205,6 +210,14 @@ export interface AgentResumePanelApi {
   readonly onDidChangeSessions: vscode.Event<void>;
   listSessions(): AgentResumeSessionSummary[];
   findSessionForTerminal(query: AgentResumeTerminalQuery): AgentResumeSessionSummary | undefined;
+  linkSessionToTerminal(
+    session: { provider: AgentProvider; id: string },
+    address: string
+  ): Promise<HerdrLinkOutcome>;
+  unlinkSessionFromTerminal(
+    session: { provider: AgentProvider; id: string },
+    address: string
+  ): Promise<HerdrUnlinkOutcome>;
 }
 
 function normalizePathForMatch(dir?: string): string {
@@ -841,14 +854,15 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
     id: session.id,
     title: session.title,
     projectPath: session.projectPath,
-    summary: session.sessionSummary
+    summary: session.sessionSummary,
+    updatedAt: session.updatedAt
   });
 
   return {
     version: 1,
     onDidChangeSessions: onDidChangeSessionsEmitter.event,
     listSessions(): AgentResumeSessionSummary[] {
-      return collectApiSessions().map(toApiSessionSummary);
+      return [...collectApiSessions()].sort((a, b) => b.updatedAt - a.updatedAt).map(toApiSessionSummary);
     },
     findSessionForTerminal(query: AgentResumeTerminalQuery): AgentResumeSessionSummary | undefined {
       const sessions = collectApiSessions();
@@ -866,7 +880,8 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
             id: exact.id,
             title: exact.title,
             projectPath: exact.projectPath,
-            summary: exact.sessionSummary
+            summary: exact.sessionSummary,
+            updatedAt: exact.updatedAt
           };
         }
       }
@@ -920,8 +935,29 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
         id: best.id,
         title: best.title,
         projectPath: best.projectPath,
-        summary: best.sessionSummary
+        summary: best.sessionSummary,
+        updatedAt: best.updatedAt
       };
+    },
+    linkSessionToTerminal(session: { provider: AgentProvider; id: string }, address: string) {
+      if (!herdrTracker || !herdrTracker.isDaemonAvailable()) {
+        return Promise.resolve<HerdrLinkOutcome>({
+          ok: false,
+          reason: "write-failed",
+          detail: "Herdr daemon is unavailable"
+        });
+      }
+      return linkSessionToTerminalByAddress(herdrTracker, session, address);
+    },
+    unlinkSessionFromTerminal(session: { provider: AgentProvider; id: string }, address: string) {
+      if (!herdrTracker || !herdrTracker.isDaemonAvailable()) {
+        return Promise.resolve<HerdrUnlinkOutcome>({
+          ok: false,
+          reason: "write-failed",
+          detail: "Herdr daemon is unavailable"
+        });
+      }
+      return unlinkSessionFromTerminalByAddress(herdrTracker, session, address);
     }
   };
 }

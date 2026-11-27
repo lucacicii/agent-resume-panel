@@ -61,6 +61,20 @@ test("extractSessionIdFromTerminal parses resume flags in argv", () => {
   });
 });
 
+test("an unlink tombstone suppresses the argv session id but not an explicit label", () => {
+  const tombstoned = makeTerminal({
+    foreground: { pid: 12, name: "claude", argv: ["claude", "--resume", "abc-123"], cwd: "/tmp/proj" },
+    labels: { "alma.session.unlinked": "1732723200000" }
+  });
+  assert.equal(extractSessionIdFromTerminal(tombstoned), undefined);
+
+  const relinked = makeTerminal({
+    foreground: { pid: 12, name: "claude", argv: ["claude", "--resume", "abc-123"], cwd: "/tmp/proj" },
+    labels: { "alma.session": "claude:id:def-456", "alma.session.unlinked": "1732723200000" }
+  });
+  assert.deepEqual(extractSessionIdFromTerminal(relinked), { provider: "claude", id: "def-456" });
+});
+
 test("matchSessionToHerdr prioritizes live exact ID over finished and recorded", () => {
   const spaceNames = new Map([["sp1", "anfeng"]]);
   const recorded = new Map([
