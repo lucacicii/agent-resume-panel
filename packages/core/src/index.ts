@@ -302,3 +302,24 @@ export {
   pathExists,
   fileMtimeMs
 } from "./notes/fs";
+
+export {
+  SEARCH_INDEX_SCHEMA_SQL,
+  ensureSearchIndexSchema,
+  resetSearchIndexSchemaCache,
+  hasInProcessSqlite,
+  syncSearchIndex,
+  queryUnifiedSearch,
+  fuzzySubsequenceScore,
+  extractBestSnippet,
+  type SearchDocType,
+  type SearchProjectScopeInput,
+  type SearchPageSpec,
+  type UnifiedSearchRequest,
+  type UnifiedSearchHit,
+  type UnifiedSearchColumnResult,
+  type UnifiedSearchResult,
+  type SyncSearchIndexOptions,
+  type SearchIndexSyncStats
+} from "./search";
+export { searchIndexDbPath } from "./panelHome";

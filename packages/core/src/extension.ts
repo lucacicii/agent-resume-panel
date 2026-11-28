@@ -1,4 +1,4 @@
-export { resolvePanelHome, catalogDbPath } from "./panelHome";
+export { resolvePanelHome, catalogDbPath, searchIndexDbPath } from "./panelHome";
 export {
   UI_LANGUAGE_SETTING,
   UI_LANGUAGE_AUTO,
@@ -155,3 +155,24 @@ export {
   setUserTitleIfUnsetInCatalog
 } from "./catalog/autoRenameState";
 export type { AutoRenameCandidateQueryOptions } from "./catalog/autoRenameState";
+export {
+  SEARCH_INDEX_SCHEMA_SQL,
+  ensureSearchIndexSchema,
+  resetSearchIndexSchemaCache,
+  hasInProcessSqlite,
+  syncSearchIndex,
+  queryUnifiedSearch,
+  fuzzySubsequenceScore,
+  extractBestSnippet
+} from "./search";
+export type {
+  SearchDocType,
+  SearchProjectScopeInput,
+  SearchPageSpec,
+  UnifiedSearchRequest,
+  UnifiedSearchHit,
+  UnifiedSearchColumnResult,
+  UnifiedSearchResult,
+  SyncSearchIndexOptions,
+  SearchIndexSyncStats
+} from "./search";

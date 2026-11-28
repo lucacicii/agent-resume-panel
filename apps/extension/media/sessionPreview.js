@@ -6,12 +6,20 @@
   let currentMessages = [];
   let currentSummary = { text: "", isError: false, visible: false };
   const markdownHelper = window.AgentResumePreviewMarkdown;
+  const previewFindHelper = window.AgentResumePreviewFind;
 
   const previewTitle = document.getElementById("preview-title");
   const previewNotice = document.getElementById("preview-notice");
   const previewSummary = document.getElementById("preview-summary");
   const previewMessages = document.getElementById("preview-messages");
   const previewBody = document.getElementById("preview-body") || previewMessages;
+  const previewFindToggle = document.getElementById("preview-find-toggle");
+  const previewFindBar = document.getElementById("preview-find-bar");
+  const previewFindInput = document.getElementById("preview-find-input");
+  const previewFindCount = document.getElementById("preview-find-count");
+  const previewFindPrev = document.getElementById("preview-find-prev");
+  const previewFindNext = document.getElementById("preview-find-next");
+  const previewFindClose = document.getElementById("preview-find-close");
   const previewModeToggle = document.getElementById("preview-mode-toggle");
   const previewModeMarkdown = document.getElementById("preview-mode-markdown");
   const previewModeRaw = document.getElementById("preview-mode-raw");
@@ -63,6 +71,29 @@
       previewModeRaw.textContent = uiStrings.modeRaw || "Raw";
       previewModeRaw.setAttribute("aria-label", uiStrings.ariaModeRaw || "Switch to raw text");
     }
+    if (previewFindToggle) {
+      const tip = uiStrings.findToggleTooltip || "Find in preview (Ctrl+F)";
+      previewFindToggle.title = tip;
+      previewFindToggle.setAttribute("aria-label", tip);
+    }
+    if (previewFindInput) {
+      previewFindInput.placeholder = uiStrings.findPlaceholder || "Find in preview...";
+    }
+    if (previewFindPrev) {
+      const tip = uiStrings.findPrevTooltip || "Previous match (Shift+Enter)";
+      previewFindPrev.title = tip;
+      previewFindPrev.setAttribute("aria-label", tip);
+    }
+    if (previewFindNext) {
+      const tip = uiStrings.findNextTooltip || "Next match (Enter)";
+      previewFindNext.title = tip;
+      previewFindNext.setAttribute("aria-label", tip);
+    }
+    if (previewFindClose) {
+      const tip = uiStrings.findCloseTooltip || "Close find bar (Esc)";
+      previewFindClose.title = tip;
+      previewFindClose.setAttribute("aria-label", tip);
+    }
     const loadingEl = document.querySelector(".preview-loading");
     if (loadingEl) {
       loadingEl.textContent = uiStrings.loadingConversation || loadingEl.textContent;
@@ -113,6 +144,7 @@
     if (currentSummary.visible) {
       renderSummary(currentSummary.text, currentSummary.isError);
     }
+    previewFind?.refresh(false);
 
     const nextMaxScroll = Math.max(0, previewBody.scrollHeight - previewBody.clientHeight);
     if (nextMaxScroll > 0 && scrollRatio > 0) {
@@ -278,6 +310,9 @@
       block.appendChild(text);
       previewMessages.appendChild(block);
     }
+    if (previewFind?.isOpen()) {
+      previewFind.refresh(false);
+    }
   }
 
   function renderNotices(message) {
@@ -336,6 +371,9 @@
     }
     previewSummary.classList.remove("hidden");
     previewSummary.classList.toggle("preview-summary-error", currentSummary.isError);
+    if (previewFind?.isOpen()) {
+      previewFind.refresh(false);
+    }
   }
 
   function applyResumeActions(showResumeWith) {
@@ -382,6 +420,29 @@
     previewAutoRename.disabled = disabled;
     previewHandoff.disabled = disabled;
   }
+
+  const previewFind = previewFindHelper
+    ? previewFindHelper.createController({
+        containers: [previewSummary, previewMessages],
+        barEl: previewFindBar,
+        inputEl: previewFindInput,
+        countEl: previewFindCount,
+        prevBtn: previewFindPrev,
+        nextBtn: previewFindNext,
+        closeBtn: previewFindClose,
+        toggleBtn: previewFindToggle
+      })
+    : null;
+
+  document.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      previewFind?.open();
+    } else if (event.key === "Escape" && previewFind?.isOpen()) {
+      event.preventDefault();
+      previewFind.close();
+    }
+  });
 
   vscode.postMessage({ type: "ready" });
 })();

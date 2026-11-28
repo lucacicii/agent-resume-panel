@@ -6,33 +6,81 @@
   /** @type {Record<string, string | { light: string, dark: string }>} */
   let providerIcons = {};
 
-  /** @type {{ projects: Array<{projectPath: string, name: string, sessionCount: number, favorited: boolean, compactPath: string}>, sessions: Array<{provider: string, id: string, title: string, projectPath: string, projectName: string, branch?: string, summary?: string, updatedAtLabel: string, gtdStatus?: string, gtdStatusLabel?: string}>, gtdStatuses: Array<{status: string, label: string, count?: number}>, totalSessions: number, untaggedCount: number, filteredTotal: number, hasMore: boolean }} */
-  let state = { projects: [], sessions: [], gtdStatuses: [], totalSessions: 0, untaggedCount: 0, filteredTotal: 0, hasMore: false };
+  const PAGE_SIZE = 35;
+  const MAX_SHORTCUT_CHIPS = 7;
+
+  let state = {
+    projects: [],
+    sessions: { items: [], total: 0, hasMore: false },
+    acp: { items: [], total: 0, hasMore: false },
+    notes: { items: [], total: 0, hasMore: false },
+    gtdStatuses: [],
+    totalSessions: 0,
+    untaggedCount: 0,
+    indexedCounts: { sessions: 0, acp: 0, notes: 0 },
+    queryTimeMs: 0,
+    usingFallback: false
+  };
+
   let selectedProjectPath = null;
-  /** @type {null | "untagged" | string} */
   let selectedGtdFilter = null;
   let query = "";
   let searchDebounceTimer = null;
-  let loadingPage = false;
+  let loadingColumns = { session: false, acp: false, note: false };
   let previewLoadingKey = null;
-  /** @type {{ provider: string, id: string } | null} */
   let activePreviewSession = null;
   let previewRenderMode = "markdown";
   let previewMessagesData = [];
   let previewSummaryState = { text: "", isError: false, visible: false };
+  let projectDropdownOpen = false;
+  let projectDropdownQuery = "";
+  let projectDropdownHighlight = 0;
+  let filteredDropdownProjects = [];
+  let isSyncingIndex = false;
+
   const markdownHelper = window.AgentResumePreviewMarkdown;
-  const PAGE_SIZE = 50;
+  const previewFindHelper = window.AgentResumePreviewFind;
   const searchInput = document.getElementById("search");
+  const searchClearBtn = document.getElementById("search-clear");
+  const indexStatusEl = document.getElementById("index-status");
+  const syncIndexBtn = document.getElementById("sync-index-btn");
+
   const chipsEl = document.getElementById("chips");
   const gtdChipsEl = document.getElementById("gtd-chips");
   const gtdSectionLabel = document.getElementById("gtd-section-label");
-  const sessionsEl = document.getElementById("sessions");
+  const projectsSectionLabel = document.querySelector(".projects-section .section-label");
+
+  const projectDropdown = document.getElementById("project-dropdown");
+  const projectDropdownTrigger = document.getElementById("project-dropdown-trigger");
+  const projectDropdownLabel = document.getElementById("project-dropdown-label");
+  const projectDropdownMenu = document.getElementById("project-dropdown-menu");
+  const projectDropdownSearch = document.getElementById("project-dropdown-search");
+  const projectDropdownList = document.getElementById("project-dropdown-list");
+  const projectClearBtn = document.getElementById("project-clear-btn");
+
+  const colLabelSessions = document.getElementById("col-label-sessions");
+  const colLabelAcp = document.getElementById("col-label-acp");
+  const colLabelNotes = document.getElementById("col-label-notes");
+  const colCountSessions = document.getElementById("col-count-sessions");
+  const colCountAcp = document.getElementById("col-count-acp");
+  const colCountNotes = document.getElementById("col-count-notes");
+  const colListSessions = document.getElementById("col-list-sessions");
+  const colListAcp = document.getElementById("col-list-acp");
+  const colListNotes = document.getElementById("col-list-notes");
+
   const previewOverlay = document.getElementById("preview-overlay");
   const previewTitle = document.getElementById("preview-title");
   const previewNotice = document.getElementById("preview-notice");
   const previewSummary = document.getElementById("preview-summary");
   const previewMessages = document.getElementById("preview-messages");
   const previewBody = document.getElementById("preview-body") || previewMessages;
+  const previewFindToggle = document.getElementById("preview-find-toggle");
+  const previewFindBar = document.getElementById("preview-find-bar");
+  const previewFindInput = document.getElementById("preview-find-input");
+  const previewFindCount = document.getElementById("preview-find-count");
+  const previewFindPrev = document.getElementById("preview-find-prev");
+  const previewFindNext = document.getElementById("preview-find-next");
+  const previewFindClose = document.getElementById("preview-find-close");
   const previewModeToggle = document.getElementById("preview-mode-toggle");
   const previewModeMarkdown = document.getElementById("preview-mode-markdown");
   const previewModeRaw = document.getElementById("preview-mode-raw");
@@ -43,8 +91,6 @@
   const previewHandoff = document.getElementById("preview-handoff");
   const previewRename = document.getElementById("preview-rename");
   const previewClose = document.getElementById("preview-close");
-  const projectsSectionLabel = document.querySelector(".projects-section .section-label");
-  const sessionsSectionLabel = document.querySelector(".sessions-section .section-label");
 
   function applyPreviewStaticUi() {
     if (previewResume) {
@@ -86,6 +132,29 @@
       previewModeRaw.textContent = previewUiStrings.modeRaw || "Raw";
       previewModeRaw.setAttribute("aria-label", previewUiStrings.ariaModeRaw || "Switch to raw text");
     }
+    if (previewFindToggle) {
+      const tip = previewUiStrings.findToggleTooltip || "Find in preview (Ctrl+F)";
+      previewFindToggle.title = tip;
+      previewFindToggle.setAttribute("aria-label", tip);
+    }
+    if (previewFindInput) {
+      previewFindInput.placeholder = previewUiStrings.findPlaceholder || "Find in preview...";
+    }
+    if (previewFindPrev) {
+      const tip = previewUiStrings.findPrevTooltip || "Previous match (Shift+Enter)";
+      previewFindPrev.title = tip;
+      previewFindPrev.setAttribute("aria-label", tip);
+    }
+    if (previewFindNext) {
+      const tip = previewUiStrings.findNextTooltip || "Next match (Enter)";
+      previewFindNext.title = tip;
+      previewFindNext.setAttribute("aria-label", tip);
+    }
+    if (previewFindClose) {
+      const tip = previewUiStrings.findCloseTooltip || "Close find bar (Esc)";
+      previewFindClose.title = tip;
+      previewFindClose.setAttribute("aria-label", tip);
+    }
   }
 
   function applyStaticUi() {
@@ -95,23 +164,786 @@
     if (projectsSectionLabel) {
       projectsSectionLabel.textContent = uiStrings.sectionProjects || projectsSectionLabel.textContent;
     }
-    if (sessionsSectionLabel) {
-      sessionsSectionLabel.textContent = uiStrings.sectionSessions || sessionsSectionLabel.textContent;
+    if (colLabelSessions) {
+      colLabelSessions.textContent = uiStrings.sectionSessions || "Sessions";
+    }
+    if (colLabelAcp) {
+      colLabelAcp.textContent = uiStrings.sectionAcp || "ACP";
+    }
+    if (colLabelNotes) {
+      colLabelNotes.textContent = uiStrings.sectionNotes || "Notes";
     }
     if (gtdSectionLabel) {
       gtdSectionLabel.textContent = uiStrings.sectionGtd || gtdSectionLabel.textContent;
+    }
+    if (projectDropdownSearch) {
+      projectDropdownSearch.placeholder =
+        uiStrings.projectFilterPlaceholder || "Filter projects by name or path...";
+    }
+    if (syncIndexBtn) {
+      const tip = uiStrings.syncIndexTooltip || "Refresh full-text search index";
+      syncIndexBtn.title = tip;
+      syncIndexBtn.setAttribute("aria-label", tip);
     }
     applyPreviewStaticUi();
   }
 
   searchInput.addEventListener("input", () => {
     query = searchInput.value;
+    updateSearchClearVisibility();
     clearTimeout(searchDebounceTimer);
     searchDebounceTimer = setTimeout(() => {
-      requestPage(0);
-    }, 150);
+      requestAllColumns();
+    }, 120);
   });
 
+  searchClearBtn.addEventListener("click", () => {
+    searchInput.value = "";
+    query = "";
+    updateSearchClearVisibility();
+    requestAllColumns();
+    searchInput.focus();
+  });
+
+  syncIndexBtn.addEventListener("click", () => {
+    vscode.postMessage({ type: "syncIndex" });
+  });
+
+  function updateSearchClearVisibility() {
+    searchClearBtn.classList.toggle("hidden", !searchInput.value);
+  }
+
+  // Project dropdown interactions
+  projectDropdownTrigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleProjectDropdown(!projectDropdownOpen);
+  });
+
+  projectClearBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    selectProject(null);
+  });
+
+  projectDropdownSearch.addEventListener("input", () => {
+    projectDropdownQuery = projectDropdownSearch.value;
+    projectDropdownHighlight = 0;
+    renderProjectDropdownList();
+  });
+
+  projectDropdownSearch.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (filteredDropdownProjects.length > 0) {
+        projectDropdownHighlight = (projectDropdownHighlight + 1) % filteredDropdownProjects.length;
+        renderProjectDropdownList();
+      }
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      if (filteredDropdownProjects.length > 0) {
+        projectDropdownHighlight =
+          (projectDropdownHighlight - 1 + filteredDropdownProjects.length) % filteredDropdownProjects.length;
+        renderProjectDropdownList();
+      }
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const chosen = filteredDropdownProjects[projectDropdownHighlight];
+      if (chosen) {
+        selectProject(chosen.projectPath);
+        toggleProjectDropdown(false);
+      }
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      toggleProjectDropdown(false);
+      projectDropdownTrigger.focus();
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (projectDropdownOpen && !projectDropdown.contains(event.target)) {
+      toggleProjectDropdown(false);
+    }
+  });
+
+  function toggleProjectDropdown(open) {
+    projectDropdownOpen = open;
+    projectDropdownMenu.classList.toggle("hidden", !open);
+    projectDropdownTrigger.setAttribute("aria-expanded", String(open));
+    if (open) {
+      projectDropdownQuery = "";
+      projectDropdownSearch.value = "";
+      projectDropdownHighlight = 0;
+      renderProjectDropdownList();
+      setTimeout(() => projectDropdownSearch.focus(), 0);
+    }
+  }
+
+  function selectProject(projectPath) {
+    selectedProjectPath = projectPath;
+    renderProjectControls();
+    requestAllColumns();
+  }
+
+  function fuzzySubsequenceMatch(needle, haystack) {
+    const n = needle.toLowerCase();
+    const h = haystack.toLowerCase();
+    if (!n) return 1;
+    if (h.includes(n)) return 100;
+    let ni = 0;
+    let score = 0;
+    let prev = -2;
+    for (let hi = 0; hi < h.length && ni < n.length; hi++) {
+      if (h[hi] === n[ni]) {
+        score += hi === prev + 1 ? 4 : 1;
+        prev = hi;
+        ni++;
+      }
+    }
+    return ni === n.length ? score : 0;
+  }
+
+  function renderProjectDropdownList() {
+    projectDropdownList.innerHTML = "";
+    const kw = projectDropdownQuery.trim();
+    const allEntry = {
+      projectPath: null,
+      name: uiStrings.chipAllProjects || "All Projects",
+      compactPath: uiStrings.chipAllProjectsTooltip || "Show all projects",
+      sessionCount: state.totalSessions,
+      favorited: false
+    };
+
+    let entries = [];
+    if (!kw) {
+      entries = [allEntry, ...state.projects];
+    } else {
+      const scored = [];
+      for (const p of state.projects) {
+        const nameScore = fuzzySubsequenceMatch(kw, p.name);
+        const pathScore = fuzzySubsequenceMatch(kw, p.compactPath || p.projectPath);
+        const best = Math.max(nameScore * 2, pathScore);
+        if (best > 0) {
+          scored.push({ project: p, score: best + (p.favorited ? 10 : 0) });
+        }
+      }
+      scored.sort((a, b) => b.score - a.score || b.project.sessionCount - a.project.sessionCount);
+      entries = scored.map((s) => s.project);
+    }
+
+    filteredDropdownProjects = entries;
+    if (projectDropdownHighlight >= entries.length) {
+      projectDropdownHighlight = Math.max(0, entries.length - 1);
+    }
+
+    if (!entries.length) {
+      const empty = document.createElement("div");
+      empty.className = "project-dropdown-empty";
+      empty.textContent = uiStrings.projectFilterEmpty || "No matching projects";
+      projectDropdownList.appendChild(empty);
+      return;
+    }
+
+    entries.forEach((entry, index) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "project-dropdown-item";
+      if (entry.projectPath === selectedProjectPath) {
+        btn.classList.add("selected");
+      }
+      if (index === projectDropdownHighlight) {
+        btn.classList.add("highlighted");
+      }
+
+      const main = document.createElement("div");
+      main.className = "project-dropdown-item-main";
+
+      const nameEl = document.createElement("div");
+      nameEl.className = "project-dropdown-item-name";
+      const prefix = entry.favorited ? "★ " : "";
+      appendHighlightedText(nameEl, prefix + entry.name, kw);
+
+      const pathEl = document.createElement("div");
+      pathEl.className = "project-dropdown-item-path";
+      appendHighlightedText(pathEl, entry.compactPath || "", kw);
+
+      main.appendChild(nameEl);
+      main.appendChild(pathEl);
+
+      const countEl = document.createElement("span");
+      countEl.className = "project-dropdown-item-count";
+      countEl.textContent = String(entry.sessionCount ?? 0);
+
+      btn.appendChild(main);
+      btn.appendChild(countEl);
+      btn.addEventListener("click", () => {
+        selectProject(entry.projectPath);
+        toggleProjectDropdown(false);
+      });
+      projectDropdownList.appendChild(btn);
+    });
+  }
+
+  function renderProjectControls() {
+    // Update dropdown trigger label
+    const activeProject = selectedProjectPath
+      ? state.projects.find((p) => p.projectPath === selectedProjectPath)
+      : null;
+
+    if (activeProject) {
+      projectDropdownLabel.textContent = (activeProject.favorited ? "★ " : "") + activeProject.name;
+      projectDropdownTrigger.classList.add("active");
+      projectClearBtn.classList.remove("hidden");
+    } else {
+      const allLabel = uiStrings.chipAllProjects || "All Projects";
+      projectDropdownLabel.textContent = `${allLabel} (${state.projects.length})`;
+      projectDropdownTrigger.classList.remove("active");
+      projectClearBtn.classList.add("hidden");
+    }
+
+    // Shortcut chips: All + favorited + recent active + currently selected (if outside top list)
+    chipsEl.innerHTML = "";
+    chipsEl.appendChild(
+      createProjectChip(
+        uiStrings.chipAllProjects || "All Projects",
+        state.totalSessions || state.sessions.total,
+        null,
+        !selectedProjectPath,
+        uiStrings.chipAllProjectsTooltip || "Show sessions from all projects"
+      )
+    );
+
+    const favs = state.projects.filter((p) => p.favorited);
+    const nonFavs = state.projects.filter((p) => !p.favorited);
+    const shortcuts = [...favs, ...nonFavs].slice(0, MAX_SHORTCUT_CHIPS);
+
+    if (activeProject && !shortcuts.some((p) => p.projectPath === activeProject.projectPath)) {
+      shortcuts.push(activeProject);
+    }
+
+    for (const project of shortcuts) {
+      const label = (project.favorited ? "★ " : "") + project.name;
+      chipsEl.appendChild(
+        createProjectChip(
+          label,
+          project.sessionCount,
+          project.projectPath,
+          selectedProjectPath === project.projectPath,
+          project.compactPath
+        )
+      );
+    }
+  }
+
+  function createProjectChip(label, count, projectPath, active, tooltip) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip" + (active ? " active" : "");
+    button.title = tooltip || label;
+    button.textContent = label;
+    const countSpan = document.createElement("span");
+    countSpan.className = "count";
+    countSpan.textContent = `(${count})`;
+    button.appendChild(countSpan);
+    button.addEventListener("click", () => {
+      selectProject(projectPath);
+    });
+    return button;
+  }
+
+  function renderGtdChips() {
+    if (!gtdChipsEl) return;
+    gtdChipsEl.innerHTML = "";
+
+    gtdChipsEl.appendChild(
+      createGtdChip(
+        uiStrings.chipAllGtd || "All GTD",
+        state.totalSessions,
+        null,
+        selectedGtdFilter === null,
+        uiStrings.chipAllGtdTooltip || "Show regardless of GTD status"
+      )
+    );
+    gtdChipsEl.appendChild(
+      createGtdChip(
+        uiStrings.chipUntagged || "Untagged",
+        state.untaggedCount,
+        "untagged",
+        selectedGtdFilter === "untagged",
+        uiStrings.chipUntaggedTooltip || "Show items without a GTD status"
+      )
+    );
+
+    for (const entry of state.gtdStatuses) {
+      gtdChipsEl.appendChild(
+        createGtdChip(
+          entry.label,
+          entry.count ?? 0,
+          entry.status,
+          selectedGtdFilter === entry.status,
+          entry.label
+        )
+      );
+    }
+  }
+
+  function createGtdChip(label, count, filterValue, active, tooltip) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip" + (active ? " active" : "");
+    button.title = tooltip || label;
+    button.textContent = label;
+    const countSpan = document.createElement("span");
+    countSpan.className = "count";
+    countSpan.textContent = `(${count})`;
+    button.appendChild(countSpan);
+    button.addEventListener("click", () => {
+      selectedGtdFilter = filterValue;
+      renderGtdChips();
+      requestAllColumns();
+    });
+    return button;
+  }
+
+  function renderIndexStatus() {
+    if (isSyncingIndex) {
+      indexStatusEl.textContent = uiStrings.indexSyncing || "Indexing…";
+      syncIndexBtn.classList.add("syncing");
+      return;
+    }
+    syncIndexBtn.classList.remove("syncing");
+    if (state.usingFallback) {
+      indexStatusEl.textContent = uiStrings.indexBuilding || "Building index…";
+      return;
+    }
+    const totalDocs =
+      (state.indexedCounts?.sessions || 0) +
+      (state.indexedCounts?.acp || 0) +
+      (state.indexedCounts?.notes || 0);
+    if (totalDocs > 0) {
+      const tpl = uiStrings.indexReadyCount || "{0} indexed · {1}ms";
+      indexStatusEl.textContent = tpl
+        .replace("{0}", String(totalDocs))
+        .replace("{1}", String(state.queryTimeMs || 0));
+    } else {
+      indexStatusEl.textContent = "";
+    }
+  }
+
+  function requestAllColumns() {
+    loadingColumns = { session: true, acp: true, note: true };
+    vscode.postMessage({
+      type: "queryPage",
+      column: "all",
+      sessionsOffset: 0,
+      acpOffset: 0,
+      notesOffset: 0,
+      limit: PAGE_SIZE,
+      search: query,
+      projectPath: selectedProjectPath,
+      gtdFilter: selectedGtdFilter
+    });
+  }
+
+  function requestMoreColumn(column) {
+    if (loadingColumns[column]) return;
+    loadingColumns[column] = true;
+    const currentLen =
+      column === "session"
+        ? state.sessions.items.length
+        : column === "acp"
+          ? state.acp.items.length
+          : state.notes.items.length;
+    vscode.postMessage({
+      type: "queryPage",
+      column,
+      offset: currentLen,
+      limit: PAGE_SIZE,
+      search: query,
+      projectPath: selectedProjectPath,
+      gtdFilter: selectedGtdFilter
+    });
+  }
+
+  function renderColumns() {
+    renderSingleColumn("session", state.sessions, colListSessions, colCountSessions);
+    renderSingleColumn("acp", state.acp, colListAcp, colCountAcp);
+    renderSingleColumn("note", state.notes, colListNotes, colCountNotes);
+  }
+
+  function renderSingleColumn(column, colData, listEl, countEl) {
+    countEl.textContent = String(colData.total || 0);
+    listEl.innerHTML = "";
+
+    const items = colData.items || [];
+    if (!items.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = selectedProjectPath
+        ? uiStrings.emptyNoMatchProject || "No matches in this project."
+        : uiStrings.emptyNoMatchSearch || "No matches found.";
+      listEl.appendChild(empty);
+      return;
+    }
+
+    for (const item of items) {
+      if (column === "session") {
+        listEl.appendChild(buildSessionCard(item));
+      } else if (column === "acp") {
+        listEl.appendChild(buildAcpCard(item));
+      } else {
+        listEl.appendChild(buildNoteCard(item));
+      }
+    }
+
+    if (colData.hasMore) {
+      const remaining = Math.max(0, colData.total - items.length);
+      const moreWrap = document.createElement("div");
+      moreWrap.className = "load-more-row";
+      const moreBtn = document.createElement("button");
+      moreBtn.type = "button";
+      moreBtn.className = "chip load-more-btn";
+      moreBtn.disabled = Boolean(loadingColumns[column]);
+      const baseLabel = uiStrings.showMore || "Show More";
+      moreBtn.textContent = remaining > 0 ? `${baseLabel} (${remaining})` : baseLabel;
+      moreBtn.addEventListener("click", () => requestMoreColumn(column));
+      moreWrap.appendChild(moreBtn);
+      listEl.appendChild(moreWrap);
+    }
+  }
+
+  function buildSessionCard(item) {
+    const card = document.createElement("div");
+    card.className = "result-card";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "result-card-btn";
+
+    const topRow = document.createElement("div");
+    topRow.className = "card-top-row";
+
+    const badge = document.createElement("span");
+    badge.className = "provider-badge";
+    appendProviderIcon(badge, item.provider);
+    const badgeText = document.createElement("span");
+    badgeText.className = "provider-badge-text";
+    badgeText.textContent = item.provider;
+    badge.appendChild(badgeText);
+
+    const timeEl = document.createElement("span");
+    timeEl.className = "card-time";
+    timeEl.textContent = item.updatedAtLabel || "";
+
+    topRow.appendChild(badge);
+    topRow.appendChild(timeEl);
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "card-title";
+    appendHighlightedText(titleEl, item.title || item.id, query);
+
+    btn.appendChild(topRow);
+    btn.appendChild(titleEl);
+
+    const snippetOrSummary = item.snippet || item.summary;
+    if (snippetOrSummary) {
+      const snipEl = document.createElement("div");
+      snipEl.className = "card-snippet" + (item.matchSource === "body" ? " card-snippet-body" : "");
+      appendHighlightedText(snipEl, snippetOrSummary, query);
+      btn.appendChild(snipEl);
+    }
+
+    btn.addEventListener("click", () => {
+      vscode.postMessage({ type: "resume", provider: item.provider, id: item.id });
+    });
+
+    const bottomRow = document.createElement("div");
+    bottomRow.className = "card-bottom-row";
+
+    const metaEl = document.createElement("div");
+    metaEl.className = "card-meta";
+    const metaParts = [];
+    if (!selectedProjectPath && item.projectName) metaParts.push(item.projectName);
+    if (item.gtdStatusLabel) metaParts.push(item.gtdStatusLabel);
+    if (item.branch) metaParts.push(item.branch);
+    appendHighlightedText(metaEl, metaParts.join(" · "), query);
+
+    const actions = document.createElement("div");
+    actions.className = "card-actions";
+
+    const previewBtn = makeActionButton(
+      previewLoadingKey === sessionKey(item.provider, item.id) ? "..." : uiStrings.actionPreview || "Preview",
+      uiStrings.actionPreviewTooltip || "Preview Chat",
+      false,
+      () => {
+        vscode.postMessage({ type: "preview", provider: item.provider, id: item.id });
+      }
+    );
+    previewBtn.disabled = previewLoadingKey === sessionKey(item.provider, item.id);
+
+    const renameBtn = makeActionButton(
+      uiStrings.actionRename || "Rename",
+      uiStrings.actionRenameTooltip || "Rename Session",
+      false,
+      () => {
+        vscode.postMessage({ type: "rename", provider: item.provider, id: item.id });
+      }
+    );
+
+    const removeBtn = makeActionButton(
+      uiStrings.actionRemove || "Remove",
+      uiStrings.actionRemoveTooltip || "Remove from panel",
+      true,
+      () => {
+        vscode.postMessage({ type: "remove", provider: item.provider, id: item.id });
+      }
+    );
+    removeBtn.setAttribute("aria-label", uiStrings.actionRemoveAria || "Remove from panel");
+
+    actions.appendChild(previewBtn);
+    actions.appendChild(renameBtn);
+    actions.appendChild(removeBtn);
+
+    bottomRow.appendChild(metaEl);
+    bottomRow.appendChild(actions);
+
+    card.appendChild(btn);
+    card.appendChild(bottomRow);
+    return card;
+  }
+
+  function buildAcpCard(item) {
+    const card = document.createElement("div");
+    card.className = "result-card";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "result-card-btn";
+
+    const topRow = document.createElement("div");
+    topRow.className = "card-top-row";
+
+    const badge = document.createElement("span");
+    badge.className = "provider-badge";
+    appendProviderIcon(badge, item.acpProvider || "chat");
+    const badgeText = document.createElement("span");
+    badgeText.className = "provider-badge-text";
+    badgeText.textContent = item.acpProvider ? `acp/${item.acpProvider}` : "acp";
+    badge.appendChild(badgeText);
+
+    const timeEl = document.createElement("span");
+    timeEl.className = "card-time";
+    timeEl.textContent = item.updatedAtLabel || "";
+
+    topRow.appendChild(badge);
+    topRow.appendChild(timeEl);
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "card-title";
+    appendHighlightedText(titleEl, item.title || item.id, query);
+
+    btn.appendChild(topRow);
+    btn.appendChild(titleEl);
+
+    const snippetOrSummary = item.snippet || item.summary;
+    if (snippetOrSummary) {
+      const snipEl = document.createElement("div");
+      snipEl.className = "card-snippet" + (item.matchSource === "body" ? " card-snippet-body" : "");
+      appendHighlightedText(snipEl, snippetOrSummary, query);
+      btn.appendChild(snipEl);
+    }
+
+    btn.addEventListener("click", () => {
+      vscode.postMessage({ type: "openAcp", id: item.id });
+    });
+
+    const bottomRow = document.createElement("div");
+    bottomRow.className = "card-bottom-row";
+
+    const metaEl = document.createElement("div");
+    metaEl.className = "card-meta";
+    const metaParts = [];
+    if (!selectedProjectPath && item.projectName) metaParts.push(item.projectName);
+    if (item.gtdStatusLabel) metaParts.push(item.gtdStatusLabel);
+    appendHighlightedText(metaEl, metaParts.join(" · "), query);
+
+    const actions = document.createElement("div");
+    actions.className = "card-actions";
+    const previewBtn = makeActionButton(
+      previewLoadingKey === sessionKey("chat", item.id) ? "..." : uiStrings.actionPreview || "Preview",
+      uiStrings.actionPreviewTooltip || "Preview Chat",
+      false,
+      () => {
+        vscode.postMessage({ type: "preview", provider: "chat", id: item.id });
+      }
+    );
+    previewBtn.disabled = previewLoadingKey === sessionKey("chat", item.id);
+    actions.appendChild(previewBtn);
+
+    bottomRow.appendChild(metaEl);
+    bottomRow.appendChild(actions);
+
+    card.appendChild(btn);
+    card.appendChild(bottomRow);
+    return card;
+  }
+
+  function buildNoteCard(item) {
+    const card = document.createElement("div");
+    card.className = "result-card";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "result-card-btn";
+
+    const topRow = document.createElement("div");
+    topRow.className = "card-top-row";
+
+    const badge = document.createElement("span");
+    badge.className = "provider-badge note-scope-badge";
+    const badgeText = document.createElement("span");
+    badgeText.className = "provider-badge-text";
+    badgeText.textContent = noteScopeLabel(item.scope);
+    badge.appendChild(badgeText);
+
+    const timeEl = document.createElement("span");
+    timeEl.className = "card-time";
+    timeEl.textContent = item.updatedAtLabel || "";
+
+    topRow.appendChild(badge);
+    topRow.appendChild(timeEl);
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "card-title";
+    appendHighlightedText(titleEl, item.title || item.filename || item.id, query);
+
+    btn.appendChild(topRow);
+    btn.appendChild(titleEl);
+
+    const snippetOrSummary = item.snippet || item.summary;
+    if (snippetOrSummary) {
+      const snipEl = document.createElement("div");
+      snipEl.className = "card-snippet" + (item.matchSource === "body" ? " card-snippet-body" : "");
+      appendHighlightedText(snipEl, snippetOrSummary, query);
+      btn.appendChild(snipEl);
+    }
+
+    const bottomRow = document.createElement("div");
+    bottomRow.className = "card-bottom-row";
+
+    const metaEl = document.createElement("div");
+    metaEl.className = "card-meta";
+    const metaParts = [];
+    if (!selectedProjectPath && item.projectName) metaParts.push(item.projectName);
+    if (item.filename && item.filename !== item.title) metaParts.push(item.filename);
+    if (item.gtdStatusLabel) metaParts.push(item.gtdStatusLabel);
+    appendHighlightedText(metaEl, metaParts.join(" · "), query);
+
+    bottomRow.appendChild(metaEl);
+    btn.appendChild(bottomRow);
+
+    btn.addEventListener("click", () => {
+      vscode.postMessage({ type: "openNote", id: item.id, relMdPath: item.relMdPath });
+    });
+
+    card.appendChild(btn);
+    return card;
+  }
+
+  function noteScopeLabel(scope) {
+    if (scope === "project") return uiStrings.noteScopeProject || "Project";
+    if (scope === "session") return uiStrings.noteScopeSession || "Session";
+    return uiStrings.noteScopeLibrary || "Library";
+  }
+
+  function makeActionButton(label, tooltip, isWarn, onClick) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "session-action" + (isWarn ? " session-action-warn" : "");
+    btn.title = tooltip;
+    btn.setAttribute("aria-label", tooltip);
+    btn.textContent = label;
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onClick();
+    });
+    return btn;
+  }
+
+  function appendHighlightedText(container, text, rawQuery) {
+    const value = typeof text === "string" ? text : "";
+    const trimmed = (rawQuery || "").trim();
+    if (!trimmed || !value) {
+      container.textContent = value;
+      return;
+    }
+
+    const terms = trimmed
+      .split(/\s+/)
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length);
+    if (!terms.length) {
+      container.textContent = value;
+      return;
+    }
+
+    const escaped = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const regex = new RegExp(`(${escaped.join("|")})`, "gi");
+    let lastIndex = 0;
+    let match;
+    let count = 0;
+    while ((match = regex.exec(value)) !== null && count < 20) {
+      if (match.index > lastIndex) {
+        container.appendChild(document.createTextNode(value.slice(lastIndex, match.index)));
+      }
+      const mark = document.createElement("mark");
+      mark.className = "match-hl";
+      mark.textContent = match[0];
+      container.appendChild(mark);
+      lastIndex = regex.lastIndex;
+      count++;
+      if (match.index === regex.lastIndex) regex.lastIndex++;
+    }
+    if (lastIndex < value.length) {
+      container.appendChild(document.createTextNode(value.slice(lastIndex)));
+    }
+  }
+
+  function appendProviderIcon(container, provider) {
+    const entry = providerIcons[provider];
+    if (!entry) return;
+    if (typeof entry === "string") {
+      const img = document.createElement("img");
+      img.className = "provider-icon";
+      img.src = entry;
+      img.alt = "";
+      img.setAttribute("aria-hidden", "true");
+      container.appendChild(img);
+      return;
+    }
+    if (entry.light) {
+      const imgLight = document.createElement("img");
+      imgLight.className = "provider-icon provider-icon-light";
+      imgLight.src = entry.light;
+      imgLight.alt = "";
+      imgLight.setAttribute("aria-hidden", "true");
+      container.appendChild(imgLight);
+    }
+    if (entry.dark) {
+      const imgDark = document.createElement("img");
+      imgDark.className = "provider-icon provider-icon-dark";
+      imgDark.src = entry.dark;
+      imgDark.alt = "";
+      imgDark.setAttribute("aria-hidden", "true");
+      container.appendChild(imgDark);
+    }
+  }
+
+  // Preview Modal logic
   function normalizeMode(mode) {
     return markdownHelper ? markdownHelper.normalizeMode(mode) : mode === "raw" ? "raw" : "markdown";
   }
@@ -143,39 +975,25 @@
       updateRenderModeButtons();
       return;
     }
-
-    const maxScroll = Math.max(0, previewBody.scrollHeight - previewBody.clientHeight);
-    const scrollRatio = maxScroll > 0 ? previewBody.scrollTop / maxScroll : 0;
-
     previewRenderMode = normalized;
     updateRenderModeButtons();
     renderPreviewMessages();
     if (previewSummaryState.visible) {
       renderSummary(previewSummaryState.text, previewSummaryState.isError);
     }
-
-    const nextMaxScroll = Math.max(0, previewBody.scrollHeight - previewBody.clientHeight);
-    if (nextMaxScroll > 0 && scrollRatio > 0) {
-      previewBody.scrollTop = Math.round(scrollRatio * nextMaxScroll);
+    if (previewFind?.isOpen()) {
+      previewFind.refresh(false);
     }
-
     if (persist) {
       vscode.postMessage({ type: "setPreviewRenderMode", mode: previewRenderMode });
     }
   }
 
-  previewModeMarkdown?.addEventListener("click", () => {
-    setPreviewRenderMode("markdown", true);
-  });
-
-  previewModeRaw?.addEventListener("click", () => {
-    setPreviewRenderMode("raw", true);
-  });
+  previewModeMarkdown?.addEventListener("click", () => setPreviewRenderMode("markdown", true));
+  previewModeRaw?.addEventListener("click", () => setPreviewRenderMode("raw", true));
 
   previewResume.addEventListener("click", () => {
-    if (!activePreviewSession) {
-      return;
-    }
+    if (!activePreviewSession) return;
     vscode.postMessage({
       type: "previewResume",
       provider: activePreviewSession.provider,
@@ -184,9 +1002,7 @@
   });
 
   previewResumeWith.addEventListener("click", () => {
-    if (!activePreviewSession) {
-      return;
-    }
+    if (!activePreviewSession) return;
     vscode.postMessage({
       type: "previewResumeWith",
       provider: activePreviewSession.provider,
@@ -195,30 +1011,19 @@
   });
 
   previewSummarize.addEventListener("click", () => {
-    if (!activePreviewSession) {
-      return;
-    }
-    postLlmAction("summarize");
+    if (activePreviewSession) postLlmAction("summarize");
   });
 
   previewAutoRename.addEventListener("click", () => {
-    if (!activePreviewSession) {
-      return;
-    }
-    postLlmAction("autoRename");
+    if (activePreviewSession) postLlmAction("autoRename");
   });
 
   previewHandoff.addEventListener("click", () => {
-    if (!activePreviewSession) {
-      return;
-    }
-    postLlmAction("continueWithAgent");
+    if (activePreviewSession) postLlmAction("continueWithAgent");
   });
 
   previewRename.addEventListener("click", () => {
-    if (!activePreviewSession) {
-      return;
-    }
+    if (!activePreviewSession) return;
     previewRename.disabled = true;
     vscode.postMessage({
       type: "rename",
@@ -229,434 +1034,16 @@
 
   previewClose.addEventListener("click", closePreview);
   previewOverlay.addEventListener("click", (event) => {
-    if (event.target === previewOverlay) {
-      closePreview();
-    }
+    if (event.target === previewOverlay) closePreview();
   });
-
-  window.addEventListener("message", (event) => {
-    const message = event.data;
-    if (message.type === "init") {
-      uiStrings = message.uiStrings || {};
-      previewUiStrings = message.previewUiStrings || {};
-      providerIcons = message.providerIcons || {};
-      applyStaticUi();
-      const incomingSessions = message.sessions || [];
-      const totalSessions = typeof message.totalSessions === "number" ? message.totalSessions : incomingSessions.length;
-      const untaggedCount =
-        typeof message.untaggedCount === "number"
-          ? message.untaggedCount
-          : incomingSessions.filter((session) => !session.gtdStatus).length;
-      state = {
-        projects: message.projects || [],
-        sessions: incomingSessions,
-        gtdStatuses: message.gtdStatuses || [],
-        totalSessions,
-        untaggedCount,
-        filteredTotal: typeof message.filteredTotal === "number" ? message.filteredTotal : incomingSessions.length,
-        hasMore: Boolean(message.hasMore)
-      };
-      loadingPage = false;
-      selectedProjectPath = null;
-      selectedGtdFilter = null;
-      query = searchInput.value;
-      renderChips();
-      renderGtdChips();
-      renderSessions();
-      syncPreviewTitle();
-      previewRename.disabled = false;
-      if (
-        activePreviewSession &&
-        !state.sessions.some(
-          (entry) =>
-            entry.provider === activePreviewSession.provider && entry.id === activePreviewSession.id
-        )
-      ) {
-        closePreview();
-      }
-      if (query.trim()) {
-        requestPage(0);
-      }
-      return;
-    }
-
-    if (message.type === "pageResult") {
-      loadingPage = false;
-      const nextSessions = message.sessions || [];
-      state.sessions = message.append ? state.sessions.concat(nextSessions) : nextSessions;
-      state.filteredTotal = typeof message.total === "number" ? message.total : state.sessions.length;
-      state.hasMore = Boolean(message.hasMore);
-      renderSessions();
-      syncPreviewTitle();
-      return;
-    }
-
-    if (message.type === "previewLoading") {
-      previewLoadingKey = sessionKey(message.provider, message.id);
-      renderSessions();
-      return;
-    }
-
-    if (message.type === "previewResult") {
-      previewLoadingKey = null;
-      renderSessions();
-      if (message.error) {
-        return;
-      }
-      showPreview(message);
-      return;
-    }
-
-    if (message.type === "renameDone") {
-      previewRename.disabled = false;
-      return;
-    }
-
-    if (message.type === "titleUpdated") {
-      const nextTitle = typeof message.title === "string" ? message.title.trim() : "";
-      const targetProvider = message.provider || activePreviewSession?.provider;
-      const targetId = message.id || activePreviewSession?.id;
-      if (targetProvider && targetId && nextTitle) {
-        updateSessionTitle(targetProvider, targetId, nextTitle);
-      }
-      if (
-        !activePreviewSession ||
-        !targetProvider ||
-        !targetId ||
-        (activePreviewSession.provider === targetProvider && activePreviewSession.id === targetId)
-      ) {
-        previewTitle.textContent = nextTitle || previewUiStrings.defaultTitle || "Session Preview";
-      }
-      previewRename.disabled = false;
-      setAiButtonsDisabled(false);
-      return;
-    }
-
-    if (message.type === "summaryLoading") {
-      renderSummary(previewUiStrings.summarizing || "Summarizing session...");
-      return;
-    }
-
-    if (message.type === "summaryResult") {
-      const summary = message.summary || "";
-      renderSummary(summary);
-      setAiButtonsDisabled(false);
-      if (activePreviewSession && summary) {
-        updateSessionSummary(activePreviewSession.provider, activePreviewSession.id, summary);
-      }
-      return;
-    }
-
-    if (message.type === "summaryError") {
-      renderSummary(message.error || previewUiStrings.summarizeFailed || "Summarize failed.", true);
-      setAiButtonsDisabled(false);
-      return;
-    }
-
-    if (message.type === "autoRenameDone" || message.type === "handoffDone" || message.type === "handoffError") {
-      setAiButtonsDisabled(false);
-    }
-  });
-
-  function requestPage(offset) {
-    loadingPage = true;
-    vscode.postMessage({
-      type: "queryPage",
-      offset,
-      limit: PAGE_SIZE,
-      search: query,
-      projectPath: selectedProjectPath,
-      gtdFilter: selectedGtdFilter
-    });
-  }
-
-  function renderChips() {
-    chipsEl.innerHTML = "";
-
-    const allChip = createChip(
-      uiStrings.chipAllProjects || "All Projects",
-      state.totalSessions || state.sessions.length,
-      null,
-      !selectedProjectPath,
-      uiStrings.chipAllProjectsTooltip || "Show sessions from all projects"
-    );
-    chipsEl.appendChild(allChip);
-
-    for (const project of state.projects) {
-      const label = (project.favorited ? "★ " : "") + project.name;
-      const chip = createChip(
-        label,
-        project.sessionCount,
-        project.projectPath,
-        selectedProjectPath === project.projectPath,
-        project.compactPath
-      );
-      chipsEl.appendChild(chip);
-    }
-  }
-
-  function createChip(label, count, projectPath, active, tooltip) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "chip" + (active ? " active" : "");
-    button.title = tooltip || label;
-    button.innerHTML = `${escapeHtml(label)}<span class="count">(${count})</span>`;
-    button.addEventListener("click", () => {
-      selectedProjectPath = projectPath;
-      renderChips();
-      requestPage(0);
-    });
-    return button;
-  }
-
-  function renderGtdChips() {
-    if (!gtdChipsEl) {
-      return;
-    }
-
-    gtdChipsEl.innerHTML = "";
-
-    gtdChipsEl.appendChild(
-      createGtdChip(
-        uiStrings.chipAllGtd || "All GTD",
-        state.totalSessions || state.sessions.length,
-        null,
-        selectedGtdFilter === null,
-        uiStrings.chipAllGtdTooltip || "Show sessions regardless of GTD status"
-      )
-    );
-    gtdChipsEl.appendChild(
-      createGtdChip(
-        uiStrings.chipUntagged || "Untagged",
-        state.untaggedCount,
-        "untagged",
-        selectedGtdFilter === "untagged",
-        uiStrings.chipUntaggedTooltip || "Show sessions without a GTD status"
-      )
-    );
-
-    for (const entry of state.gtdStatuses) {
-      const count =
-        typeof entry.count === "number"
-          ? entry.count
-          : state.sessions.filter((session) => session.gtdStatus === entry.status).length;
-      gtdChipsEl.appendChild(
-        createGtdChip(entry.label, count, entry.status, selectedGtdFilter === entry.status, entry.label)
-      );
-    }
-  }
-
-  function createGtdChip(label, count, filterValue, active, tooltip) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "chip" + (active ? " active" : "");
-    button.title = tooltip || label;
-    button.innerHTML = `${escapeHtml(label)}<span class="count">(${count})</span>`;
-    button.addEventListener("click", () => {
-      selectedGtdFilter = filterValue;
-      renderGtdChips();
-      requestPage(0);
-    });
-    return button;
-  }
-
-  function appendProviderIcon(container, provider) {
-    const entry = providerIcons[provider];
-    if (!entry) {
-      return;
-    }
-    if (typeof entry === "string") {
-      const img = document.createElement("img");
-      img.className = "provider-icon";
-      img.src = entry;
-      img.alt = "";
-      img.setAttribute("aria-hidden", "true");
-      container.appendChild(img);
-      return;
-    }
-    if (entry.light) {
-      const imgLight = document.createElement("img");
-      imgLight.className = "provider-icon provider-icon-light";
-      imgLight.src = entry.light;
-      imgLight.alt = "";
-      imgLight.setAttribute("aria-hidden", "true");
-      container.appendChild(imgLight);
-    }
-    if (entry.dark) {
-      const imgDark = document.createElement("img");
-      imgDark.className = "provider-icon provider-icon-dark";
-      imgDark.src = entry.dark;
-      imgDark.alt = "";
-      imgDark.setAttribute("aria-hidden", "true");
-      container.appendChild(imgDark);
-    }
-  }
-
-  function renderSessions() {
-    const filtered = state.sessions;
-    sessionsEl.innerHTML = "";
-
-    if (!filtered.length) {
-      const empty = document.createElement("div");
-      empty.className = "empty-state";
-      empty.textContent = selectedProjectPath
-        ? uiStrings.emptyNoMatchProject || "No sessions match in this project."
-        : uiStrings.emptyNoMatchSearch || "No sessions match your search.";
-      sessionsEl.appendChild(empty);
-      return;
-    }
-
-    for (const session of filtered) {
-      const row = document.createElement("div");
-      row.className = "session-row";
-
-      const body = document.createElement("button");
-      body.type = "button";
-      body.className = "session-body";
-
-      const badge = document.createElement("span");
-      badge.className = "provider-badge";
-      appendProviderIcon(badge, session.provider);
-      const badgeText = document.createElement("span");
-      badgeText.className = "provider-badge-text";
-      badgeText.textContent = session.provider;
-      badge.appendChild(badgeText);
-
-      const main = document.createElement("div");
-      main.className = "session-main";
-
-      const title = document.createElement("div");
-      title.className = "session-title";
-      title.textContent = session.title;
-      main.appendChild(title);
-
-      if (session.summary) {
-        const summary = document.createElement("div");
-        summary.className = "session-summary";
-        summary.textContent = session.summary;
-        summary.title = session.summary;
-        main.appendChild(summary);
-      }
-
-      const meta = document.createElement("div");
-      meta.className = "session-meta";
-      const metaParts = [];
-      if (!selectedProjectPath) {
-        metaParts.push(session.projectName);
-      }
-      if (session.gtdStatusLabel) {
-        metaParts.push(session.gtdStatusLabel);
-      }
-      if (session.branch) {
-        metaParts.push(session.branch);
-      }
-      meta.textContent = metaParts.join(" · ");
-
-      if (metaParts.length) {
-        main.appendChild(meta);
-      }
-
-      const time = document.createElement("span");
-      time.className = "session-time";
-      time.textContent = session.updatedAtLabel;
-
-      body.appendChild(badge);
-      body.appendChild(main);
-      body.appendChild(time);
-
-      body.addEventListener("click", () => {
-        vscode.postMessage({
-          type: "resume",
-          provider: session.provider,
-          id: session.id
-        });
-      });
-
-      const actions = document.createElement("div");
-      actions.className = "session-actions";
-
-      const previewBtn = document.createElement("button");
-      previewBtn.type = "button";
-      previewBtn.className = "session-action";
-      previewBtn.title = uiStrings.actionPreviewTooltip || "Preview Chat";
-      previewBtn.setAttribute("aria-label", uiStrings.actionPreviewTooltip || "Preview Chat");
-      const isLoading = previewLoadingKey === sessionKey(session.provider, session.id);
-      previewBtn.textContent = isLoading ? "..." : uiStrings.actionPreview || "Preview";
-      previewBtn.disabled = isLoading;
-      previewBtn.addEventListener("click", (event) => {
-        event.stopPropagation();
-        vscode.postMessage({
-          type: "preview",
-          provider: session.provider,
-          id: session.id
-        });
-      });
-
-      const renameBtn = document.createElement("button");
-      renameBtn.type = "button";
-      renameBtn.className = "session-action";
-      renameBtn.title = uiStrings.actionRenameTooltip || "Rename Session";
-      renameBtn.setAttribute("aria-label", uiStrings.actionRenameTooltip || "Rename Session");
-      renameBtn.textContent = uiStrings.actionRename || "Rename";
-      renameBtn.addEventListener("click", (event) => {
-        event.stopPropagation();
-        vscode.postMessage({
-          type: "rename",
-          provider: session.provider,
-          id: session.id
-        });
-      });
-
-      const removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "session-action session-action-warn";
-      removeBtn.title = uiStrings.actionRemoveTooltip || "Remove from panel only (native agent unchanged)";
-      removeBtn.setAttribute("aria-label", uiStrings.actionRemoveAria || "Remove from panel");
-      removeBtn.textContent = uiStrings.actionRemove || "Remove";
-      removeBtn.disabled = session.provider === "chat";
-      removeBtn.addEventListener("click", (event) => {
-        event.stopPropagation();
-        vscode.postMessage({
-          type: "remove",
-          provider: session.provider,
-          id: session.id
-        });
-      });
-
-      actions.appendChild(previewBtn);
-      actions.appendChild(renameBtn);
-      actions.appendChild(removeBtn);
-      row.appendChild(body);
-      row.appendChild(actions);
-      sessionsEl.appendChild(row);
-    }
-
-    if (state.hasMore) {
-      const remaining = Math.max(0, state.filteredTotal - filtered.length);
-      const moreWrap = document.createElement("div");
-      moreWrap.className = "load-more-row";
-      const moreBtn = document.createElement("button");
-      moreBtn.type = "button";
-      moreBtn.className = "chip load-more-btn";
-      moreBtn.disabled = loadingPage;
-      const baseLabel = uiStrings.showMore || "Show More";
-      moreBtn.textContent = remaining > 0 ? `${baseLabel} (${remaining})` : baseLabel;
-      moreBtn.addEventListener("click", () => {
-        if (!loadingPage) {
-          requestPage(state.sessions.length);
-        }
-      });
-      moreWrap.appendChild(moreBtn);
-      sessionsEl.appendChild(moreWrap);
-    }
-  }
 
   function showPreview(message) {
     activePreviewSession = { provider: message.provider, id: message.id };
     previewRenderMode = normalizeMode(message.renderMode);
     updateRenderModeButtons();
     previewRename.disabled = false;
-    applyResumeActions(message.showResumeWith !== false);
+    previewRename.classList.toggle("hidden", message.provider === "chat");
+    previewResumeWith.classList.toggle("hidden", message.showResumeWith === false);
     applyLlmActions(message.llmConfigured === true, message.showHandoff === true);
     renderNotices(message);
     previewTitle.textContent = message.title || previewUiStrings.defaultTitle || "Session Preview";
@@ -672,7 +1059,6 @@
     }
 
     renderPreviewMessages();
-
     previewOverlay.classList.remove("hidden");
     previewOverlay.setAttribute("aria-hidden", "false");
     previewBody.scrollTop = 0;
@@ -699,20 +1085,21 @@
       block.appendChild(text);
       previewMessages.appendChild(block);
     }
+    if (previewFind?.isOpen()) {
+      previewFind.refresh(false);
+    }
   }
 
   function closePreview() {
+    previewFind?.close();
     activePreviewSession = null;
     previewMessagesData = [];
     previewSummaryState = { text: "", isError: false, visible: false };
     previewRename.disabled = false;
     setAiButtonsDisabled(false);
-    applyResumeActions(true);
-    applyLlmActions(true, false);
     previewNotice.innerHTML = "";
     previewNotice.classList.add("hidden");
     previewSummary.classList.add("hidden");
-    previewSummary.classList.remove("markdown-body");
     previewOverlay.classList.add("hidden");
     previewOverlay.setAttribute("aria-hidden", "true");
     vscode.postMessage({ type: "previewClosed" });
@@ -728,16 +1115,14 @@
     }
     previewSummary.classList.remove("hidden");
     previewSummary.classList.toggle("preview-summary-error", previewSummaryState.isError);
-  }
-
-  function applyResumeActions(showResumeWith) {
-    previewResumeWith.classList.toggle("hidden", !showResumeWith);
+    if (previewFind?.isOpen()) {
+      previewFind.refresh(false);
+    }
   }
 
   function renderNotices(message) {
     previewNotice.innerHTML = "";
     const parts = [];
-
     if (message.truncated) {
       parts.push({
         kind: "text",
@@ -750,12 +1135,10 @@
     if (message.llmConfigured !== true) {
       parts.push({ kind: "llm" });
     }
-
     if (!parts.length) {
       previewNotice.classList.add("hidden");
       return;
     }
-
     previewNotice.classList.remove("hidden");
     for (const part of parts) {
       if (part.kind === "text") {
@@ -765,7 +1148,6 @@
         previewNotice.appendChild(line);
         continue;
       }
-
       const row = document.createElement("div");
       row.className = "preview-notice-line preview-notice-llm";
       const text = document.createElement("span");
@@ -775,9 +1157,7 @@
       button.type = "button";
       button.className = "preview-notice-action";
       button.textContent = previewUiStrings.noticeOpenLlmSettings || "Open LLM Settings";
-      button.addEventListener("click", () => {
-        vscode.postMessage({ type: "openLlmSettings" });
-      });
+      button.addEventListener("click", () => vscode.postMessage({ type: "openLlmSettings" }));
       row.appendChild(button);
       previewNotice.appendChild(row);
     }
@@ -785,45 +1165,29 @@
 
   function applyLlmActions(llmConfigured, showHandoff) {
     const needsConfig = llmConfigured !== true;
-
-    previewSummarize.classList.remove("hidden");
-    previewAutoRename.classList.remove("hidden");
+    const isAcp = activePreviewSession?.provider === "chat";
+    previewSummarize.classList.toggle("hidden", isAcp);
+    previewAutoRename.classList.toggle("hidden", isAcp);
     previewSummarize.classList.toggle("preview-action-muted", needsConfig);
     previewAutoRename.classList.toggle("preview-action-muted", needsConfig);
     const llmHint = previewUiStrings.tooltipLlmRequired || "Configure LLM Assist in Agent Resume Settings";
     previewSummarize.title = needsConfig ? llmHint : "";
     previewAutoRename.title = needsConfig ? llmHint : "";
-
     previewHandoff.classList.toggle("hidden", showHandoff !== true);
     if (showHandoff === true) {
       previewHandoff.classList.toggle("preview-action-muted", needsConfig);
       previewHandoff.title = needsConfig ? llmHint : "";
-    } else {
-      previewHandoff.classList.remove("preview-action-muted");
-      previewHandoff.title = "";
     }
-  }
-
-  function isLlmActionMuted() {
-    return previewSummarize.classList.contains("preview-action-muted");
   }
 
   function postLlmAction(type) {
-    if (!activePreviewSession) {
-      return;
-    }
-
-    if (isLlmActionMuted()) {
+    if (!activePreviewSession) return;
+    if (previewSummarize.classList.contains("preview-action-muted")) {
       vscode.postMessage({ type: "openLlmSettings" });
       return;
     }
-
     setAiButtonsDisabled(true);
-    vscode.postMessage({
-      type,
-      provider: activePreviewSession.provider,
-      id: activePreviewSession.id
-    });
+    vscode.postMessage({ type, provider: activePreviewSession.provider, id: activePreviewSession.id });
   }
 
   function setAiButtonsDisabled(disabled) {
@@ -832,98 +1196,194 @@
     previewHandoff.disabled = disabled;
   }
 
-  function syncPreviewTitle() {
-    if (!activePreviewSession || previewOverlay.classList.contains("hidden")) {
-      return;
-    }
-
-    const session = state.sessions.find(
-      (entry) =>
-        entry.provider === activePreviewSession.provider && entry.id === activePreviewSession.id
-    );
-    if (session) {
-      previewTitle.textContent = session.title || previewUiStrings.defaultTitle || "Session Preview";
-    }
-  }
-
   function sessionKey(provider, id) {
     return `${provider}:${id}`;
   }
 
-  function updateSessionTitle(provider, id, title) {
-    const trimmed = title.trim();
-    if (!trimmed) {
+  window.addEventListener("message", (event) => {
+    const message = event.data;
+
+    if (message.type === "init") {
+      uiStrings = message.uiStrings || {};
+      previewUiStrings = message.previewUiStrings || {};
+      providerIcons = message.providerIcons || {};
+      applyStaticUi();
+      state = {
+        projects: message.projects || [],
+        sessions: message.sessions || { items: [], total: 0, hasMore: false },
+        acp: message.acp || { items: [], total: 0, hasMore: false },
+        notes: message.notes || { items: [], total: 0, hasMore: false },
+        gtdStatuses: message.gtdStatuses || [],
+        totalSessions: typeof message.totalSessions === "number" ? message.totalSessions : 0,
+        untaggedCount: typeof message.untaggedCount === "number" ? message.untaggedCount : 0,
+        indexedCounts: message.indexedCounts || { sessions: 0, acp: 0, notes: 0 },
+        queryTimeMs: message.queryTimeMs || 0,
+        usingFallback: Boolean(message.usingFallback)
+      };
+      loadingColumns = { session: false, acp: false, note: false };
+      selectedProjectPath = null;
+      selectedGtdFilter = null;
+      query = searchInput.value;
+      updateSearchClearVisibility();
+      renderProjectControls();
+      renderGtdChips();
+      renderIndexStatus();
+      renderColumns();
+      previewRename.disabled = false;
+      if (query.trim()) {
+        requestAllColumns();
+      }
       return;
     }
 
-    const index = state.sessions.findIndex(
-      (session) => session.provider === provider && session.id === id
-    );
-    if (index < 0) {
+    if (message.type === "pageResult") {
+      const col = message.column;
+      if (col === "session" || col === "acp" || col === "note") {
+        loadingColumns[col] = false;
+        const incoming =
+          col === "session" ? message.sessions : col === "acp" ? message.acp : message.notes;
+        const prevItems =
+          col === "session"
+            ? state.sessions.items
+            : col === "acp"
+              ? state.acp.items
+              : state.notes.items;
+        const merged = {
+          items: message.append ? prevItems.concat(incoming.items || []) : incoming.items || [],
+          total: incoming.total ?? 0,
+          hasMore: Boolean(incoming.hasMore)
+        };
+        if (col === "session") state.sessions = merged;
+        else if (col === "acp") state.acp = merged;
+        else state.notes = merged;
+      } else {
+        loadingColumns = { session: false, acp: false, note: false };
+        state.sessions = message.sessions || { items: [], total: 0, hasMore: false };
+        state.acp = message.acp || { items: [], total: 0, hasMore: false };
+        state.notes = message.notes || { items: [], total: 0, hasMore: false };
+      }
+      if (message.indexedCounts) state.indexedCounts = message.indexedCounts;
+      if (typeof message.queryTimeMs === "number") state.queryTimeMs = message.queryTimeMs;
+      state.usingFallback = Boolean(message.usingFallback);
+      renderIndexStatus();
+      renderColumns();
       return;
     }
 
-    state.sessions[index] = { ...state.sessions[index], title: trimmed };
-    renderSessions();
-  }
-
-  function updateSessionSummary(provider, id, summary) {
-    const trimmed = summary.trim();
-    if (!trimmed) {
+    if (message.type === "indexSyncing") {
+      isSyncingIndex = true;
+      renderIndexStatus();
       return;
     }
 
-    const index = state.sessions.findIndex(
-      (session) => session.provider === provider && session.id === id
-    );
-    if (index < 0) {
+    if (message.type === "indexSynced") {
+      isSyncingIndex = false;
+      if (message.stats) {
+        state.indexedCounts = {
+          sessions: message.stats.indexedSessions ?? state.indexedCounts.sessions,
+          acp: message.stats.indexedAcp ?? state.indexedCounts.acp,
+          notes: message.stats.indexedNotes ?? state.indexedCounts.notes
+        };
+      }
+      renderIndexStatus();
+      if (message.shouldRefresh) {
+        requestAllColumns();
+      }
       return;
     }
 
-    state.sessions[index] = { ...state.sessions[index], summary: trimmed };
-    renderSessions();
-  }
-
-  function matchesSession(session) {
-    if (selectedProjectPath && normalizePath(session.projectPath) !== selectedProjectPath) {
-      return false;
+    if (message.type === "indexSyncError") {
+      isSyncingIndex = false;
+      renderIndexStatus();
+      return;
     }
 
-    if (selectedGtdFilter === "untagged" && session.gtdStatus) {
-      return false;
-    }
-    if (selectedGtdFilter && selectedGtdFilter !== "untagged" && session.gtdStatus !== selectedGtdFilter) {
-      return false;
-    }
-
-    const trimmed = query.trim().toLowerCase();
-    if (!trimmed) {
-      return true;
+    if (message.type === "previewLoading") {
+      previewLoadingKey = sessionKey(message.provider, message.id);
+      renderColumns();
+      return;
     }
 
-    return (
-      session.title.toLowerCase().includes(trimmed) ||
-      (session.summary && session.summary.toLowerCase().includes(trimmed)) ||
-      session.provider.toLowerCase().includes(trimmed) ||
-      (session.gtdStatusLabel && session.gtdStatusLabel.toLowerCase().includes(trimmed)) ||
-      (session.branch && session.branch.toLowerCase().includes(trimmed)) ||
-      (!selectedProjectPath &&
-        (session.projectName.toLowerCase().includes(trimmed) ||
-          session.projectPath.toLowerCase().includes(trimmed)))
-    );
-  }
+    if (message.type === "previewResult") {
+      previewLoadingKey = null;
+      renderColumns();
+      if (!message.error) showPreview(message);
+      return;
+    }
 
-  function normalizePath(projectPath) {
-    return projectPath;
-  }
+    if (message.type === "renameDone") {
+      previewRename.disabled = false;
+      return;
+    }
 
-  function escapeHtml(value) {
-    return value
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;");
-  }
+    if (message.type === "titleUpdated") {
+      const nextTitle = typeof message.title === "string" ? message.title.trim() : "";
+      if (nextTitle) {
+        previewTitle.textContent = nextTitle;
+      }
+      previewRename.disabled = false;
+      setAiButtonsDisabled(false);
+      requestAllColumns();
+      return;
+    }
+
+    if (message.type === "summaryLoading") {
+      renderSummary(previewUiStrings.summarizing || "Summarizing session...");
+      return;
+    }
+
+    if (message.type === "summaryResult") {
+      renderSummary(message.summary || "");
+      setAiButtonsDisabled(false);
+      return;
+    }
+
+    if (message.type === "summaryError") {
+      renderSummary(message.error || previewUiStrings.summarizeFailed || "Summarize failed.", true);
+      setAiButtonsDisabled(false);
+      return;
+    }
+
+    if (message.type === "autoRenameDone" || message.type === "handoffDone" || message.type === "handoffError") {
+      setAiButtonsDisabled(false);
+    }
+  });
+
+  const previewFind = previewFindHelper
+    ? previewFindHelper.createController({
+        containers: [previewSummary, previewMessages],
+        barEl: previewFindBar,
+        inputEl: previewFindInput,
+        countEl: previewFindCount,
+        prevBtn: previewFindPrev,
+        nextBtn: previewFindNext,
+        closeBtn: previewFindClose,
+        toggleBtn: previewFindToggle
+      })
+    : null;
+
+  document.addEventListener("keydown", (event) => {
+    const isPreviewVisible = previewOverlay && !previewOverlay.classList.contains("hidden");
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      if (isPreviewVisible) {
+        previewFind?.open();
+      } else if (searchInput) {
+        searchInput.focus();
+        searchInput.select();
+      }
+      return;
+    }
+    if (event.key === "Escape" && isPreviewVisible) {
+      if (previewFind?.isOpen()) {
+        event.preventDefault();
+        previewFind.close();
+      } else {
+        event.preventDefault();
+        closePreview();
+      }
+    }
+  });
 
   vscode.postMessage({ type: "ready" });
 })();

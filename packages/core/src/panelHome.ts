@@ -12,6 +12,10 @@ export function catalogDbPath(panelHome: string): string {
   return path.join(panelHome, "catalog.db");
 }
 
+export function searchIndexDbPath(panelHome: string): string {
+  return path.join(panelHome, "search_index.db");
+}
+
 export function settingsPath(panelHome: string): string {
   return path.join(panelHome, "settings.json");
 }

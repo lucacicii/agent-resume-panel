@@ -44,6 +44,8 @@ export function getSessionSearchUiStrings(): Record<string, string> {
     placeholder: t("webview.search.placeholder"),
     sectionProjects: t("webview.search.sectionProjects"),
     sectionSessions: t("webview.search.sectionSessions"),
+    sectionAcp: t("webview.search.sectionAcp"),
+    sectionNotes: t("webview.search.sectionNotes"),
     chipAllProjects: t("webview.search.chipAllProjects"),
     chipAllProjectsTooltip: t("webview.search.chipAllProjectsTooltip"),
     emptyNoMatchProject: t("webview.search.emptyNoMatchProject"),
@@ -60,6 +62,15 @@ export function getSessionSearchUiStrings(): Record<string, string> {
     chipAllGtdTooltip: t("webview.search.chipAllGtdTooltip"),
     chipUntagged: t("webview.search.chipUntagged"),
     chipUntaggedTooltip: t("webview.search.chipUntaggedTooltip"),
+    projectFilterPlaceholder: t("webview.search.projectFilterPlaceholder"),
+    projectFilterEmpty: t("webview.search.projectFilterEmpty"),
+    syncIndexTooltip: t("webview.search.syncIndexTooltip"),
+    indexSyncing: t("webview.search.indexSyncing"),
+    indexBuilding: t("webview.search.indexBuilding"),
+    indexReadyCount: t("webview.search.indexReadyCount"),
+    noteScopeLibrary: t("webview.search.noteScopeLibrary"),
+    noteScopeProject: t("webview.search.noteScopeProject"),
+    noteScopeSession: t("webview.search.noteScopeSession"),
     showMore: t("tree.showMore")
   };
 }
@@ -97,7 +108,12 @@ export function getSessionPreviewUiStrings(): Record<string, string> {
     noticeOpenLlmSettings: t("webview.preview.noticeOpenLlmSettings"),
     tooltipLlmRequired: t("webview.preview.tooltipLlmRequired"),
     summarizing: t("webview.preview.summarizing"),
-    summarizeFailed: t("webview.preview.summarizeFailed")
+    summarizeFailed: t("webview.preview.summarizeFailed"),
+    findPlaceholder: t("webview.preview.findPlaceholder"),
+    findToggleTooltip: t("webview.preview.findToggleTooltip"),
+    findPrevTooltip: t("webview.preview.findPrevTooltip"),
+    findNextTooltip: t("webview.preview.findNextTooltip"),
+    findCloseTooltip: t("webview.preview.findCloseTooltip")
   };
 }
 

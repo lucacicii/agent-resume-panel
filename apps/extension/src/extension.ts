@@ -125,10 +125,12 @@ import {
   restoreSessionPreviewPanel
 } from "./preview/sessionPreviewPanel";
 import {
+  notifySearchPanelIndexUpdated,
   refreshSessionSearchPanel,
   restoreSearchSessionsPanel,
   searchAndOpenSessions
 } from "./search/sessionSearch";
+import { scheduleUnifiedSearchIndexSync } from "./search/unifiedSearch";
 import {
   openSettingsPanel,
   openSettingsPanelToAcp,
@@ -810,7 +812,10 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
     new vscode.RelativePattern(vscode.Uri.file(notesRoot(panelHomeFromConfig())), "**/*.md")
   );
   const onNotesFsChange = () => {
-    void notesStore?.reload().then(() => refreshNotesUi(tree));
+    void notesStore?.reload().then(() => {
+      refreshNotesUi(tree);
+      scheduleUnifiedSearchIndexSync(() => notifySearchPanelIndexUpdated(), 800);
+    });
   };
   context.subscriptions.push(
     notesWatcher,
@@ -1008,6 +1013,7 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
     notesTree?.refresh();
     onDidChangeSessionsEmitter?.fire();
     backgroundAutoRename?.scheduleScan(catalog.dbPath);
+    scheduleUnifiedSearchIndexSync(() => notifySearchPanelIndexUpdated(), 1200);
     if (showToast) {
       const totalVisible = await queryVisibleSessionCount(catalog.dbPath, maxCap);
       vscode.window.showInformationMessage(t("notification.syncedCliSessions", totalVisible));
@@ -1070,7 +1076,8 @@ async function searchAndOpen(
 ): Promise<void> {
   await refresh(tree, false);
   const catalog = loadCatalogSettings();
-  if ((await queryVisibleSessionCount(catalog.dbPath)) === 0) {
+  const hasNotes = (notesStore?.getAllNotes().length ?? 0) > 0;
+  if ((await queryVisibleSessionCount(catalog.dbPath)) === 0 && !hasNotes) {
     vscode.window.showInformationMessage(t("notification.noAgentSessionsFound"));
     return;
   }

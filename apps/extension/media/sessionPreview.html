@@ -17,6 +17,19 @@
           <div class="preview-header-top">
             <div id="preview-title" class="preview-title">Loading preview...</div>
             <div class="preview-header-controls">
+              <button
+                id="preview-find-toggle"
+                type="button"
+                class="preview-find-toggle"
+                title="Find in preview (Ctrl+F)"
+                aria-label="Find in preview"
+                aria-pressed="false"
+              >
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.35" />
+                  <path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" />
+                </svg>
+              </button>
               <div id="preview-mode-toggle" class="preview-mode-toggle" role="group" aria-label="Preview display format">
                 <button id="preview-mode-markdown" type="button" class="preview-mode-btn active" data-mode="markdown" aria-pressed="true">Markdown</button>
                 <button id="preview-mode-raw" type="button" class="preview-mode-btn" data-mode="raw" aria-pressed="false">Raw</button>
@@ -31,6 +44,19 @@
             <button id="preview-auto-rename" type="button" class="preview-action hidden" aria-label="Auto rename session">Auto Rename</button>
             <button id="preview-handoff" type="button" class="preview-action hidden" aria-label="Hand off to another agent">Hand Off to…</button>
             <button id="preview-rename" type="button" class="preview-action" aria-label="Rename session">Rename</button>
+          </div>
+          <div id="preview-find-bar" class="preview-find-bar hidden" role="search">
+            <div class="preview-find-input-wrap">
+              <svg class="preview-find-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.35" />
+                <path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" />
+              </svg>
+              <input id="preview-find-input" class="preview-find-input" type="text" placeholder="Find in preview..." spellcheck="false" />
+            </div>
+            <span id="preview-find-count" class="preview-find-count"></span>
+            <button id="preview-find-prev" type="button" class="preview-find-btn" title="Previous match (Shift+Enter)" aria-label="Previous match" disabled>↑</button>
+            <button id="preview-find-next" type="button" class="preview-find-btn" title="Next match (Enter)" aria-label="Next match" disabled>↓</button>
+            <button id="preview-find-close" type="button" class="preview-find-btn" title="Close find bar (Esc)" aria-label="Close find bar">×</button>
           </div>
         </div>
         <div id="preview-body" class="preview-body">

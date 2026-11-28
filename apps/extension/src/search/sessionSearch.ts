@@ -1,11 +1,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import type { SearchDocType } from "@agent-resume/core/extension";
 import { AcpChatManager } from "../acp/acpChatManager";
+import { getAcpRecord } from "../acp/store";
 import {
   CatalogProjectGroupSummary,
   loadCatalogSettings,
-  queryFilteredSessionsPage,
   queryGtdCountsFromCatalog,
   queryProjectGroupSummaries,
   queryVisibleSessionCount,
@@ -15,12 +16,11 @@ import {
 import { t } from "../i18n";
 import { getSessionPreviewUiStrings, getSessionSearchUiStrings } from "../webview/uiStrings";
 import { truncateText } from "../util/dialogText";
-import { AgentProvider, AgentSession } from "../history";
-import { compactPath } from "../history";
+import { AgentProvider, AgentSession, compactPath } from "../history";
 import { loadRenameHomes } from "../history/rename/homes";
 import { renameSessionWithCatalog } from "../catalog/rename";
 import { loadSessionPreview } from "../history/preview";
-import { getLlmConfig, getLlmOutputLanguage, isLlmConfigured } from "../llm/config";
+import { getLlmConfig, isLlmConfigured } from "../llm/config";
 import { getCachedSummary } from "../llm/summaryCache";
 import { pickResumeTarget, resumeSession } from "../preview/resumeActions";
 import { canHandoffSession, runContinueWithAgent } from "../preview/handoffActions";
@@ -30,17 +30,17 @@ import { LLM_API_KEY_SECRET } from "../settings/settingsSchema";
 import { openSessionResume } from "../terminal/resumeTerminal";
 import { GTD_STATUSES } from "../catalog/gtd";
 import { gtdStatusLabel } from "../gtd/gtdTree";
-import {
-  enrichSearchSessionItem,
-  enrichSessionsWithTreeSummaries,
-  SessionTreeProvider
-} from "../tree/sessionTree";
+import { SessionTreeProvider } from "../tree/sessionTree";
 import { getPreviewRenderMode, setPreviewRenderMode } from "../preview/previewRenderMode";
 import { buildWebviewAgentIconMap } from "../icons/agentIcons";
+import {
+  loadAcpChatPreview,
+  queryUnifiedSearchForPanel,
+  syncUnifiedSearchIndexNow,
+  UNIFIED_SEARCH_PAGE_SIZE
+} from "./unifiedSearch";
 
-const SEARCH_PAGE_SIZE = 50;
-
-const WEBVIEW_ASSET_VERSION = "8";
+const WEBVIEW_ASSET_VERSION = "11";
 
 interface SearchProjectPayload {
   projectPath: string;
@@ -48,13 +48,19 @@ interface SearchProjectPayload {
   sessionCount: number;
   favorited: boolean;
   compactPath: string;
+  latestUpdatedAt: number;
 }
 
 interface WebviewMessage {
   type?: string;
   provider?: AgentProvider;
   id?: string;
+  relMdPath?: string;
+  column?: SearchDocType | "all";
   offset?: number;
+  sessionsOffset?: number;
+  acpOffset?: number;
+  notesOffset?: number;
   limit?: number;
   search?: string;
   projectPath?: string | null;
@@ -68,6 +74,7 @@ let activeSearchTree: SessionTreeProvider | undefined;
 let activeSearchPreview: { provider: AgentProvider; id: string } | undefined;
 let llmConfigRefreshRegistered = false;
 let cachedSearchProjectGroups: CatalogProjectGroupSummary[] = [];
+
 export async function searchAndOpenSessions(
   context: vscode.ExtensionContext,
   tree: SessionTreeProvider,
@@ -144,11 +151,29 @@ function attachSearchPanel(
       return;
     }
 
+    if (message.type === "syncIndex") {
+      await runBackgroundIndexSync(searchPanel!.webview, true);
+      return;
+    }
+
+    if (message.type === "openAcp" && message.id) {
+      await handleOpenAcpMessage(context, tree, searchPanel!.webview, acpChatManager, message.id);
+      return;
+    }
+
+    if (message.type === "openNote") {
+      await handleOpenNoteMessage(message.id, message.relMdPath);
+      return;
+    }
+
     if (message.type === "resume" && message.provider && message.id) {
+      if (message.provider === "chat") {
+        await handleOpenAcpMessage(context, tree, searchPanel!.webview, acpChatManager, message.id);
+        return;
+      }
       const session = await findSession(tree, message.provider, message.id);
       if (session) {
-        searchPanel?.dispose();
-        openSessionResume(session, undefined);
+        openSessionResume(session, context);
       }
       return;
     }
@@ -169,6 +194,10 @@ function attachSearchPanel(
     }
 
     if (message.type === "previewResume" && message.provider && message.id) {
+      if (message.provider === "chat") {
+        await handleOpenAcpMessage(context, tree, searchPanel!.webview, acpChatManager, message.id);
+        return;
+      }
       const session = await findSession(tree, message.provider, message.id);
       if (session) {
         await resumeSession(session, "vscode", context);
@@ -178,7 +207,7 @@ function attachSearchPanel(
 
     if (message.type === "previewResumeWith" && message.provider && message.id) {
       const session = await findSession(tree, message.provider, message.id);
-      if (!session) {
+      if (!session || session.provider === "chat") {
         return;
       }
 
@@ -238,6 +267,44 @@ function attachSearchPanel(
   });
 }
 
+async function handleOpenAcpMessage(
+  context: vscode.ExtensionContext,
+  tree: SessionTreeProvider,
+  webview: vscode.Webview,
+  acpChatManager: AcpChatManager,
+  chatId: string
+): Promise<void> {
+  const homes = loadRenameHomes();
+  const record = await getAcpRecord(homes.panelHome, chatId);
+  if (record) {
+    acpChatManager.open(record);
+    return;
+  }
+  // Legacy proxy chats without an acp/sessions.jsonl record fall back to preview.
+  await handlePreviewMessage(context, tree, webview, "chat", chatId);
+}
+
+async function handleOpenNoteMessage(noteId?: string, relMdPath?: string): Promise<void> {
+  const homes = loadRenameHomes();
+  const targetRel = relMdPath?.trim();
+  if (!targetRel) {
+    if (noteId) {
+      vscode.window.showWarningMessage(`Note path unavailable (${noteId}).`);
+    }
+    return;
+  }
+  const absPath = path.join(homes.panelHome, targetRel);
+  try {
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absPath));
+    await vscode.window.showTextDocument(doc, {
+      viewColumn: vscode.ViewColumn.Beside,
+      preview: false
+    });
+  } catch (error) {
+    vscode.window.showErrorMessage(formatError(error));
+  }
+}
+
 function registerLlmConfigRefresh(context: vscode.ExtensionContext): void {
   if (llmConfigRefreshRegistered) {
     return;
@@ -288,7 +355,10 @@ async function handlePreviewMessage(
   webview.postMessage({ type: "previewLoading", provider, id });
 
   try {
-    const preview = await loadSessionPreview(session, loadRenameHomes());
+    const preview =
+      provider === "chat"
+        ? await loadAcpChatPreview(id, session.title)
+        : await loadSessionPreview(session, loadRenameHomes());
     const llmConfigured = await isLlmConfigured(context);
     const llmConfig = await getLlmConfig(context);
     const cachedSummary = llmConfig
@@ -298,8 +368,8 @@ async function handlePreviewMessage(
       type: "previewResult",
       provider,
       id,
-      showResumeWith: true,
-      showHandoff: canHandoffSession(session),
+      showResumeWith: provider !== "chat",
+      showHandoff: provider !== "chat" && canHandoffSession(session),
       llmConfigured,
       renderMode: getPreviewRenderMode(context),
       cachedSummary,
@@ -345,6 +415,7 @@ async function handleRemoveMessage(
     const catalog = loadCatalogSettings();
     await removeSessionsFromPanel(catalog.dbPath, [session]);
     await refreshTree();
+    await syncUnifiedSearchIndexNow().catch(() => undefined);
     await postInitMessage(webview, tree);
     vscode.window.showInformationMessage(t("notification.sessionRemovedFromPanel"));
   } catch (error) {
@@ -380,6 +451,7 @@ async function handleRenameMessage(
   try {
     await renameSessionWithCatalog(session, newTitle, loadRenameHomes());
     await refreshTree();
+    await syncUnifiedSearchIndexNow().catch(() => undefined);
     await postInitMessage(webview, tree);
     vscode.window.showInformationMessage(t("notification.sessionRenamed"));
   } catch (error) {
@@ -388,27 +460,24 @@ async function handleRenameMessage(
   }
 }
 
-async function findSession(tree: SessionTreeProvider, provider: AgentProvider, id: string): Promise<AgentSession | undefined> {
+async function findSession(
+  tree: SessionTreeProvider,
+  provider: AgentProvider,
+  id: string
+): Promise<AgentSession | undefined> {
   return resolveSessionById(tree, provider, id);
 }
 
 async function postInitMessage(webview: vscode.Webview, tree: SessionTreeProvider): Promise<void> {
   const catalog = loadCatalogSettings();
-  const outputLanguage = getLlmOutputLanguage();
   const favoriteProjects = tree.getFavoriteProjects();
-  const [projectGroups, totalSessions, gtdCounts, firstPage] = await Promise.all([
+  const [projectGroups, totalSessions, gtdCounts, initialSearch] = await Promise.all([
     queryProjectGroupSummaries(catalog.dbPath, favoriteProjects),
     queryVisibleSessionCount(catalog.dbPath),
     queryGtdCountsFromCatalog(catalog.dbPath),
-    queryFilteredSessionsPage(catalog.dbPath, {
-      limit: SEARCH_PAGE_SIZE,
-      offset: 0,
-      outputLanguage,
-      summaryPolicy: "any"
-    })
+    queryUnifiedSearchForPanel(tree, { limit: UNIFIED_SEARCH_PAGE_SIZE })
   ]);
   cachedSearchProjectGroups = projectGroups;
-  const enrichedFirstPage = enrichSessionsWithTreeSummaries(firstPage.sessions, tree.getSessions());
   const taggedCount = GTD_STATUSES.reduce((sum, status) => sum + (gtdCounts[status] ?? 0), 0);
 
   const payload = {
@@ -418,18 +487,22 @@ async function postInitMessage(webview: vscode.Webview, tree: SessionTreeProvide
     providerIcons: buildWebviewAgentIconMap(webview, getExtensionUri()),
     totalSessions,
     untaggedCount: Math.max(0, totalSessions - taggedCount),
-    filteredTotal: firstPage.total,
-    hasMore: enrichedFirstPage.length < firstPage.total,
     projects: projectGroups.map(
       (project): SearchProjectPayload => ({
         projectPath: path.resolve(project.projectPath),
         name: tree.getProjectDisplayName(project.projectPath),
         sessionCount: project.sessionCount,
         favorited: Boolean(project.favorited),
-        compactPath: compactPath(project.projectPath)
+        compactPath: compactPath(project.projectPath),
+        latestUpdatedAt: project.latestUpdatedAt
       })
     ),
-    sessions: enrichedFirstPage.map((session) => enrichSearchSessionItem(session, tree)),
+    sessions: initialSearch.sessions,
+    acp: initialSearch.acp,
+    notes: initialSearch.notes,
+    indexedCounts: initialSearch.indexedCounts,
+    queryTimeMs: initialSearch.queryTimeMs,
+    usingFallback: Boolean(initialSearch.usingFallback),
     gtdStatuses: GTD_STATUSES.map((status) => ({
       status,
       label: gtdStatusLabel(status),
@@ -438,6 +511,33 @@ async function postInitMessage(webview: vscode.Webview, tree: SessionTreeProvide
   };
 
   webview.postMessage(payload);
+
+  // Kick off incremental full-text index sync in background without blocking initial render.
+  void runBackgroundIndexSync(webview, Boolean(initialSearch.usingFallback));
+}
+
+async function runBackgroundIndexSync(
+  webview: vscode.Webview,
+  forceRefreshResults: boolean
+): Promise<void> {
+  webview.postMessage({ type: "indexSyncing" });
+  try {
+    const stats = await syncUnifiedSearchIndexNow();
+    if (searchPanel && searchPanel.webview === webview) {
+      webview.postMessage({
+        type: "indexSynced",
+        stats,
+        shouldRefresh: forceRefreshResults || stats.updatedDocs > 0 || stats.deletedDocs > 0
+      });
+    }
+  } catch (error) {
+    if (searchPanel && searchPanel.webview === webview) {
+      webview.postMessage({
+        type: "indexSyncError",
+        error: formatError(error)
+      });
+    }
+  }
 }
 
 async function handleQueryPageMessage(
@@ -445,32 +545,54 @@ async function handleQueryPageMessage(
   tree: SessionTreeProvider,
   message: WebviewMessage
 ): Promise<void> {
-  const catalog = loadCatalogSettings();
-  const offset = Math.max(0, Math.floor(message.offset ?? 0));
-  const limit = Math.max(1, Math.min(Math.floor(message.limit ?? SEARCH_PAGE_SIZE), 200));
+  const limit = Math.max(
+    1,
+    Math.min(Math.floor(message.limit ?? UNIFIED_SEARCH_PAGE_SIZE), 150)
+  );
   const projectPath = message.projectPath?.trim() || undefined;
   const matchedGroup = projectPath
     ? cachedSearchProjectGroups.find((g) => path.resolve(g.projectPath) === path.resolve(projectPath))
     : undefined;
-  const page = await queryFilteredSessionsPage(catalog.dbPath, {
-    limit,
-    offset,
-    search: message.search,
+
+  const column = message.column;
+  const columns: SearchDocType[] | undefined =
+    column === "session" || column === "acp" || column === "note" ? [column] : undefined;
+
+  const sessionsOffset =
+    column === "session"
+      ? Math.max(0, Math.floor(message.offset ?? message.sessionsOffset ?? 0))
+      : Math.max(0, Math.floor(message.sessionsOffset ?? 0));
+  const acpOffset =
+    column === "acp"
+      ? Math.max(0, Math.floor(message.offset ?? message.acpOffset ?? 0))
+      : Math.max(0, Math.floor(message.acpOffset ?? 0));
+  const notesOffset =
+    column === "note"
+      ? Math.max(0, Math.floor(message.offset ?? message.notesOffset ?? 0))
+      : Math.max(0, Math.floor(message.notesOffset ?? 0));
+
+  const res = await queryUnifiedSearchForPanel(tree, {
+    query: message.search,
+    matchedGroup,
     projectPath,
-    projectId: matchedGroup?.projectId,
-    projectCandidatePaths: matchedGroup?.candidatePaths,
     gtdFilter: message.gtdFilter,
-    outputLanguage: getLlmOutputLanguage(),
-    summaryPolicy: "any"
+    columns,
+    sessionsOffset,
+    acpOffset,
+    notesOffset,
+    limit
   });
-  const enriched = enrichSessionsWithTreeSummaries(page.sessions, tree.getSessions());
+
   webview.postMessage({
     type: "pageResult",
-    offset,
-    append: offset > 0,
-    total: page.total,
-    hasMore: offset + enriched.length < page.total,
-    sessions: enriched.map((session) => enrichSearchSessionItem(session, tree))
+    column: column ?? "all",
+    append: Boolean(columns && (message.offset ?? 0) > 0),
+    sessions: res.sessions,
+    acp: res.acp,
+    notes: res.notes,
+    indexedCounts: res.indexedCounts,
+    queryTimeMs: res.queryTimeMs,
+    usingFallback: Boolean(res.usingFallback)
   });
 }
 
@@ -545,6 +667,16 @@ export async function refreshSessionSearchPanel(): Promise<void> {
 
   searchPanel.title = t("panel.searchSessionsTitle");
   await postInitMessage(searchPanel.webview, activeSearchTree);
+}
+
+export function notifySearchPanelIndexUpdated(): void {
+  if (!searchPanel) {
+    return;
+  }
+  searchPanel.webview.postMessage({
+    type: "indexSynced",
+    shouldRefresh: true
+  });
 }
 
 function formatError(error: unknown): string {
