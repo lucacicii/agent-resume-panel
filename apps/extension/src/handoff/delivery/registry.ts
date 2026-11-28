@@ -1,11 +1,13 @@
 import { HandoffDeliveryChannel } from "../types";
 import { acpHandoffDeliverer } from "./acpDeliverer";
+import { almaHandoffDeliverer } from "./almaDeliverer";
 import { cliHandoffDeliverer } from "./cliDeliverer";
 import { clipboardHandoffDeliverer } from "./clipboardDeliverer";
 import { HandoffDeliverer } from "./types";
 
 const DELIVERERS: HandoffDeliverer[] = [
   acpHandoffDeliverer,
+  almaHandoffDeliverer,
   cliHandoffDeliverer,
   clipboardHandoffDeliverer
 ];

@@ -1,6 +1,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { defaultAlmaHome } from "@agent-resume/core/extension";
 import { expandHome } from "../pathUtils";
 import { RenameHomes } from "./index";
 
@@ -17,6 +18,7 @@ function defaultCursorIdeUserDataHome(): string {
 export function loadRenameHomes(): RenameHomes {
   const config = vscode.workspace.getConfiguration("agentResume");
   const configuredCursorIdeUserDataHome = config.get<string>("cursorIdeUserDataHome", "").trim();
+  const configuredAlmaHome = config.get<string>("almaHome", "").trim();
   return {
     panelHome: expandHome(config.get<string>("panelHome", "~/.agent-resume-panel")),
     codexHome: expandHome(config.get<string>("codexHome", "~/.codex")),
@@ -30,6 +32,7 @@ export function loadRenameHomes(): RenameHomes {
     cursorHome: expandHome(config.get<string>("cursorHome", "~/.cursor")),
     cursorIdeUserDataHome: configuredCursorIdeUserDataHome
       ? expandHome(configuredCursorIdeUserDataHome)
-      : defaultCursorIdeUserDataHome()
+      : defaultCursorIdeUserDataHome(),
+    almaHome: configuredAlmaHome ? expandHome(configuredAlmaHome) : defaultAlmaHome()
   };
 }

@@ -27,6 +27,7 @@ export interface AgentHomesSettings {
   ompHome?: string;
   cursorHome?: string;
   cursorIdeUserDataHome?: string;
+  almaHome?: string;
 }
 
 export function defaultAgentHomeValue(key: AgentHomeKey): string {
@@ -57,8 +58,20 @@ export function sanitizeAgentHomes(homes?: AgentHomesSettings): AgentHomesSettin
   if (cursorIdeUserDataHome) {
     out.cursorIdeUserDataHome = cursorIdeUserDataHome;
   }
+  const almaHome = homes.almaHome?.trim();
+  if (almaHomeDiffersFromDefault(almaHome)) {
+    out.almaHome = almaHome;
+  }
 
   return Object.keys(out).length ? out : undefined;
+}
+
+export function almaHomeDiffersFromDefault(value?: string): boolean {
+  const raw = value?.trim();
+  if (!raw) {
+    return false;
+  }
+  return expandHome(raw) !== expandHome(defaultAlmaHome());
 }
 
 export function defaultCursorIdeUserDataHome(): string {
@@ -69,4 +82,14 @@ export function defaultCursorIdeUserDataHome(): string {
     return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "Cursor", "User");
   }
   return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "Cursor", "User");
+}
+
+export function defaultAlmaHome(): string {
+  if (process.platform === "darwin") {
+    return path.join(os.homedir(), "Library", "Application Support", "alma");
+  }
+  if (process.platform === "win32") {
+    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "alma");
+  }
+  return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "alma");
 }

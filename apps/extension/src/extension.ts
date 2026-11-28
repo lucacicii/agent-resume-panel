@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { defaultAlmaHome } from "@agent-resume/core/extension";
 import { AcpChatManager, refreshAcpChatPanels } from "./acp/acpChatManager";
 import { AcpChatTreeProvider } from "./acp/acpChatTree";
 import { createAcpChatSession, panelHomeFromConfig, pickAcpAgentProvider } from "./acp/newSession";
@@ -149,7 +150,7 @@ import { promptReloadIfContributionsStale } from "./upgrade/contributionSync";
 type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
 type EditorCliProvider = Extract<
   AgentProvider,
-  "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "prime" | "omp" | "cursor"
+  "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "prime" | "omp" | "cursor" | "alma"
 >;
 type EditorNewSessionProvider = EditorCliProvider | "acp" | `acp:${AcpAgentProvider}`;
 
@@ -552,6 +553,7 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
     ...menuCommand("agentResume.newPiSession", (node?: unknown) => openNewSession(tree, node, "pi", context)),
     ...menuCommand("agentResume.newPrimeSession", (node?: unknown) => openNewSession(tree, node, "prime", context)),
     ...menuCommand("agentResume.newOmpSession", (node?: unknown) => openNewSession(tree, node, "omp", context)),
+    ...menuCommand("agentResume.newAlmaSession", (node?: unknown) => openNewSession(tree, node, "alma", context)),
     ...menuCommand("agentResume.newCodexAppSession", (node?: unknown) => openNewCodexAppSession(tree, node)),
     ...menuCommand("agentResume.favoriteProject", (node?: unknown) => favoriteProject(context, tree, node)),
     ...menuCommand("agentResume.unfavoriteProject", (node?: unknown) => unfavoriteProject(context, tree, node)),
@@ -1047,6 +1049,7 @@ function buildHistoryLoadOptions(
   config: vscode.WorkspaceConfiguration
 ): HistoryLoadOptions {
   const configuredCursorIdeUserDataHome = config.get<string>("cursorIdeUserDataHome", "").trim();
+  const configuredAlmaHome = config.get<string>("almaHome", "").trim();
   return {
     panelHome: panelHomeFromConfig(),
     codexHome: expandHome(config.get<string>("codexHome", "~/.codex")),
@@ -1061,13 +1064,17 @@ function buildHistoryLoadOptions(
     cursorIdeUserDataHome: configuredCursorIdeUserDataHome
       ? expandHome(configuredCursorIdeUserDataHome)
       : defaultCursorIdeUserDataHome(),
+    almaHome: configuredAlmaHome ? expandHome(configuredAlmaHome) : defaultAlmaHome(),
     maxItems: config.get<number>("maxItems", 10_000),
     showArchivedCodex: config.get<boolean>("showArchivedCodex", false),
     showArchivedOpenCode: config.get<boolean>("showArchivedOpenCode", false),
     showSubagentCodex: config.get<boolean>("showSubagentCodex", false),
     showSubagentGrok: config.get<boolean>("showSubagentGrok", false),
     showArchivedCursorIde: config.get<boolean>("showArchivedCursorIde", false),
-    showSubagentCursorIde: config.get<boolean>("showSubagentCursorIde", false)
+    showSubagentCursorIde: config.get<boolean>("showSubagentCursorIde", false),
+    showIncognitoAlma: config.get<boolean>("showIncognitoAlma", false),
+    showSubagentAlma: config.get<boolean>("showSubagentAlma", false),
+    showTempWorkspaceAlma: config.get<boolean>("showTempWorkspaceAlma", false)
   };
 }
 
@@ -1388,6 +1395,12 @@ async function pickNewSessionTarget(extensionUri?: vscode.Uri): Promise<NewSessi
         description: "Start a Cursor agent session in the selected workspace",
         iconPath: agentIconPath(extensionUri, "cursor"),
         provider: "cursor" as const
+      },
+      {
+        label: stripCodiconPrefix(t("quickpick.newSessionAlmaLabel")),
+        description: t("quickpick.newSessionAlmaDescription"),
+        iconPath: agentIconPath(extensionUri, "alma"),
+        provider: "alma" as const
       },
       {
         label: stripCodiconPrefix(t("quickpick.newSessionCodexAppLabel")),

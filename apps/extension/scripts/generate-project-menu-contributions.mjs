@@ -16,6 +16,7 @@ const ACTIONS = [
   "newPiSession",
   "newPrimeSession",
   "newOmpSession",
+  "newAlmaSession",
   "newCodexAppSession",
   "openProjectNote",
   "deleteProjectNote"
@@ -44,6 +45,7 @@ const COMMANDS = {
   newPiSession: [{ command: "agentResume.newPiSession" }],
   newPrimeSession: [{ command: "agentResume.newPrimeSession" }],
   newOmpSession: [{ command: "agentResume.newOmpSession" }],
+  newAlmaSession: [{ command: "agentResume.newAlmaSession" }],
   newCodexAppSession: [{ command: "agentResume.newCodexAppSession" }],
   openProjectNote: [{ command: "agentResume.openProjectNote" }],
   deleteProjectNote: [{ command: "agentResume.deleteProjectNote" }]

@@ -6,10 +6,9 @@ import { loadAcpSessionRecords, type AcpSessionStoreRecord } from "./acp/store";
 import { AgentSession, AgentProvider } from "./catalog/types";
 import { ensureExtensionCatalogSchema } from "./catalog/db";
 import { syncAcpRecordsIntoCatalog, type AcpCatalogRecordInput } from "./catalog/acpCatalog";
-import { purgeRetiredAlmaCatalog } from "./catalog/mutations";
 import { reconcileProjectsFromSessions } from "./catalog/projects";
 import { escapeSqlLiteral, runSqliteJson, runSqliteReadOnlyJson, runSqliteTransaction } from "./sqlite";
-import { agentHomeDiffersFromDefault, AgentHomeKey, type AgentHomesSettings } from "./transcript/homes";
+import { agentHomeDiffersFromDefault, AgentHomeKey, almaHomeDiffersFromDefault, type AgentHomesSettings } from "./transcript/homes";
 import { candidateAgyRoots } from "./transcript/agyRoots";
 import { listJsonlFiles, findFilesByName } from "./transcript/fs";
 import { findCursorTranscriptFile, listCursorChatMetas } from "./transcript/cursor";
@@ -30,6 +29,7 @@ export interface AgentSessionSyncOptions {
   ompHome: string;
   cursorHome: string;
   cursorIdeUserDataHome: string;
+  almaHome: string;
   configuredAgentHomes?: AgentHomesSettings;
   maxItems: number;
   stalePolicy: SessionSyncStalePolicy;
@@ -39,6 +39,9 @@ export interface AgentSessionSyncOptions {
   showSubagentGrok: boolean;
   showArchivedCursorIde: boolean;
   showSubagentCursorIde: boolean;
+  showIncognitoAlma: boolean;
+  showSubagentAlma: boolean;
+  showTempWorkspaceAlma: boolean;
 }
 
 export interface AgentSessionProviderSyncResult {
@@ -75,7 +78,7 @@ interface AgentSessionLoadDetails {
   excludedCodexAcpSessionIds: string[];
 }
 
-const PROVIDERS: SyncableAgentProvider[] = ["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "omp", "cursor", "cursor-ide"];
+const PROVIDERS: SyncableAgentProvider[] = ["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "omp", "cursor", "cursor-ide", "alma"];
 const textCache = new Map<string, { mtimeMs: number; ctimeMs: number; size: number; value: string }>();
 const listCache = new Map<string, { expiresAt: number; value: string[] }>();
 const codexOriginatorCache = new Map<string, { mtimeMs: number; size: number; value?: string }>();
@@ -155,8 +158,6 @@ async function performSync(options: AgentSessionSyncOptions): Promise<AgentSessi
     await writeSyncState(options.dbPath, providerResult);
   }
   await deleteCodexAcpCatalogDuplicates(options.dbPath, excludedCodexAcpSessionIds);
-  // Alma support removed: hard-delete leftover Alma catalog rows and Alma-only projects.
-  await purgeRetiredAlmaCatalog(options.dbPath);
 
   // ACP chats: dual-index into catalog from panelHome/acp JSONL (messages stay file-backed).
   try {
@@ -255,6 +256,7 @@ async function loadProvider(
     case "omp": return { provider, sessions: await loadJsonlSessions("omp", options.ompHome, options.maxItems) };
     case "cursor": return { provider, sessions: await loadCursor(options.cursorHome, options.maxItems) };
     case "cursor-ide": return { provider, sessions: await loadCursorIde(options) };
+    case "alma": return loadAlma(options);
   }
 }
 
@@ -460,6 +462,68 @@ async function loadOpenCode(options: AgentSessionSyncOptions): Promise<ProviderL
   return { provider: "opencode", sessions: rows.filter((row) => row.id).map((row) => session("opencode", row.id, clean(row.title) || row.id, row.directory || os.homedir(), Number(row.time_updated || 0), { archived: row.time_archived != null, model: parseOpenCodeModel(row.model), source: "sqlite", transcriptKind: "sqlite", transcriptRefs: JSON.stringify({ kind: "sqlite", dbPath, dialect: "opencode", sessionId: row.id }) })) };
 }
 
+interface AlmaThreadRow {
+  id: string;
+  title?: string;
+  model?: string | null;
+  is_incognito?: number;
+  parent_thread_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  workspace_path?: string | null;
+  workspace_is_temporary?: number | null;
+  message_count?: number | null;
+}
+
+async function loadAlma(options: AgentSessionSyncOptions): Promise<ProviderLoadResult> {
+  const dbPath = path.join(options.almaHome, "chat_threads.db");
+  if (!await fileExists(dbPath)) {
+    return { provider: "alma", sessions: [], warning: `Alma database not found at ${dbPath}.`, failed: true };
+  }
+  const clauses = [
+    !options.showIncognitoAlma ? "coalesce(ct.is_incognito, 0) = 0" : "",
+    !options.showSubagentAlma ? "ct.parent_thread_id IS NULL" : "",
+    !options.showTempWorkspaceAlma ? "coalesce(w.is_temporary, 0) = 0" : ""
+  ].filter(Boolean);
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const rows = await runSqliteReadOnlyJson<AlmaThreadRow>(
+    dbPath,
+    `SELECT
+       ct.id,
+       ct.title,
+       ct.model,
+       ct.is_incognito,
+       ct.parent_thread_id,
+       ct.created_at,
+       ct.updated_at,
+       w.path AS workspace_path,
+       w.is_temporary AS workspace_is_temporary,
+       (SELECT count(*) FROM chat_messages cm WHERE cm.thread_id = ct.id) AS message_count
+     FROM chat_threads ct
+     LEFT JOIN workspaces w ON ct.workspace_id = w.id
+     ${where}
+     ORDER BY ct.updated_at DESC
+     LIMIT ${options.maxItems}`
+  );
+  return {
+    provider: "alma",
+    sessions: rows.filter((row) => row.id).map((row) => {
+      const updatedAt = Date.parse(row.updated_at || "") || Date.parse(row.created_at || "") || 0;
+      const projectPath = row.workspace_path?.trim() || os.homedir();
+      const messageCount = typeof row.message_count === "number" && Number.isFinite(row.message_count)
+        ? row.message_count
+        : undefined;
+      return session("alma", row.id, clean(row.title) || row.id, projectPath, updatedAt, {
+        model: row.model?.trim() || undefined,
+        messageCount,
+        source: row.parent_thread_id ? "subagent" : "sqlite",
+        transcriptKind: "sqlite",
+        transcriptRefs: JSON.stringify({ kind: "sqlite", dbPath, dialect: "alma", sessionId: row.id })
+      });
+    })
+  };
+}
+
 async function loadCursor(home: string, maxItems: number): Promise<LoadedSession[]> {
   const chats = await listCursorChatMetas(home, maxItems);
   return Promise.all(chats.map(async (chat) => {
@@ -578,11 +642,14 @@ async function cachedFiles(key: string, load: () => Promise<string[]>): Promise<
 function claudePath(file: string): string { const dir = path.basename(path.dirname(file)); return dir.startsWith("-") ? `/${dir.slice(1).replaceAll("-", "/")}` : os.homedir(); }
 async function grokCwd(summaryFile: string): Promise<string> { const group = path.dirname(path.dirname(summaryFile)); try { return (await readCachedText(path.join(group, ".cwd"))).trim(); } catch { try { return decodeURIComponent(path.basename(group)); } catch { return path.basename(group); } } }
 function parseOpenCodeModel(raw?: string): string | undefined { if (!raw) return undefined; try { const value = JSON.parse(raw); return value.id && value.providerID ? `${value.providerID}/${value.id}` : value.id || value.providerID || raw; } catch { return raw; } }
-function providerHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): string { switch (provider) { case "codex": return options.codexHome; case "claude": return options.claudeHome; case "agy": return options.antigravityHome; case "grok": return options.grokHome; case "opencode": return options.opencodeHome; case "pi": return options.piHome; case "prime": return options.primeHome; case "omp": return options.ompHome; case "cursor": return options.cursorHome; case "cursor-ide": return options.cursorIdeUserDataHome; } }
-function agentHomeSettingKey(provider: Exclude<SyncableAgentProvider, "cursor-ide">): keyof AgentHomesSettings { switch (provider) { case "codex": return "codexHome"; case "claude": return "claudeHome"; case "agy": return "antigravityHome"; case "grok": return "grokHome"; case "opencode": return "opencodeHome"; case "pi": return "piHome"; case "prime": return "primeHome"; case "omp": return "ompHome"; case "cursor": return "cursorHome"; } }
+function providerHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): string { switch (provider) { case "codex": return options.codexHome; case "claude": return options.claudeHome; case "agy": return options.antigravityHome; case "grok": return options.grokHome; case "opencode": return options.opencodeHome; case "pi": return options.piHome; case "prime": return options.primeHome; case "omp": return options.ompHome; case "cursor": return options.cursorHome; case "cursor-ide": return options.cursorIdeUserDataHome; case "alma": return options.almaHome; } }
+function agentHomeSettingKey(provider: Exclude<SyncableAgentProvider, "cursor-ide" | "alma">): keyof AgentHomesSettings { switch (provider) { case "codex": return "codexHome"; case "claude": return "claudeHome"; case "agy": return "antigravityHome"; case "grok": return "grokHome"; case "opencode": return "opencodeHome"; case "pi": return "piHome"; case "prime": return "primeHome"; case "omp": return "ompHome"; case "cursor": return "cursorHome"; } }
 function isConfiguredAgentHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): boolean {
   if (provider === "cursor-ide") {
     return Boolean(options.configuredAgentHomes?.cursorIdeUserDataHome?.trim());
+  }
+  if (provider === "alma") {
+    return almaHomeDiffersFromDefault(options.configuredAgentHomes?.almaHome);
   }
   const key = agentHomeSettingKey(provider) as AgentHomeKey;
   return agentHomeDiffersFromDefault(key, options.configuredAgentHomes?.[key]);

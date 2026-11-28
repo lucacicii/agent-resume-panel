@@ -4,10 +4,10 @@ import { PreviewMessage } from "../history/preview/types";
 
 export type HandoffTargetProvider = Extract<
   AgentProvider,
-  "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "prime" | "omp"
+  "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "prime" | "omp" | "alma"
 >;
 
-export type HandoffDeliveryChannel = "acp" | "cli" | "clipboard";
+export type HandoffDeliveryChannel = "acp" | "cli" | "alma" | "clipboard";
 
 export type HandoffSource =
   | { kind: "cli"; session: AgentSession }

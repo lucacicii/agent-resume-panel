@@ -30,6 +30,11 @@ export function buildResumeCommand(session: AgentSession): string {
   if (session.provider === "cursor-ide") {
     throw new Error("Cursor IDE chats cannot be resumed by command; open the project in Cursor instead.");
   }
+  if (session.provider === "alma") {
+    return `curl -s -X POST http://localhost:23001/api/refs/open -H 'Content-Type: application/json' -d ${shellQuote(
+      JSON.stringify({ uri: `alma://thread/${session.id}` })
+    )}`;
+  }
 
   return `claude --resume ${shellQuote(session.id)}`;
 }
@@ -59,7 +64,7 @@ export function buildNewSessionCommand(provider: AgentProvider, projectPath: str
   if (provider === "cursor") {
     return `cursor-agent --workspace ${shellQuote(projectPath)}`;
   }
-  if (provider === "cursor-ide" || provider === "chat") {
+  if (provider === "cursor-ide" || provider === "chat" || provider === "alma") {
     throw new Error(`New terminal sessions are not supported for ${provider}.`);
   }
 

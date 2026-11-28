@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { t } from "../i18n";
-import { ACP_HANDOFF_TARGETS, CLI_HANDOFF_TARGETS, getHandoffTargetLabel } from "./targets";
+import { ACP_SOURCE_HANDOFF_TARGETS, CLI_HANDOFF_TARGETS, getHandoffTargetLabel } from "./targets";
 import { HandoffTargetProvider } from "./types";
 
 interface TargetPickItem extends vscode.QuickPickItem {
@@ -11,7 +11,7 @@ export async function pickHandoffTargetForPreview(
   sourceProvider: string,
   sourceKind: "cli" | "acp"
 ): Promise<HandoffTargetProvider | undefined> {
-  const pool = sourceKind === "acp" ? ACP_HANDOFF_TARGETS : CLI_HANDOFF_TARGETS;
+  const pool = sourceKind === "acp" ? ACP_SOURCE_HANDOFF_TARGETS : CLI_HANDOFF_TARGETS;
   const options: TargetPickItem[] = pool
     .filter((provider) => provider !== sourceProvider)
     .map((provider) => ({

@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import {
   DEFAULT_AGENT_HOMES,
   catalogDbPath,
+  defaultAlmaHome,
   expandHome,
   resolvePanelHome,
   searchIndexDbPath,
@@ -14,6 +15,7 @@ export interface McpResolvedPaths {
   searchIndexDbPath: string;
   antigravityHome: string;
   opencodeHome: string;
+  almaHome?: string;
 }
 
 interface PanelSettingsSubset {
@@ -21,6 +23,7 @@ interface PanelSettingsSubset {
   catalogDbPath?: unknown;
   antigravityHome?: unknown;
   opencodeHome?: unknown;
+  almaHome?: unknown;
 }
 
 function readJsonFileSync(filePath: string): PanelSettingsSubset {
@@ -65,11 +68,17 @@ export function resolveMcpPaths(explicitPanelHome?: string): McpResolvedPaths {
       ? expandHome(localSettings.opencodeHome.trim())
       : undefined;
 
+  const customAlmaHome =
+    typeof localSettings.almaHome === "string" && localSettings.almaHome.trim()
+      ? expandHome(localSettings.almaHome.trim())
+      : undefined;
+
   return {
     panelHome,
     catalogDbPath: customCatalogDb || catalogDbPath(panelHome),
     searchIndexDbPath: searchIndexDbPath(panelHome),
     antigravityHome: customAgyHome || expandHome(DEFAULT_AGENT_HOMES.antigravityHome),
-    opencodeHome: customOpenCodeHome || expandHome(DEFAULT_AGENT_HOMES.opencodeHome)
+    opencodeHome: customOpenCodeHome || expandHome(DEFAULT_AGENT_HOMES.opencodeHome),
+    almaHome: customAlmaHome || defaultAlmaHome()
   };
 }

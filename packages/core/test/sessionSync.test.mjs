@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   DEFAULT_AGENT_HOMES,
   catalogDbPath,
+  defaultAlmaHome,
   defaultCursorIdeUserDataHome,
   expandHome,
   loadAllAgentSessions,
@@ -33,6 +34,7 @@ function buildSyncOptions(settings, overrides = {}) {
     ompHome: expandHome(homes.ompHome || DEFAULT_AGENT_HOMES.ompHome),
     cursorHome: expandHome(homes.cursorHome || DEFAULT_AGENT_HOMES.cursorHome),
     cursorIdeUserDataHome: expandHome(homes.cursorIdeUserDataHome || defaultCursorIdeUserDataHome()),
+    almaHome: expandHome(homes.almaHome || defaultAlmaHome()),
     configuredAgentHomes: settings.agentHomes,
     maxItems: sync.maxItems ?? 10_000,
     stalePolicy: sync.stalePolicy || "off",
@@ -42,6 +44,9 @@ function buildSyncOptions(settings, overrides = {}) {
     showSubagentGrok: sync.showSubagentGrok === true,
     showArchivedCursorIde: sync.showArchivedCursorIde === true,
     showSubagentCursorIde: sync.showSubagentCursorIde === true,
+    showIncognitoAlma: sync.showIncognitoAlma === true,
+    showSubagentAlma: sync.showSubagentAlma === true,
+    showTempWorkspaceAlma: sync.showTempWorkspaceAlma === true,
     ...overrides
   };
 }
@@ -120,7 +125,8 @@ test("syncs ten providers, preserves local enhancements, and isolates provider f
     primeHome: path.join(root, "prime"),
     ompHome: path.join(root, "omp"),
     cursorHome: path.join(root, "cursor"),
-    cursorIdeUserDataHome: path.join(root, "cursor-ide-user")
+    cursorIdeUserDataHome: path.join(root, "cursor-ide-user"),
+    almaHome: path.join(root, "alma")
   };
   await Promise.all(Object.values(homes).map((dir) => mkdir(dir, { recursive: true })));
 
@@ -174,6 +180,14 @@ test("syncs ten providers, preserves local enhancements, and isolates provider f
   await mkdir(path.join(homes.cursorIdeUserDataHome, "workspaceStorage", "workspace-a"), { recursive: true });
   await writeFile(path.join(homes.cursorIdeUserDataHome, "workspaceStorage", "workspace-a", "workspace.json"), JSON.stringify({ folder: "file:///tmp/cursor-ide" }));
 
+  const almaDb = path.join(homes.almaHome, "chat_threads.db");
+  sqlite(almaDb, `CREATE TABLE workspaces(id TEXT PRIMARY KEY,path TEXT NOT NULL,name TEXT NOT NULL,is_temporary INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE chat_threads(id TEXT PRIMARY KEY,title TEXT NOT NULL,model TEXT,is_incognito INTEGER DEFAULT 0,workspace_id TEXT,parent_thread_id TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+    CREATE TABLE chat_messages(id TEXT PRIMARY KEY,thread_id TEXT NOT NULL,message TEXT NOT NULL,timestamp TEXT NOT NULL,created_at TEXT NOT NULL);
+    INSERT INTO workspaces VALUES('ws-1','/tmp/alma','alma',0);
+    INSERT INTO chat_threads VALUES('alma-1','Alma title','magpie:test',0,'ws-1',NULL,'2026-01-01T00:00:13Z','2026-01-01T00:00:14Z');
+    INSERT INTO chat_messages VALUES('m-1','alma-1','{"role":"user","parts":[{"type":"text","text":"Alma prompt"}]}','2026-01-01T00:00:14Z','2026-01-01T00:00:14Z');`);
+
   const settings = {
     panelHome: path.join(root, "panel"),
     llm: { baseUrl: "http://localhost", model: "test" },
@@ -185,8 +199,13 @@ test("syncs ten providers, preserves local enhancements, and isolates provider f
   const firstPromise = syncAgentSessions(options);
   assert.equal(syncAgentSessions(options), firstPromise, "concurrent calls share one task");
   const first = await firstPromise;
-  assert.equal(first.providers.filter((provider) => provider.status === "ok").length, 10);
-  assert.deepEqual(new Set(first.sessions.map((item) => item.provider)), new Set(["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "omp", "cursor", "cursor-ide"]));
+  assert.equal(first.providers.filter((provider) => provider.status === "ok").length, 11);
+  assert.deepEqual(new Set(first.sessions.map((item) => item.provider)), new Set(["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "omp", "cursor", "cursor-ide", "alma"]));
+  const alma = first.sessions.find((item) => item.provider === "alma");
+  assert.equal(alma?.title, "Alma title");
+  assert.equal(alma?.projectPath, "/tmp/alma");
+  assert.equal(alma?.model, "magpie:test");
+  assert.equal(alma?.messageCount, 1);
   const cursor = first.sessions.find((item) => item.provider === "cursor");
   assert.equal(cursor?.title, "Cursor CLI title");
   assert.equal(cursor?.projectPath, "/tmp/cursor");
@@ -322,7 +341,8 @@ test("keeps Codex ACP threads out of CLI sessions and removes existing catalog d
     primeHome: path.join(root, "prime"),
     ompHome: path.join(root, "omp"),
     cursorHome: path.join(root, "cursor"),
-    cursorIdeUserDataHome: path.join(root, "cursor-ide-user")
+    cursorIdeUserDataHome: path.join(root, "cursor-ide-user"),
+    almaHome: path.join(root, "alma")
   };
   await Promise.all(Object.values(homes).map((dir) => mkdir(dir, { recursive: true })));
 
@@ -393,51 +413,48 @@ test("keeps Codex ACP threads out of CLI sessions and removes existing catalog d
   assert.deepEqual(acpRows, [{ agent_session_id: "chat-1", acp_provider: "codex" }]);
 });
 
-test("purgeRetiredAlmaCatalog deletes Alma sessions and Alma-only projects", async () => {
-  const { purgeRetiredAlmaCatalog } = await import("../dist/index.js");
-  const root = await mkdtemp(path.join(os.tmpdir(), "agent-resume-alma-purge-"));
-  const dbPath = path.join(root, "catalog.db");
-  // Minimal schema used by purge + list
+test("loadAllAgentSessions filters Alma incognito, subagent, and temporary workspace threads by option", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agent-resume-alma-filter-"));
+  const almaHome = path.join(root, "alma");
+  await mkdir(almaHome, { recursive: true });
+  const almaDb = path.join(almaHome, "chat_threads.db");
   sqlite(
-    dbPath,
-    `CREATE TABLE sessions(
-      provider TEXT NOT NULL, agent_session_id TEXT NOT NULL, title TEXT NOT NULL, project_path TEXT NOT NULL,
-      updated_at_ms INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0, message_count INTEGER, model TEXT, branch TEXT,
-      source TEXT, acp_provider TEXT, user_title TEXT, hidden INTEGER NOT NULL DEFAULT 0, last_synced_at_ms INTEGER,
-      transcript_kind TEXT, transcript_refs TEXT, session_summary TEXT, session_summary_language TEXT, session_summary_at_ms INTEGER,
-      project_id TEXT, native_project_path TEXT, last_exit_waiting INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (provider, agent_session_id)
-    );
-    CREATE TABLE projects(project_id TEXT PRIMARY KEY, portable_key TEXT NOT NULL UNIQUE, alias TEXT NOT NULL DEFAULT '', hidden INTEGER NOT NULL DEFAULT 0, last_seen_at_ms INTEGER, updated_at_ms INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0);
-    CREATE TABLE project_local_paths(project_id TEXT NOT NULL, machine_id TEXT NOT NULL, absolute_path TEXT NOT NULL, updated_at_ms INTEGER NOT NULL, PRIMARY KEY(project_id, machine_id));
-    CREATE TABLE session_gtd(provider TEXT NOT NULL, agent_session_id TEXT NOT NULL, status TEXT, updated_at_ms INTEGER NOT NULL, PRIMARY KEY(provider, agent_session_id));
-    CREATE TABLE sync_state(provider TEXT PRIMARY KEY, last_sync_at_ms INTEGER);
-    INSERT INTO projects VALUES('proj-alma-only','~/Library/Application Support/alma/workspaces/temp-x','',0,1,1,0);
-    INSERT INTO projects VALUES('proj-mixed','~/wb/mixed','',0,1,1,0);
-    INSERT INTO project_local_paths VALUES('proj-alma-only','m1','/tmp/alma-only',1);
-    INSERT INTO sessions VALUES('alma','a1','Alma only','/tmp/alma-only',1,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-alma-only',NULL,0);
-    INSERT INTO sessions VALUES('alma','a2','Alma mixed','/tmp/mixed',2,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-mixed',NULL,0);
-    INSERT INTO sessions VALUES('codex','c1','Codex mixed','/tmp/mixed',3,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-mixed',NULL,0);
-    INSERT INTO session_gtd VALUES('alma','a1','doing',1);
-    INSERT INTO sync_state VALUES('alma',1);`
+    almaDb,
+    `CREATE TABLE workspaces(id TEXT PRIMARY KEY,path TEXT NOT NULL,name TEXT NOT NULL,is_temporary INTEGER NOT NULL DEFAULT 0);
+     CREATE TABLE chat_threads(id TEXT PRIMARY KEY,title TEXT NOT NULL,model TEXT,is_incognito INTEGER DEFAULT 0,workspace_id TEXT,parent_thread_id TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+     CREATE TABLE chat_messages(id TEXT PRIMARY KEY,thread_id TEXT NOT NULL,message TEXT NOT NULL,timestamp TEXT NOT NULL,created_at TEXT NOT NULL);
+     INSERT INTO workspaces VALUES('ws-normal','/tmp/alma-normal','normal',0);
+     INSERT INTO workspaces VALUES('ws-temp','/tmp/alma-temp','Temp Workspace',1);
+     INSERT INTO chat_threads VALUES('a-normal','Normal thread','m1',0,'ws-normal',NULL,'2026-01-01T00:00:01Z','2026-01-01T00:00:05Z');
+     INSERT INTO chat_threads VALUES('a-incog','Incognito thread','m1',1,'ws-normal',NULL,'2026-01-01T00:00:01Z','2026-01-01T00:00:04Z');
+     INSERT INTO chat_threads VALUES('a-sub','Subagent thread','m1',0,'ws-normal','a-normal','2026-01-01T00:00:01Z','2026-01-01T00:00:03Z');
+     INSERT INTO chat_threads VALUES('a-temp','Temp workspace thread','m1',0,'ws-temp',NULL,'2026-01-01T00:00:01Z','2026-01-01T00:00:02Z');`
   );
 
-  const result = await purgeRetiredAlmaCatalog(dbPath);
-  assert.equal(result.deletedSessions, 2);
-  assert.equal(result.deletedProjects, 1);
+  const panelHome = path.join(root, "panel");
+  const defaults = await loadAllAgentSessions(
+    buildSyncOptions({ panelHome, agentHomes: { almaHome } })
+  );
+  assert.deepEqual(
+    defaults.sessions.filter((s) => s.provider === "alma").map((s) => s.id),
+    ["a-normal"]
+  );
 
-  const almaLeft = await runSqliteJson(dbPath, "SELECT COUNT(*) AS c FROM sessions WHERE provider='alma';");
-  assert.equal(Number(almaLeft[0].c), 0);
-  const almaProject = await runSqliteJson(dbPath, "SELECT COUNT(*) AS c FROM projects WHERE project_id='proj-alma-only';");
-  assert.equal(Number(almaProject[0].c), 0);
-  const mixed = await runSqliteJson(dbPath, "SELECT COUNT(*) AS c FROM projects WHERE project_id='proj-mixed';");
-  assert.equal(Number(mixed[0].c), 1);
-  const codex = await listVisibleSessions(dbPath, 10);
-  assert.equal(codex.length, 1);
-  assert.equal(codex[0].provider, "codex");
-  const gtd = await runSqliteJson(dbPath, "SELECT COUNT(*) AS c FROM session_gtd WHERE provider='alma';");
-  assert.equal(Number(gtd[0].c), 0);
-  const sync = await runSqliteJson(dbPath, "SELECT COUNT(*) AS c FROM sync_state WHERE provider='alma';");
-  assert.equal(Number(sync[0].c), 0);
+  const withAll = await loadAllAgentSessions(
+    buildSyncOptions({
+      panelHome,
+      agentHomes: { almaHome },
+      sessionSync: {
+        showIncognitoAlma: true,
+        showSubagentAlma: true,
+        showTempWorkspaceAlma: true
+      }
+    })
+  );
+  assert.deepEqual(
+    withAll.sessions.filter((s) => s.provider === "alma").map((s) => s.id),
+    ["a-normal", "a-incog", "a-sub", "a-temp"]
+  );
 });
 
 test("JSONL title and session_info metadata timestamps do not override session body updatedAt", async () => {

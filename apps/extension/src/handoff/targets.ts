@@ -10,7 +10,8 @@ const HANDOFF_TARGET_LABEL_KEYS: Record<HandoffTargetProvider, string> = {
   opencode: "menu.handoff.targetOpenCode",
   pi: "menu.handoff.targetPi",
   prime: "menu.handoff.targetPrime",
-  omp: "menu.handoff.targetOmp"
+  omp: "menu.handoff.targetOmp",
+  alma: "menu.handoff.targetAlma"
 };
 
 interface HandoffTargetMeta {
@@ -31,7 +32,8 @@ const HANDOFF_TARGET_META: Record<HandoffTargetProvider, HandoffTargetMeta> = {
   opencode: { provider: "opencode", supportsAcp: true, supportsCli: true },
   pi: { provider: "pi", supportsAcp: true, supportsCli: true },
   prime: { provider: "prime", supportsAcp: true, supportsCli: true },
-  omp: { provider: "omp", supportsAcp: true, supportsCli: true }
+  omp: { provider: "omp", supportsAcp: true, supportsCli: true },
+  alma: { provider: "alma", supportsAcp: false, supportsCli: false }
 };
 
 export const CLI_HANDOFF_TARGETS: HandoffTargetProvider[] = [
@@ -42,10 +44,13 @@ export const CLI_HANDOFF_TARGETS: HandoffTargetProvider[] = [
   "opencode",
   "pi",
   "prime",
-  "omp"
+  "omp",
+  "alma"
 ];
 
 export const ACP_HANDOFF_TARGETS: AcpAgentProvider[] = ["codex", "claude", "grok", "opencode", "pi", "prime", "omp"];
+
+export const ACP_SOURCE_HANDOFF_TARGETS: HandoffTargetProvider[] = [...ACP_HANDOFF_TARGETS, "alma"];
 
 export function isAcpHandoffTarget(provider: HandoffTargetProvider): provider is AcpAgentProvider {
   return HANDOFF_TARGET_META[provider].supportsAcp;
@@ -55,6 +60,9 @@ export function resolveDeliveryChannelForSource(
   source: HandoffSource,
   target: HandoffTargetProvider
 ): HandoffDeliveryChannel {
+  if (target === "alma") {
+    return "alma";
+  }
   if (source.kind === "acp") {
     return isAcpHandoffTarget(target) ? "acp" : "clipboard";
   }

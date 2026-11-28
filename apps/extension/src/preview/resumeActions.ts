@@ -5,9 +5,10 @@ import { openClaudeCodePanelResumeFlow } from "../terminal/claudeCodePanel";
 import { isCodexIdePanelResumeAvailable, openCodexIdePanelResumeFlow } from "../terminal/codexIdePanel";
 import { openInGhostty } from "../terminal/ghosttyTerminal";
 import { getHerdrSessionTracker, openHerdrResume } from "../terminal/herdrTerminal";
+import { openAlmaThread } from "../terminal/almaApp";
 import { openCodexAppResumeTerminal, openResumeTerminal } from "../terminal/resumeTerminal";
 
-type ResumeTarget = "vscode" | "ghostty" | "herdr" | "codexApp" | "codexIdePanel" | "claudePanel";
+type ResumeTarget = "vscode" | "ghostty" | "herdr" | "codexApp" | "codexIdePanel" | "claudePanel" | "almaApp";
 
 interface ResumeTargetOption extends vscode.QuickPickItem {
   target: ResumeTarget;
@@ -63,10 +64,36 @@ export async function resumeSession(
     return;
   }
 
+  if (target === "almaApp") {
+    if (session.provider !== "alma") {
+      vscode.window.showWarningMessage(t("alma.resumeOnlyForAlma"));
+      return;
+    }
+
+    await openAlmaThread(session);
+    return;
+  }
+
   vscode.window.showWarningMessage(t("warning.unsupportedResumeTarget"));
 }
 
 export async function pickResumeTarget(session: AgentSession): Promise<ResumeTarget | undefined> {
+  if (session.provider === "alma") {
+    const picked = await vscode.window.showQuickPick<ResumeTargetOption>(
+      [
+        {
+          label: t("quickpick.resumeWithAlmaLabel"),
+          description: t("quickpick.resumeWithAlmaDescription"),
+          target: "almaApp"
+        }
+      ],
+      {
+        title: t("quickpick.resumeWithTitle"),
+        placeHolder: t("quickpick.resumeWithPlaceHolder")
+      }
+    );
+    return picked?.target;
+  }
   const tracker = getHerdrSessionTracker();
   const herdrMatch = tracker?.resolve(session);
   const herdrOption: ResumeTargetOption | undefined =

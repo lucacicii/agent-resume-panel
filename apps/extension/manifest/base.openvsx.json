@@ -83,6 +83,7 @@
     "onCommand:agentResume.newPiSession",
     "onCommand:agentResume.newPrimeSession",
     "onCommand:agentResume.newOmpSession",
+    "onCommand:agentResume.newAlmaSession",
     "onCommand:agentResume.newCodexAppSession",
     "onCommand:agentResume.favoriteProject",
     "onCommand:agentResume.unfavoriteProject",
@@ -105,7 +106,8 @@
     "onCommand:agentResume.handoffTo.opencode",
     "onCommand:agentResume.handoffTo.pi",
     "onCommand:agentResume.handoffTo.prime",
-    "onCommand:agentResume.handoffTo.omp"
+    "onCommand:agentResume.handoffTo.omp",
+    "onCommand:agentResume.handoffTo.alma"
   ],
   "main": "./out/extension.js",
   "scripts": {
@@ -193,6 +195,11 @@
           "type": "string",
           "default": "",
           "description": "Optional Cursor IDE User directory. Empty uses the platform default; only composer metadata is read."
+        },
+        "agentResume.almaHome": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Alma data directory containing chat_threads.db. Empty uses the platform default."
         },
         "agentResume.panelHome": {
           "type": "string",
@@ -504,6 +511,21 @@
           "default": false,
           "description": "Show Cursor IDE subagent composer headers."
         },
+        "agentResume.showIncognitoAlma": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show incognito Alma threads in the panel."
+        },
+        "agentResume.showSubagentAlma": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Alma subagent threads (threads with a parent thread) in the panel."
+        },
+        "agentResume.showTempWorkspaceAlma": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Alma threads in temporary workspaces."
+        },
         "agentResume.editorNewSessionProvider": {
           "type": "string",
           "enum": [
@@ -516,6 +538,7 @@
             "prime",
             "omp",
             "cursor",
+            "alma",
             "acp",
             "acp:codex",
             "acp:claude",
@@ -618,6 +641,7 @@
               "newPiSession",
               "newPrimeSession",
               "newOmpSession",
+              "newAlmaSession",
               "newCodexAppSession",
               "openProjectNote",
               "deleteProjectNote"
@@ -646,6 +670,7 @@
               "newPiSession",
               "newPrimeSession",
               "newOmpSession",
+              "newAlmaSession",
               "newCodexAppSession",
               "openProjectNote",
               "deleteProjectNote"
@@ -664,6 +689,7 @@
             "newPiSession",
             "newPrimeSession",
             "newOmpSession",
+            "newAlmaSession",
             "newCodexAppSession",
             "openProjectNote",
             "deleteProjectNote"
@@ -921,6 +947,11 @@
       {
         "command": "agentResume.handoffTo.omp",
         "title": "Hand Off to OMP",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.alma",
+        "title": "Hand Off to Alma",
         "category": "Agent Resume"
       },
       {
@@ -2876,6 +2907,11 @@
       {
         "command": "agentResume.newPiSession",
         "title": "New Pi Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newAlmaSession",
+        "title": "New Alma Session",
         "category": "Agent Resume"
       },
       {

@@ -85,6 +85,7 @@ export function syncUnifiedSearchIndexNow(): Promise<SearchIndexSyncStats> {
     panelHome: homes.panelHome,
     antigravityHome: homes.antigravityHome,
     opencodeHome: homes.opencodeHome,
+    almaHome: homes.almaHome,
     outputLanguage: getLlmOutputLanguage()
   }).finally(() => {
     activeSyncPromise = undefined;
@@ -234,7 +235,8 @@ async function queryMetadataFallback(
     "prime",
     "omp",
     "cursor",
-    "cursor-ide"
+    "cursor-ide",
+    "alma"
   ] as const;
 
   const [sessionsPage, acpPage, allNotes] = await Promise.all([

@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { escapeSqlLiteral, runSqliteJson } from "../../history/sqlite";
+import { escapeSqlLiteral, runSqliteReadOnlyJson } from "../../history/sqlite";
 import { isNodeError } from "../../history/jsonl";
 import { TranscriptRefs } from "./types";
 
@@ -52,6 +52,30 @@ async function readJsonlRefs(paths: string[]): Promise<TranscriptExportFile[]> {
 }
 
 async function readSqliteRef(refs: Extract<TranscriptRefs, { kind: "sqlite" }>): Promise<TranscriptExportFile[]> {
+  if (refs.dialect === "alma") {
+    const threadSql = `
+      SELECT id, title, model, workspace_id, parent_thread_id, is_incognito, created_at, updated_at
+      FROM chat_threads
+      WHERE id = '${escapeSqlLiteral(refs.sessionId)}'
+      LIMIT 1
+    `;
+    const messageSql = `
+      SELECT id, thread_id, message, timestamp, created_at
+      FROM chat_messages
+      WHERE thread_id = '${escapeSqlLiteral(refs.sessionId)}'
+      ORDER BY created_at ASC, timestamp ASC
+    `;
+    const threads = await runSqliteReadOnlyJson(refs.dbPath, threadSql);
+    const messages = await runSqliteReadOnlyJson(refs.dbPath, messageSql);
+    return [
+      {
+        sourcePath: refs.dbPath,
+        fileName: `alma-thread-${refs.sessionId}.json`,
+        content: JSON.stringify({ thread: threads[0] ?? null, messages }, null, 2)
+      }
+    ];
+  }
+
   const messageSql = `
     select id, time_created, data
     from message
@@ -64,8 +88,8 @@ async function readSqliteRef(refs: Extract<TranscriptRefs, { kind: "sqlite" }>):
     where session_id = '${escapeSqlLiteral(refs.sessionId)}'
     order by time_created asc
   `;
-  const messages = await runSqliteJson(refs.dbPath, messageSql);
-  const parts = await runSqliteJson(refs.dbPath, partSql);
+  const messages = await runSqliteReadOnlyJson(refs.dbPath, messageSql);
+  const parts = await runSqliteReadOnlyJson(refs.dbPath, partSql);
   const payload = { messages, parts };
   return [
     {

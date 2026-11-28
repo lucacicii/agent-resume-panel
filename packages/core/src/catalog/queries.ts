@@ -5,6 +5,7 @@ import { isGtdStatus, type GtdStatus } from "../gtd/types";
 import { normalizeProjectPath, toPortableKey, expandHome } from "../pathUtils";
 import {
   extractAgyConversationText,
+  extractAlmaConversationTextMap,
   extractJsonlFilesConversationText,
   extractOpenCodeConversationTextMap,
   loadAgyHistoryFallbackMap,
@@ -231,7 +232,10 @@ export async function readSessionTranscriptText(options: {
   }
 
   if (refs?.kind === "sqlite" && refs.dbPath) {
-    const map = await extractOpenCodeConversationTextMap(refs.dbPath, [options.sessionId], maxChars);
+    const isAlma = refs.dialect === "alma" || options.provider === "alma";
+    const map = isAlma
+      ? await extractAlmaConversationTextMap(refs.dbPath, [options.sessionId], maxChars)
+      : await extractOpenCodeConversationTextMap(refs.dbPath, [options.sessionId], maxChars);
     return map.get(options.sessionId) ?? "";
   }
 

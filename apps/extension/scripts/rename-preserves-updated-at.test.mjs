@@ -14,6 +14,7 @@ const { renameSession } = require("../out/history/rename/index.js");
 const {
   catalogDbPath,
   DEFAULT_AGENT_HOMES,
+  defaultAlmaHome,
   defaultCursorIdeUserDataHome,
   ensureExtensionCatalogSchema,
   insertAcpSessionRecord,
@@ -47,6 +48,7 @@ function buildSyncOptions(panelHome, homes) {
     ompHome: homes.ompHome,
     cursorHome: homes.cursorHome || DEFAULT_AGENT_HOMES.cursorHome,
     cursorIdeUserDataHome: homes.cursorIdeUserDataHome || defaultCursorIdeUserDataHome(),
+    almaHome: homes.almaHome || defaultAlmaHome(),
     configuredAgentHomes: homes,
     maxItems: 1000,
     stalePolicy: "off",
@@ -55,7 +57,10 @@ function buildSyncOptions(panelHome, homes) {
     showSubagentCodex: false,
     showSubagentGrok: false,
     showArchivedCursorIde: false,
-    showSubagentCursorIde: false
+    showSubagentCursorIde: false,
+    showIncognitoAlma: false,
+    showSubagentAlma: false,
+    showTempWorkspaceAlma: false
   };
 }
 
@@ -74,9 +79,11 @@ test("renaming sessions does not change updatedAt, recent sort order, or per-ses
       primeHome: path.join(root, "prime"),
       ompHome: path.join(root, "omp"),
       cursorHome: path.join(root, "cursor"),
-      cursorIdeUserDataHome: path.join(root, "cursor-ide-user")
+      cursorIdeUserDataHome: path.join(root, "cursor-ide-user"),
+      almaHome: path.join(root, "alma")
     };
     await Promise.all(Object.values(homes).map((dir) => mkdir(dir, { recursive: true })));
+    process.env.ALMA_API_URL = "http://127.0.0.1:1";
 
     // Older timestamps well in the past so any Date.now() leak jumps to top.
     const tCodex = 1_700_000_010_000;
@@ -86,6 +93,7 @@ test("renaming sessions does not change updatedAt, recent sort order, or per-ses
     const tOpenCode = 1_700_000_050_000;
     const tPi = 1_700_000_060_000;
     const tOmp = 1_700_000_070_000;
+    const tAlma = 1_700_000_075_000;
     const tChat = 1_700_000_080_000;
     const tNewest = 1_700_000_090_000;
 
@@ -133,6 +141,18 @@ test("renaming sessions does not change updatedAt, recent sort order, or per-ses
       opencodeDb,
       `CREATE TABLE session(id TEXT,directory TEXT,title TEXT,time_updated INTEGER,time_archived INTEGER,model TEXT);
        INSERT INTO session VALUES('opencode-1','/tmp/opencode','OpenCode old',${tOpenCode},NULL,NULL);`
+    );
+
+    // Alma
+    const almaDb = path.join(homes.almaHome, "chat_threads.db");
+    const almaIso = new Date(tAlma).toISOString();
+    sqlite(
+      almaDb,
+      `CREATE TABLE workspaces(id TEXT PRIMARY KEY,path TEXT NOT NULL,name TEXT NOT NULL,is_temporary INTEGER NOT NULL DEFAULT 0);
+       CREATE TABLE chat_threads(id TEXT PRIMARY KEY,title TEXT NOT NULL,model TEXT,is_incognito INTEGER DEFAULT 0,workspace_id TEXT,parent_thread_id TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+       CREATE TABLE chat_messages(id TEXT PRIMARY KEY,thread_id TEXT NOT NULL,message TEXT NOT NULL,timestamp TEXT NOT NULL,created_at TEXT NOT NULL);
+       INSERT INTO workspaces VALUES('ws-1','/tmp/alma','alma',0);
+       INSERT INTO chat_threads VALUES('alma-1','Alma old','magpie:test',0,'ws-1',NULL,'${almaIso}','${almaIso}');`
     );
 
     // Pi & OMP
@@ -200,6 +220,7 @@ test("renaming sessions does not change updatedAt, recent sort order, or per-ses
       { provider: "opencode", id: "opencode-1", title: "OpenCode old", projectPath: "/tmp/opencode", updatedAt: tOpenCode },
       { provider: "pi", id: "pi-1", title: "Pi prompt", projectPath: "/tmp/pi", updatedAt: tPi },
       { provider: "omp", id: "omp-1", title: "OMP old", projectPath: "/tmp/omp", updatedAt: tOmp },
+      { provider: "alma", id: "alma-1", title: "Alma old", projectPath: "/tmp/alma", updatedAt: tAlma },
       { provider: "chat", id: "chat-1", title: "ACP old", projectPath: "/tmp/acp", updatedAt: tChat }
     ];
 

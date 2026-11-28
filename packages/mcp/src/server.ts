@@ -43,6 +43,7 @@ const PROVIDER_VALUES = [
   "omp",
   "cursor",
   "cursor-ide",
+  "alma",
   "chat"
 ] as const satisfies readonly AgentProvider[];
 

@@ -29,6 +29,10 @@ export function agentUriIconPath(
     };
   }
 
+  if (effective === "alma") {
+    return vscode.Uri.joinPath(extensionUri, "resources", "agents", "alma.png");
+  }
+
   if (effective === "cursor" || effective === "cursor-ide") {
     return {
       light: vscode.Uri.joinPath(extensionUri, "resources", "agents", "light", "cursor.svg"),
@@ -75,6 +79,8 @@ export function fallbackProviderCodicon(provider: AgentProvider): string {
     case "cursor":
     case "cursor-ide":
       return "window";
+    case "alma":
+      return "comment-discussion";
     default:
       return "comment-discussion";
   }
@@ -119,6 +125,9 @@ export function buildWebviewAgentIconMap(
   };
   map.cursor = cursorPair;
   map["cursor-ide"] = cursorPair;
+  map.alma = webview
+    .asWebviewUri(vscode.Uri.joinPath(extensionUri, "resources", "agents", "alma.png"))
+    .toString();
 
   return map;
 }

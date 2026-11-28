@@ -23,6 +23,7 @@ test("MCP config writers register, detect, and remove across all supported agent
     fs.mkdirSync(path.join(tmpHome, ".pi", "agent"), { recursive: true });
     fs.mkdirSync(path.join(tmpHome, ".prime", "agent"), { recursive: true });
     fs.mkdirSync(path.join(tmpHome, ".omp", "agent"), { recursive: true });
+    fs.mkdirSync(path.join(tmpHome, ".config", "alma"), { recursive: true });
 
     fs.writeFileSync(
       path.join(tmpHome, ".claude.json"),
@@ -51,7 +52,7 @@ test("MCP config writers register, detect, and remove across all supported agent
       xdgConfigHome: path.join(tmpHome, ".config")
     };
     let clients = detectMcpClients(env);
-    for (const id of ["claude", "codex", "antigravity", "cursor", "opencode", "grok", "pi", "prime", "omp"]) {
+    for (const id of ["claude", "codex", "antigravity", "cursor", "opencode", "grok", "pi", "prime", "omp", "alma"]) {
       const client = clients.find((c) => c.id === id);
       assert.ok(client, `expected client ${id}`);
       assert.equal(client.installed, true, `${id} should be detected`);
@@ -64,13 +65,13 @@ test("MCP config writers register, detect, and remove across all supported agent
       env: { AGENT_RESUME_PANEL_HOME: "/custom/panel" }
     };
 
-    for (const id of ["claude", "codex", "antigravity", "opencode", "grok", "pi", "prime", "omp", "vscode"]) {
+    for (const id of ["claude", "codex", "antigravity", "opencode", "grok", "pi", "prime", "omp", "alma", "vscode"]) {
       const client = clients.find((c) => c.id === id);
       upsertMcpClientConfig(client, spec);
     }
 
     clients = detectMcpClients(env);
-    for (const id of ["claude", "codex", "antigravity", "opencode", "grok", "pi", "prime", "omp", "vscode"]) {
+    for (const id of ["claude", "codex", "antigravity", "opencode", "grok", "pi", "prime", "omp", "alma", "vscode"]) {
       assert.equal(clients.find((c) => c.id === id)?.registered, true, `${id} should be registered`);
     }
 
@@ -119,13 +120,15 @@ test("MCP config writers register, detect, and remove across all supported agent
     assert.deepEqual(openCodeSpec, spec);
     const codexSpec = readRegisteredMcpSpec(clients.find((c) => c.id === "codex"));
     assert.deepEqual(codexSpec, spec);
+    const almaSpec = readRegisteredMcpSpec(clients.find((c) => c.id === "alma"));
+    assert.deepEqual(almaSpec, spec);
 
     // Verify clean removal
-    for (const id of ["claude", "codex", "antigravity", "opencode", "grok", "pi", "prime", "omp", "vscode"]) {
+    for (const id of ["claude", "codex", "antigravity", "opencode", "grok", "pi", "prime", "omp", "alma", "vscode"]) {
       assert.equal(removeMcpClientConfig(clients.find((c) => c.id === id)), true);
     }
     clients = detectMcpClients(env);
-    for (const id of ["claude", "codex", "antigravity", "opencode", "grok", "pi", "prime", "omp", "vscode"]) {
+    for (const id of ["claude", "codex", "antigravity", "opencode", "grok", "pi", "prime", "omp", "alma", "vscode"]) {
       assert.equal(clients.find((c) => c.id === id)?.registered, false, `${id} should be unregistered`);
     }
   } finally {

@@ -15,6 +15,7 @@ type ProjectMenuAction =
   | "newPiSession"
   | "newPrimeSession"
   | "newOmpSession"
+  | "newAlmaSession"
   | "newCodexAppSession"
   | "openProjectNote"
   | "deleteProjectNote";
@@ -33,6 +34,7 @@ const ALL_PROJECT_MENU_ACTIONS: ProjectMenuAction[] = [
   "newPiSession",
   "newPrimeSession",
   "newOmpSession",
+  "newAlmaSession",
   "newCodexAppSession",
   "openProjectNote",
   "deleteProjectNote"
@@ -58,6 +60,7 @@ function getProjectMenuActionLabels(): Record<ProjectMenuAction, string> {
     newPiSession: t("menu.project.newPiSession"),
     newPrimeSession: t("menu.project.newPrimeSession"),
     newOmpSession: t("menu.project.newOmpSession"),
+    newAlmaSession: t("menu.project.newAlmaSession"),
     newCodexAppSession: t("menu.project.newCodexAppSession"),
     openProjectNote: t("menu.project.openNote"),
     deleteProjectNote: t("menu.project.deleteNote")

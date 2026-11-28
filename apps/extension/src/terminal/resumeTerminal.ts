@@ -8,6 +8,7 @@ import {
   shouldResumeCodexInIdePanel
 } from "./codexIdePanel";
 import { buildNewSessionCommand, buildResumeCommand } from "./commandBuilder";
+import { openAlmaThread, openNewAlmaSession } from "./almaApp";
 import { openCodexAppSession } from "./codexApp";
 import {
   launchCommandInHerdr,
@@ -24,6 +25,10 @@ let closeTerminalListener: vscode.Disposable | undefined;
 export function openSessionResume(session: AgentSession, context?: vscode.ExtensionContext): void {
   if (session.provider === "cursor-ide") {
     vscode.window.showInformationMessage("Cursor IDE chat resume is unavailable; open this project in Cursor to continue.");
+    return;
+  }
+  if (session.provider === "alma") {
+    void openAlmaThread(session);
     return;
   }
   if (shouldAutoResumeInHerdr(session)) {
@@ -78,6 +83,10 @@ export function openCodexAppResumeTerminal(session: AgentSession, context?: vsco
 }
 
 export function openNewSessionTerminal(provider: AgentProvider, projectPath: string, context?: vscode.ExtensionContext): void {
+  if (provider === "alma") {
+    void openNewAlmaSession(projectPath);
+    return;
+  }
   const command = buildNewSessionCommand(provider, projectPath);
   if (shouldStartNewSessionInHerdr(projectPath)) {
     void launchCommandInHerdr({
@@ -191,6 +200,9 @@ function providerLabel(provider: AgentSession["provider"]): string {
   }
   if (provider === "cursor-ide") {
     return "Cursor IDE";
+  }
+  if (provider === "alma") {
+    return "Alma";
   }
   return t("terminal.providerLabelClaude");
 }

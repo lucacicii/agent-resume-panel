@@ -1,5 +1,6 @@
 import { AgentSession } from "../types";
 import { renameAgySession } from "./agy";
+import { renameAlmaSession } from "./alma";
 import { renameClaudeSession } from "./claude";
 import { renameCodexSession } from "./codex";
 import { renameGrokSession } from "./grok";
@@ -19,6 +20,7 @@ export interface RenameHomes {
   ompHome: string;
   cursorHome: string;
   cursorIdeUserDataHome: string;
+  almaHome: string;
 }
 
 function cleanTitle(input: string): string {
@@ -56,6 +58,8 @@ export async function renameSession(
     case "cursor-ide":
       // Cursor's local session records are catalog-only for title changes.
       return;
+    case "alma":
+      return renameAlmaSession(homes.almaHome, session, title);
     case "chat":
       return renameAcpSession(homes.panelHome, session, title);
     default:

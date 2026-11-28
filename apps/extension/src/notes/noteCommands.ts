@@ -765,6 +765,7 @@ function isAgentSession(value: unknown): value is AgentSession {
         value.provider === "omp" ||
         value.provider === "cursor" ||
         value.provider === "cursor-ide" ||
+        value.provider === "alma" ||
         value.provider === "chat") &&
       "id" in value
   );

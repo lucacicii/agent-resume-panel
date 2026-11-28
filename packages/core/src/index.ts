@@ -94,8 +94,7 @@ export {
   setSessionSummaryInCatalog,
   hideSessionsInCatalog,
   unhideAllSessionsInCatalog,
-  unhideSessionInCatalog,
-  purgeRetiredAlmaCatalog
+  unhideSessionInCatalog
 } from "./catalog/mutations";
 export {
   upsertAcpSessionInCatalog,
@@ -163,6 +162,7 @@ export type { PreviewHomes, PreviewMessage, SessionPreviewResult } from "./trans
 export {
   DEFAULT_AGENT_HOMES,
   defaultAgentHomeValue,
+  defaultAlmaHome,
   defaultCursorIdeUserDataHome,
   agentHomeDiffersFromDefault,
   sanitizeAgentHomes

@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { execFileSync } from "node:child_process";
 import {
   ensureExtensionCatalogSchema,
   queryUnifiedSearch,
@@ -96,12 +97,25 @@ test("unified search indexes sessions, ACP, and notes incrementally and supports
       "utf8"
     );
 
+    const almaDbPath = path.join(panelHome, "alma", "chat_threads.db");
+    await fs.mkdir(path.dirname(almaDbPath), { recursive: true });
+    execFileSync("sqlite3", [
+      almaDbPath,
+      `CREATE TABLE chat_messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, message TEXT NOT NULL, timestamp TEXT NOT NULL, created_at TEXT NOT NULL);
+       INSERT INTO chat_messages VALUES ('am-1', 'alma-1', '${JSON.stringify({
+         role: "user",
+         parts: [{ type: "text", text: "Investigate alma-fts5-marker in Alma SQLite" }]
+       }).replaceAll("'", "''")}', '2026-11-28T00:00:01Z', '2026-11-28T00:00:01Z');`
+    ]);
+
     const now = Date.now();
     await runSqliteTransaction(catalogDb, [
       `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, hidden, transcript_kind, transcript_refs, session_summary)
        VALUES ('claude', 's1', 'Query Tuning', '${projectA}', ${now}, 0, 'jsonl', '${JSON.stringify({ kind: "jsonl", paths: [claudeFile] })}', 'Database speed up')`,
       `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, hidden, transcript_kind, transcript_refs)
        VALUES ('agy', 'agy-1', 'Agy Investigation', '${projectB}', ${now - 1000}, 0, 'unavailable', '{}')`,
+      `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, hidden, transcript_kind, transcript_refs)
+       VALUES ('alma', 'alma-1', 'Alma SQLite Thread', '${projectB}', ${now - 1500}, 0, 'sqlite', '${JSON.stringify({ kind: "sqlite", dbPath: almaDbPath, dialect: "alma", sessionId: "alma-1" })}')`,
       `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, hidden, acp_provider, transcript_kind, transcript_refs)
        VALUES ('chat', 'acp-1', 'ACP UI Layout', '${projectA}', ${now - 2000}, 0, 'claude', 'acp', '${JSON.stringify({ kind: "acp", threadPath: acpFile, sessionsIndexPath: path.join(panelHome, "acp", "sessions.jsonl") })}')`,
       `INSERT INTO session_gtd (provider, agent_session_id, status, updated_at_ms)
@@ -117,12 +131,12 @@ test("unified search indexes sessions, ACP, and notes incrementally and supports
       panelHome,
       antigravityHome: agyHome
     });
-    assert.equal(sync1.indexedSessions, 2);
+    assert.equal(sync1.indexedSessions, 3);
     assert.equal(sync1.indexedAcp, 1);
     assert.equal(sync1.indexedNotes, 1);
-    assert.equal(sync1.updatedDocs, 4);
+    assert.equal(sync1.updatedDocs, 5);
 
-    // 3. Second sync with no changes should skip all 4 docs
+    // 3. Second sync with no changes should skip all 5 docs
     const sync2 = await syncSearchIndex({
       catalogDbPath: catalogDb,
       indexDbPath: indexDb,
@@ -130,7 +144,7 @@ test("unified search indexes sessions, ACP, and notes incrementally and supports
       antigravityHome: agyHome
     });
     assert.equal(sync2.updatedDocs, 0);
-    assert.equal(sync2.skippedDocs, 4);
+    assert.equal(sync2.skippedDocs, 5);
 
     // 4. FTS5 trigram body search (Chinese >= 3 chars)
     const cnRes = await queryUnifiedSearch({
@@ -157,13 +171,20 @@ test("unified search indexes sessions, ACP, and notes incrementally and supports
     assert.equal(shortRes.notes.total, 1);
     assert.equal(shortRes.notes.items[0].id, "note-1");
 
-    // 7. Agy brain log extraction worked
+    // 7. Agy brain log & Alma SQLite extraction worked
     const agyRes = await queryUnifiedSearch({
       indexDbPath: indexDb,
       query: "secret-agy-token"
     });
     assert.equal(agyRes.sessions.total, 1);
     assert.equal(agyRes.sessions.items[0].id, "agy-1");
+
+    const almaRes = await queryUnifiedSearch({
+      indexDbPath: indexDb,
+      query: "alma-fts5-marker"
+    });
+    assert.equal(almaRes.sessions.total, 1);
+    assert.equal(almaRes.sessions.items[0].id, "alma-1");
 
     // 8. Fuzzy subsequence match on title
     const fuzzyRes = await queryUnifiedSearch({

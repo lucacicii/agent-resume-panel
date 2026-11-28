@@ -911,6 +911,9 @@ export function providerLabel(provider: AgentSession["provider"]): string {
   if (provider === "cursor-ide") {
     return "cursor ide";
   }
+  if (provider === "alma") {
+    return "alma";
+  }
   return "claude";
 }
 

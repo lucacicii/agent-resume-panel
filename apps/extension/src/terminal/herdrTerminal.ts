@@ -234,7 +234,7 @@ export async function openHerdrResume(
   session: AgentSession,
   _context?: vscode.ExtensionContext
 ): Promise<boolean> {
-  if (session.provider === "cursor-ide" || session.provider === "chat") {
+  if (session.provider === "cursor-ide" || session.provider === "chat" || session.provider === "alma") {
     vscode.window.showWarningMessage(t("warning.herdrUnsupportedSession"));
     return false;
   }

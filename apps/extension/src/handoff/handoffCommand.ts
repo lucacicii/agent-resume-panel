@@ -76,9 +76,11 @@ export async function executeHandoffCommand(
         const channelLabel =
           result.delivery.channel === "acp"
             ? t("menu.handoff.channelAcp")
-            : result.delivery.channel === "cli"
-              ? t("menu.handoff.channelCli")
-              : t("menu.handoff.channelClipboard");
+            : result.delivery.channel === "alma"
+              ? t("menu.handoff.channelAlma")
+              : result.delivery.channel === "cli"
+                ? t("menu.handoff.channelCli")
+                : t("menu.handoff.channelClipboard");
 
         vscode.window.showInformationMessage(t("notification.handoffSuccess", targetLabel, channelLabel));
       }

@@ -9,6 +9,7 @@ export type AgentProvider =
   | "omp"
   | "cursor"
   | "cursor-ide"
+  | "alma"
   | "chat";
 
 /** Underlying ACP agent when provider is "chat". */

@@ -1,6 +1,7 @@
 import { AgentSession } from "../types";
 import { RenameHomes } from "../rename";
 import { previewAgySession } from "./agy";
+import { previewAlmaSession } from "./alma";
 import { previewClaudeSession } from "./claude";
 import { previewCodexSession } from "./codex";
 import { previewCursorSession } from "./cursor";
@@ -34,6 +35,8 @@ export async function loadSessionPreview(
       return previewOmpSession(session, homes);
     case "cursor":
       return previewCursorSession(session, homes);
+    case "alma":
+      return previewAlmaSession(session, homes);
     default:
       throw new Error(`Preview is not supported for provider ${session.provider}.`);
   }

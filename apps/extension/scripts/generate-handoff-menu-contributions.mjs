@@ -14,7 +14,8 @@ const CLI_TARGETS = [
   { provider: "opencode", label: "OpenCode" },
   { provider: "pi", label: "Pi" },
   { provider: "prime", label: "Prime Agent" },
-  { provider: "omp", label: "OMP" }
+  { provider: "omp", label: "OMP" },
+  { provider: "alma", label: "Alma" }
 ];
 
 const ACP_TARGETS = [
@@ -24,11 +25,12 @@ const ACP_TARGETS = [
   { provider: "opencode", label: "OpenCode" },
   { provider: "pi", label: "Pi" },
   { provider: "prime", label: "Prime Agent" },
-  { provider: "omp", label: "OMP" }
+  { provider: "omp", label: "OMP" },
+  { provider: "alma", label: "Alma" }
 ];
 
 const SESSION_SOURCE_WHEN =
-  "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp)/";
+  "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp|alma)/";
 
 const ACP_SOURCE_WHEN = "view == agentResume.acpChats && viewItem =~ /agentResume\\.acpChat\\./";
 

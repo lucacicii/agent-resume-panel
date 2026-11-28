@@ -23,6 +23,7 @@ const SUPPORTED_PROVIDERS = new Set<AgentProvider>([
   "pi",
   "prime",
   "omp",
+  "alma",
   "chat"
 ]);
 

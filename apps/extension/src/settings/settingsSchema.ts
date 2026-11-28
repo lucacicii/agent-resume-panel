@@ -79,6 +79,7 @@ export function getSettingSections(): SettingSection[] {
             "prime",
             "omp",
             "cursor",
+            "alma",
             "acp",
             "acp:codex",
             "acp:claude",
@@ -99,6 +100,7 @@ export function getSettingSections(): SettingSection[] {
             prime: t("settings.enum.editorNewSessionProviderPrime"),
             omp: t("settings.enum.editorNewSessionProviderOmp"),
             cursor: "Cursor CLI",
+            alma: t("settings.enum.editorNewSessionProviderAlma"),
             acp: t("settings.enum.editorNewSessionProviderAcp"),
             "acp:codex": "ACP · Codex",
             "acp:claude": "ACP · Claude",
@@ -232,6 +234,13 @@ export function getSettingSections(): SettingSection[] {
           description: "Cursor IDE User directory containing composer headers. IDE chat bodies are not imported.",
           type: "string",
           default: ""
+        },
+        {
+          key: "almaHome",
+          label: t("settings.fieldAlmaHomeLabel"),
+          description: t("settings.fieldAlmaHomeDescription"),
+          type: "string",
+          default: ""
         }
       ]
     },
@@ -278,6 +287,27 @@ export function getSettingSections(): SettingSection[] {
           key: "showSubagentCursorIde",
           label: "Show Cursor IDE subagent chats",
           description: "Show Cursor IDE subagent composer headers.",
+          type: "boolean",
+          default: false
+        },
+        {
+          key: "showIncognitoAlma",
+          label: t("settings.fieldShowIncognitoAlmaLabel"),
+          description: t("settings.fieldShowIncognitoAlmaDescription"),
+          type: "boolean",
+          default: false
+        },
+        {
+          key: "showSubagentAlma",
+          label: t("settings.fieldShowSubagentAlmaLabel"),
+          description: t("settings.fieldShowSubagentAlmaDescription"),
+          type: "boolean",
+          default: false
+        },
+        {
+          key: "showTempWorkspaceAlma",
+          label: t("settings.fieldShowTempWorkspaceAlmaLabel"),
+          description: t("settings.fieldShowTempWorkspaceAlmaDescription"),
           type: "boolean",
           default: false
         }

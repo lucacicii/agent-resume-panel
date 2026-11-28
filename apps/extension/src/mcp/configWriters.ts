@@ -12,6 +12,7 @@ export type McpClientId =
   | "pi"
   | "prime"
   | "omp"
+  | "alma"
   | "vscode"
   | "gemini";
 
@@ -159,6 +160,13 @@ export function getMcpClientDefinitions(env: McpDetectEnvironment = {}): McpClie
       label: "OMP",
       configPath: path.join(homeDir, ".omp", "agent", "mcp.json"),
       detectPaths: [path.join(homeDir, ".omp", "agent")],
+      format: "json-mcpServers"
+    },
+    {
+      id: "alma",
+      label: "Alma",
+      configPath: path.join(homeDir, ".config", "alma", "mcp.json"),
+      detectPaths: [path.join(homeDir, ".config", "alma")],
       format: "json-mcpServers"
     },
     {

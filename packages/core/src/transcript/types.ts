@@ -26,6 +26,7 @@ export interface PreviewHomes {
   ompHome: string;
   cursorHome: string;
   cursorIdeUserDataHome: string;
+  almaHome: string;
 }
 
 export const MAX_PREVIEW_MESSAGES = 100;

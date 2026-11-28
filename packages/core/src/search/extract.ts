@@ -17,6 +17,7 @@ const METADATA_BLOCK_RE =
 
 export interface ParsedTranscriptRefs {
   kind: "jsonl" | "sqlite" | "acp" | "proxy" | "unavailable";
+  dialect?: "opencode" | "alma";
   paths?: string[];
   dbPath?: string;
   sessionId?: string;
@@ -348,6 +349,65 @@ export async function extractOpenCodeConversationTextMap(
       const lenObj = sessionLen.get(msg.session_id) ?? { value: 0 };
       sessionChunks.set(msg.session_id, chunks);
       sessionLen.set(msg.session_id, lenObj);
+      appendSegment(chunks, lenObj, msgText, maxChars);
+    }
+
+    for (const [sid, chunks] of sessionChunks.entries()) {
+      out.set(sid, chunks.join("\n"));
+    }
+  }
+
+  return out;
+}
+
+export async function extractAlmaConversationTextMap(
+  dbPath: string,
+  sessionIds: string[],
+  maxChars = DEFAULT_MAX_BODY_CHARS
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!sessionIds.length) {
+    return out;
+  }
+
+  const CHUNK = 80;
+  for (let i = 0; i < sessionIds.length; i += CHUNK) {
+    const slice = sessionIds.slice(i, i + CHUNK);
+    const idList = slice.map((id) => `'${escapeSqlLiteral(id)}'`).join(",");
+    let rows: Array<{ thread_id: string; message: string }>;
+    try {
+      rows = await runSqliteReadOnlyJson<{ thread_id: string; message: string }>(
+        dbPath,
+        `SELECT thread_id, message FROM chat_messages WHERE thread_id IN (${idList}) ORDER BY created_at ASC, timestamp ASC;`
+      );
+    } catch {
+      continue;
+    }
+
+    const sessionChunks = new Map<string, string[]>();
+    const sessionLen = new Map<string, { value: number }>();
+    for (const row of rows) {
+      let payload: { role?: string; parts?: unknown; content?: unknown };
+      try {
+        payload = JSON.parse(row.message) as { role?: string; parts?: unknown; content?: unknown };
+      } catch {
+        continue;
+      }
+      if (!isUserOrAssistantRole(payload.role)) {
+        continue;
+      }
+      const msgText = (
+        extractTextFromContent(payload.parts) ||
+        extractTextFromContent(payload.content) ||
+        (typeof payload.content === "string" ? payload.content.trim() : "")
+      ).trim();
+      if (!msgText) {
+        continue;
+      }
+      const chunks = sessionChunks.get(row.thread_id) ?? [];
+      const lenObj = sessionLen.get(row.thread_id) ?? { value: 0 };
+      sessionChunks.set(row.thread_id, chunks);
+      sessionLen.set(row.thread_id, lenObj);
       appendSegment(chunks, lenObj, msgText, maxChars);
     }
 

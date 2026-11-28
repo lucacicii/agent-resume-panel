@@ -11,6 +11,7 @@ import {
 import {
   DEFAULT_MAX_BODY_CHARS,
   extractAgyConversationText,
+  extractAlmaConversationTextMap,
   extractJsonlFilesConversationText,
   extractNoteBodyText,
   extractOpenCodeConversationTextMap,
@@ -104,10 +105,14 @@ async function performSyncSearchIndex(
   let indexedAcp = 0;
   let indexedNotes = 0;
 
-  // Group dirty opencode sessions so we query opencode.db in one batched pass.
-  const dirtyOpenCodeByDb = new Map<
+  // Group dirty SQLite sessions so we query each external DB in one batched pass.
+  const dirtySqliteByDb = new Map<
     string,
-    Array<{ row: CatalogSessionSyncRow; docKey: string; sig: string }>
+    {
+      dialect: "opencode" | "alma";
+      dbPath: string;
+      entries: Array<{ row: CatalogSessionSyncRow; docKey: string; sig: string }>;
+    }
   >();
   let agyHistoryFallback: Map<string, string> | undefined;
 
@@ -171,9 +176,11 @@ async function performSyncSearchIndex(
     }
 
     if (refs?.kind === "sqlite" && refs.dbPath) {
-      const list = dirtyOpenCodeByDb.get(refs.dbPath) ?? [];
-      list.push({ row, docKey, sig: fullSig });
-      dirtyOpenCodeByDb.set(refs.dbPath, list);
+      const dialect = refs.dialect === "alma" || row.provider === "alma" ? "alma" : "opencode";
+      const mapKey = `${dialect}\0${refs.dbPath}`;
+      const bucket = dirtySqliteByDb.get(mapKey) ?? { dialect, dbPath: refs.dbPath, entries: [] };
+      bucket.entries.push({ row, docKey, sig: fullSig });
+      dirtySqliteByDb.set(mapKey, bucket);
       return;
     }
 
@@ -215,10 +222,13 @@ async function performSyncSearchIndex(
     });
   });
 
-  // Batch extract dirty OpenCode sessions
-  for (const [opencodeDbPath, entries] of dirtyOpenCodeByDb.entries()) {
+  // Batch extract dirty SQLite sessions (OpenCode & Alma)
+  for (const { dialect, dbPath, entries } of dirtySqliteByDb.values()) {
     const ids = entries.map((e) => e.row.agent_session_id);
-    const bodyMap = await extractOpenCodeConversationTextMap(opencodeDbPath, ids, maxBodyChars);
+    const bodyMap =
+      dialect === "alma"
+        ? await extractAlmaConversationTextMap(dbPath, ids, maxBodyChars)
+        : await extractOpenCodeConversationTextMap(dbPath, ids, maxBodyChars);
     for (const { row, docKey, sig } of entries) {
       const displayTitle = (row.user_title?.trim() || row.title || row.agent_session_id).trim();
       pendingUpserts.push({

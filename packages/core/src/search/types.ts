@@ -78,6 +78,7 @@ export interface SyncSearchIndexOptions {
   panelHome: string;
   antigravityHome: string;
   opencodeHome?: string;
+  almaHome?: string;
   outputLanguage?: string;
   /** Optional cap for body text stored per document (chars). Default 512_000. */
   maxBodyChars?: number;

@@ -21,7 +21,7 @@ export {
   summaryLanguagesMatch
 } from "./i18n";
 export type { UiLocale, UiLanguagePreference } from "./i18n";
-export { sanitizeAgentHomes } from "./transcript/homes";
+export { defaultAlmaHome, sanitizeAgentHomes } from "./transcript/homes";
 export { syncAgentSessions } from "./sessionSync";
 export type { AgentSessionSyncOptions } from "./sessionSync";
 export {

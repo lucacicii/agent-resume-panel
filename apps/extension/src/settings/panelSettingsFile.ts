@@ -38,6 +38,7 @@ interface PanelSettingsFile {
     ompHome?: string;
     cursorHome?: string;
     cursorIdeUserDataHome?: string;
+    almaHome?: string;
   };
 }
 
@@ -217,6 +218,7 @@ export async function upsertPanelLlmFields(input: {
     ompHome: config.get<string>("ompHome", "~/.omp/agent"),
     cursorHome: config.get<string>("cursorHome", "~/.cursor"),
     cursorIdeUserDataHome: config.get<string>("cursorIdeUserDataHome", ""),
+    almaHome: config.get<string>("almaHome", ""),
     ...current.agentHomes
   });
 

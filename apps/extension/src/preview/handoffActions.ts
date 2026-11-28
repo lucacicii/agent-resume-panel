@@ -12,7 +12,8 @@ const HANDOFF_SOURCE_PROVIDERS = new Set([
   "opencode",
   "pi",
   "prime",
-  "omp"
+  "omp",
+  "alma"
 ]);
 
 export function canHandoffSession(session: AgentSession): boolean {
