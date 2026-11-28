@@ -8,6 +8,18 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.21.0]
+
+#### 新增
+
+- **Session / ACP / Notes 三列并行全文模糊搜索**：重构「搜索会话」面板为始终三列并行布局（Sessions | ACP 对话 | 笔记 Notes），各列独立计数、滚动与分页；在 `panelHome/search_index.db` 中基于 SQLite FTS5 `trigram` 索引增量抽取所有本地对话纯文本（覆盖 JSONL 会话、Antigravity `brain` 日志、OpenCode SQLite、ACP 对话与 Notes Markdown 正文），支持中英文子串、多词 `AND`、`<3` 字符短词回退、标题/元数据子序列模糊匹配以及正文命中片段高亮；搜索框右侧提供圆形索引刷新按钮。
+- **项目快捷方式 + 关键字筛选下拉**：保留「全部项目」、收藏与最近项目快捷 Chips，同时新增支持关键字模糊过滤与键盘导航的项目下拉选择器。
+- **预览页面关键字查找（`Ctrl+F` / `Cmd+F`）**：在独立预览页面与搜索预览弹窗头部新增查询图标按钮及 `Ctrl+F` / `Cmd+F` 快捷键，支持 Markdown 与 Raw 双模式下的即时高亮、命中计数与上下跳转。
+
+#### 优化
+
+- **点击搜索结果保留搜索面板并在新视图中打开**：点击 Session、ACP 或 Notes 搜索结果后不再关闭「搜索会话」面板；Notes 与会话/ACP 对话均在旁侧新分栏视图（`ViewColumn.Beside`）中打开。
+
 ### [2.20.0]
 
 #### 新增
@@ -627,6 +639,18 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.21.0]
+
+#### Added
+
+- **Parallel 3-Column Full-Text Fuzzy Search (Sessions / ACP / Notes)**: Redesigned the Search panel into a persistent 3-column layout (Sessions | ACP Chats | Notes) with independent counts, scrolling, and pagination; added an incremental SQLite FTS5 `trigram` index (`search_index.db`) extracting pure user/assistant conversation text across JSONL providers, Antigravity `brain` logs, OpenCode SQLite, ACP threads, and Notes Markdown bodies, supporting CJK/English substring search, multi-term queries, `<3`-char fallback, metadata subsequence fuzzy matching, and highlighted body snippets, alongside a circular index-refresh button.
+- **Project Shortcuts & Keyword-Filterable Dropdown**: Kept quick shortcut chips for All / favorited / recent projects and added a searchable project dropdown with keyword filtering and keyboard navigation.
+- **In-Preview Keyword Find (`Ctrl+F` / `Cmd+F`)**: Added a search icon button and `Ctrl+F` / `Cmd+F` find bar to both the standalone Session Preview panel and the Search panel's preview modal, supporting match highlighting, counts, and next/previous navigation across Markdown and Raw modes.
+
+#### Improved
+
+- **Keep Search Panel Open & Open Results Beside**: Clicking a search result no longer closes the Search panel, and Notes now open in `ViewColumn.Beside` alongside Sessions and ACP chats.
 
 ### [2.20.0]
 
