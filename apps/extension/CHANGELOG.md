@@ -8,6 +8,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.22.0]
+
+#### 新增
+
+- **内置本地 stdio MCP 服务（`@agent-resume/mcp`）**：将 `packages/mcp` 打包为零依赖单文件运行时并随扩展内置分发（`out/mcp-server.cjs`），提供 6 个本地只读查询工具（`search_agent_resume`、`list_notes`、`read_note`、`list_sessions`、`get_session`、`list_projects`），注册后释放至 `~/.agent-resume-panel/bin/agent-resume-mcp.cjs`，关闭 VS Code 后仍可独立使用并在扩展升级时自动同步。
+- **全支持 Agent 一键配置与自主安装提示词**：在命令面板（`Agent Resume: Configure Local MCP Server…`）和「Agent Resume 设置 → 本地 MCP」中支持一键写入/注销 **Claude Code、Codex CLI、Antigravity、Cursor、OpenCode、Grok Build、Pi、Prime Agent、OMP、VS Code、Gemini CLI** 的本地 MCP 配置，并提供「复制 Agent 安装提示词」功能让任意 Agent 自主完成配置与校验。
+- **MCP 服务说明与连通性检测**：设置页内置「本地 MCP」分区展示全部 6 个 MCP 工具说明与各客户端实时注册状态，支持一键执行真实的 stdio JSON-RPC `initialize` / `tools/list` 握手检测。
+
 ### [2.21.0]
 
 #### 新增
@@ -639,6 +647,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.22.0]
+
+#### Added
+
+- **Built-in Local Stdio MCP Server (`@agent-resume/mcp`)**: Bundled `packages/mcp` as a zero-dependency single-file runtime (`out/mcp-server.cjs`) inside the extension, exposing 6 read-only local query tools (`search_agent_resume`, `list_notes`, `read_note`, `list_sessions`, `get_session`, `list_projects`). Installed to `~/.agent-resume-panel/bin/agent-resume-mcp.cjs` on registration so it keeps working even when VS Code is closed and stays in sync across extension upgrades.
+- **One-Click Multi-Agent MCP Setup & Agent Self-Install Prompt**: Added `Agent Resume: Configure Local MCP Server…` and a dedicated **Local MCP** section in Agent Resume Settings to register or unregister `agent-resume` across **Claude Code, Codex CLI, Antigravity, Cursor, OpenCode, Grok Build, Pi, Prime Agent, OMP, VS Code, and Gemini CLI**, plus a one-click **Copy Agent Install Prompt** action so any agent can configure itself.
+- **MCP Service Catalog & Live Handshake Verification**: Added tool descriptions, per-client registration badges, and a **Verify MCP Registration** check in Settings that validates registered client configs and runs a live stdio JSON-RPC `initialize` / `tools/list` handshake.
 
 ### [2.21.0]
 
