@@ -7,4 +7,5 @@ registry: https://registry.npmjs.org/
 
 allowBuilds:
   "@vscode/vsce-sign": true
+  esbuild: true
   keytar: true

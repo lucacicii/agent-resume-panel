@@ -300,10 +300,91 @@ body {
 }
 
 .settings-llm-actions,
-.settings-project-menu {
+.settings-project-menu,
+.settings-mcp-actions {
   margin-top: 20px;
   padding-top: 16px;
   border-top: 1px solid var(--vscode-panel-border);
+}
+
+.settings-mcp-status {
+  margin: 12px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.settings-mcp-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-mcp-subsection {
+  margin-top: 18px;
+}
+
+.settings-mcp-subtitle {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-mcp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-mcp-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  font-size: 12px;
+}
+
+.settings-mcp-row-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-mcp-row-title {
+  font-weight: 600;
+}
+
+.settings-mcp-row-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  word-break: break-all;
+}
+
+.settings-mcp-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid var(--vscode-panel-border);
+  color: var(--vscode-descriptionForeground);
+}
+
+.settings-mcp-badge.registered {
+  border-color: color-mix(in srgb, var(--vscode-charts-green, #89d185) 60%, transparent);
+  background: color-mix(in srgb, var(--vscode-charts-green, #89d185) 18%, transparent);
+  color: var(--vscode-foreground);
+}
+
+.settings-mcp-badge.detected {
+  border-color: color-mix(in srgb, var(--vscode-charts-blue, #3794ff) 50%, transparent);
+  color: var(--vscode-foreground);
 }
 
 .settings-test-result {

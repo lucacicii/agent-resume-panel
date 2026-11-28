@@ -96,6 +96,7 @@
     "onCommand:agentResume.renameAcpChat",
     "onCommand:agentResume.openAcpSettings",
     "onCommand:agentResume.openSettings",
+    "onCommand:agentResume.configureMcp",
     "onCommand:agentResume.autoRenameSession",
     "onCommand:agentResume.handoffTo.codex",
     "onCommand:agentResume.handoffTo.claude",
@@ -110,7 +111,7 @@
   "scripts": {
     "merge:manifest": "node scripts/merge-extension-manifest.mjs",
     "precompile": "pnpm run merge:manifest",
-    "compile": "node ../../scripts/run-tsc.mjs --cwd . -p ./",
+    "compile": "node ../../scripts/run-tsc.mjs --cwd . -p ./ && node scripts/copy-mcp-bundle.mjs",
     "watch": "node ../../scripts/run-tsc.mjs --cwd . -p ./ -w",
     "package": "pnpm run compile && node scripts/package.mjs",
     "install:local": "pnpm run package && node scripts/install-local.mjs",
@@ -865,6 +866,12 @@
         "title": "Agent Resume Settings",
         "category": "Agent Resume",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "agentResume.configureMcp",
+        "title": "Configure Local MCP Server…",
+        "category": "Agent Resume",
+        "icon": "$(plug)"
       },
       {
         "command": "agentResume.collapseParentProject",

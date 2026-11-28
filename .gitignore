@@ -6,6 +6,7 @@ apps/extension/out/
 apps/extension/dist/
 apps/extension/.pack-staging/
 packages/core/dist/
+packages/mcp/dist/
 
 # Packaged VS Code extension artifacts
 *.vsix

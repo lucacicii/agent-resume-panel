@@ -1,0 +1,41 @@
+{
+  "name": "@agent-resume/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "author": "lucacicii",
+  "license": "AGPL-3.0-only",
+  "description": "Standalone MCP stdio server for querying Agent Resume Panel notes, tasks, and coding agent sessions",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "agent-resume-mcp": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "node ../../scripts/run-tsc.mjs --cwd . -p ./ && node scripts/bundle.mjs",
+    "bundle": "node scripts/bundle.mjs",
+    "watch": "node ../../scripts/run-tsc.mjs --cwd . -p ./ -w",
+    "test": "pnpm run build && node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@agent-resume/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.1",
+    "esbuild": "^0.28.2",
+    "typescript": "5.9.3"
+  },
+  "files": [
+    "dist"
+  ]
+}

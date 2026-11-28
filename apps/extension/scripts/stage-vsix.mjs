@@ -99,6 +99,10 @@ export function stageVsix({ clean = true } = {}) {
   if (!fs.existsSync(coreDist)) {
     throw new Error(`Missing core build output: ${coreDist}. Run pnpm run build:core first.`);
   }
+  const mcpBundleSrc = path.join(repoRoot, "packages", "mcp", "dist", "agent-resume-mcp.cjs");
+  if (!fs.existsSync(mcpBundleSrc)) {
+    throw new Error(`Missing MCP bundle output: ${mcpBundleSrc}. Run pnpm run build:mcp first.`);
+  }
 
   if (clean && fs.existsSync(stagingRoot)) {
     fs.rmSync(stagingRoot, { recursive: true, force: true });
@@ -111,6 +115,11 @@ export function stageVsix({ clean = true } = {}) {
       throw new Error(`Missing ${dir}/ — run pnpm run compile first.`);
     }
     copyDir(src, path.join(stagingRoot, dir));
+  }
+  const stagedMcpDest = path.join(stagingRoot, "out", "mcp-server.cjs");
+  fs.copyFileSync(mcpBundleSrc, stagedMcpDest);
+  if (process.platform !== "win32") {
+    fs.chmodSync(stagedMcpDest, 0o755);
   }
 
   copyExtensionFiles(stagingRoot);

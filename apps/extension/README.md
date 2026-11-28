@@ -29,6 +29,7 @@ Extension version: **2.21.0** · [Changelog](https://github.com/lucacicii/agent-
 | **Notes** | Multiple Markdown notes per session or project |
 | **Search / Manager** | Filter, bulk browse, Export backup |
 | **LLM Assist** | Summarize, Auto Rename, Handoff Brief (optional API) |
+| **Local MCP** | One-click stdio MCP setup for Claude Code, Codex, Cursor, VS Code, and Antigravity ([MCP guide](https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/panel/mcp.md)) |
 | **Resume targets** | Terminal, Claude/Codex panels, Ghostty, Codex App, Herdr (`Herdr Core Bridge`) |
 | **Prime Agent** | Prime Agent CLI sync, preview, `prime-agent --resume` terminal resume, and ACP Chat via `prime-agent --mode acp` |
 | **OMP** | OMP CLI sync (`~/.omp/agent/sessions`), preview, `omp -r` terminal resume, and ACP Chat via `omp acp` |
@@ -78,6 +79,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 | **Notes** | 多条 Markdown 笔记，支持图片附件 |
 | **搜索 / Manager** | 筛选、批量浏览、Export 备份 |
 | **LLM Assist** | 摘要、自动重命名、Handoff Brief |
+| **本地 MCP** | 一键为 Claude Code、Codex、Cursor、VS Code、Antigravity 配置本地 stdio MCP（[使用说明](https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/panel/mcp.md)） |
 | **恢复目标** | 终端、Claude/Codex 面板、Ghostty、Codex App、Herdr（`Herdr Core Bridge`） |
 | **Prime Agent** | Prime Agent CLI 同步、预览、`prime-agent --resume` 终端恢复，以及 `prime-agent --mode acp` ACP 聊天 |
 | **OMP** | OMP CLI 同步（`~/.omp/agent/sessions`）、预览、`omp -r` 终端恢复，以及 `omp acp` ACP 聊天 |

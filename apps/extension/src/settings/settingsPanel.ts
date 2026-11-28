@@ -10,7 +10,15 @@ import {
   promptReloadIfContributionsStale,
   promptReloadWindow
 } from "../upgrade/contributionSync";
-import { PANEL_DOC_ISSUES, PANEL_DOC_README } from "../constants/docLinks";
+import { PANEL_DOC_ISSUES, PANEL_DOC_MCP, PANEL_DOC_README } from "../constants/docLinks";
+import {
+  configureMcpCommand,
+  copyAgentInstallPrompt,
+  getMcpStatusSummary,
+  getMcpToolsCatalog,
+  openMcpDocumentation,
+  verifyMcpRegistration
+} from "../mcp/configureMcpCommand";
 import { applySettingsPatch, loadSettingsSnapshot } from "./settingsIO";
 
 let settingsPanel: vscode.WebviewPanel | undefined;
@@ -135,6 +143,35 @@ async function attachSettingsPanel(
       return;
     }
 
+    if (message.type === "configureMcp") {
+      await configureMcpCommand(ctx);
+      if (settingsPanel) {
+        await sendInit(settingsPanel.webview, ctx);
+      }
+      return;
+    }
+
+    if (message.type === "copyMcpPrompt") {
+      await copyAgentInstallPrompt(ctx);
+      if (settingsPanel) {
+        await sendInit(settingsPanel.webview, ctx);
+      }
+      return;
+    }
+
+    if (message.type === "verifyMcp") {
+      const result = await verifyMcpRegistration(ctx);
+      if (settingsPanel) {
+        settingsPanel.webview.postMessage({ type: "mcpVerifyResult", result });
+      }
+      return;
+    }
+
+    if (message.type === "openMcpDocs") {
+      await openMcpDocumentation();
+      return;
+    }
+
     if (message.type === "testLlm") {
       try {
         const messageText = await testLlmConnection(ctx, llmOverridesFromDraft(message.draft));
@@ -191,10 +228,13 @@ async function sendInit(webview: vscode.Webview, context: vscode.ExtensionContex
     llmApiKeyConfigured: snapshot.llmApiKeyConfigured,
     projectMenu: snapshot.projectMenu,
     sessionMenu: snapshot.sessionMenu,
+    mcpStatus: getMcpStatusSummary(),
+    mcpTools: getMcpToolsCatalog(),
     activeSection,
     uiStrings: getSettingsUiStrings(),
     docLinks: {
       documentation: PANEL_DOC_README,
+      mcpDocumentation: PANEL_DOC_MCP,
       reportIssue: PANEL_DOC_ISSUES
     }
   });

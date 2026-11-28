@@ -46,8 +46,12 @@
   let sessionMenuDirty = false;
   /** @type {Record<string, string>} */
   let uiStrings = {};
-  /** @type {{ documentation?: string; reportIssue?: string }} */
+  /** @type {{ documentation?: string; mcpDocumentation?: string; reportIssue?: string }} */
   let docLinks = {};
+  /** @type {{ bundleInstalled?: boolean; bundlePath?: string; registeredClients?: Array<{id: string, label: string, configPath: string}>; detectedClients?: Array<{id: string, label: string, configPath: string, installed: boolean, registered: boolean}> } | null} */
+  let mcpStatus = null;
+  /** @type {Array<{name: string, description: string}>} */
+  let mcpTools = [];
 
   const navList = document.getElementById("settings-nav-list");
   const sectionTitle = document.getElementById("section-title");
@@ -58,6 +62,15 @@
   const projectMenuList = document.getElementById("project-menu-list");
   const sessionMenuActions = document.getElementById("session-menu-actions");
   const sessionMenuList = document.getElementById("session-menu-list");
+  const mcpActions = document.getElementById("mcp-actions");
+  const mcpStatusCard = document.getElementById("mcp-status-card");
+  const configureMcpBtn = document.getElementById("configure-mcp-btn");
+  const verifyMcpBtn = document.getElementById("verify-mcp-btn");
+  const copyMcpPromptBtn = document.getElementById("copy-mcp-prompt-btn");
+  const openMcpGuideBtn = document.getElementById("open-mcp-guide-btn");
+  const mcpVerifyResult = document.getElementById("mcp-verify-result");
+  const mcpToolsList = document.getElementById("mcp-tools-list");
+  const mcpClientsList = document.getElementById("mcp-clients-list");
   const resetProjectMenuBtn = document.getElementById("reset-project-menu");
   const resetSessionMenuBtn = document.getElementById("reset-session-menu");
   const testResult = document.getElementById("test-result");
@@ -123,6 +136,27 @@
     }
   });
 
+  configureMcpBtn?.addEventListener("click", () => {
+    vscode.postMessage({ type: "configureMcp" });
+  });
+
+  verifyMcpBtn?.addEventListener("click", () => {
+    if (verifyMcpBtn) {
+      verifyMcpBtn.disabled = true;
+      verifyMcpBtn.textContent = uiStrings.mcpButtonVerifying || "Verifying…";
+    }
+    mcpVerifyResult?.classList.add("hidden");
+    vscode.postMessage({ type: "verifyMcp" });
+  });
+
+  copyMcpPromptBtn?.addEventListener("click", () => {
+    vscode.postMessage({ type: "copyMcpPrompt" });
+  });
+
+  openMcpGuideBtn?.addEventListener("click", () => {
+    vscode.postMessage({ type: "openMcpDocs" });
+  });
+
   window.addEventListener("message", (event) => {
     const message = event.data;
 
@@ -132,6 +166,8 @@
       llmApiKeyConfigured = Boolean(message.llmApiKeyConfigured);
       uiStrings = message.uiStrings || {};
       docLinks = message.docLinks || {};
+      mcpStatus = message.mcpStatus || null;
+      mcpTools = Array.isArray(message.mcpTools) ? message.mcpTools : [];
       apiKeyInput = "";
       saveBtn.disabled = false;
       loadProjectMenuState(message.projectMenu);
@@ -166,6 +202,22 @@
       testResult.classList.remove("hidden");
       testResult.textContent = message.message || "";
       testResult.classList.toggle("error", !message.success);
+      return;
+    }
+
+    if (message.type === "mcpVerifyResult") {
+      if (verifyMcpBtn) {
+        verifyMcpBtn.disabled = false;
+        verifyMcpBtn.textContent = uiStrings.mcpButtonVerify || "Verify MCP Registration";
+      }
+      const result = message.result || {};
+      if (result.status) {
+        mcpStatus = result.status;
+        if (activeSectionId === "mcp") {
+          renderMcpStatus();
+        }
+      }
+      renderMcpVerifyResult(result);
       return;
     }
 
@@ -306,6 +358,136 @@
       renderSection("sessionMenu");
     });
     navList.appendChild(sessionButton);
+
+    const mcpButton = document.createElement("button");
+    mcpButton.type = "button";
+    mcpButton.className = `settings-nav-item${activeSectionId === "mcp" ? " active" : ""}`;
+    mcpButton.textContent = uiStrings.navMcp || "Local MCP";
+    mcpButton.addEventListener("click", () => {
+      activeSectionId = "mcp";
+      renderNav();
+      renderSection("mcp");
+    });
+    navList.appendChild(mcpButton);
+  }
+
+  function renderMcpStatus() {
+    if (!mcpStatusCard) {
+      return;
+    }
+    mcpStatusCard.innerHTML = "";
+    const runtimeLine = document.createElement("div");
+    const runtimeLabel = uiStrings.mcpRuntimeLabel || "Local Runtime";
+    const runtimeState = mcpStatus?.bundleInstalled
+      ? `${uiStrings.mcpRuntimeInstalled || "Installed"} (${mcpStatus.bundlePath || ""})`
+      : uiStrings.mcpRuntimeNotInstalled || "Not installed yet (installed automatically on registration)";
+    runtimeLine.textContent = `${runtimeLabel}: ${runtimeState}`;
+    mcpStatusCard.appendChild(runtimeLine);
+
+    const clientsLine = document.createElement("div");
+    const clientsLabel = uiStrings.mcpClientsLabel || "Registered Clients";
+    const registered = mcpStatus?.registeredClients || [];
+    const clientsState =
+      registered.length > 0
+        ? registered.map((c) => c.label).join(", ")
+        : uiStrings.mcpClientsNone || "None";
+    clientsLine.textContent = `${clientsLabel}: ${clientsState}`;
+    mcpStatusCard.appendChild(clientsLine);
+
+    if (mcpToolsList) {
+      mcpToolsList.innerHTML = "";
+      for (const tool of mcpTools) {
+        const row = document.createElement("div");
+        row.className = "settings-mcp-row";
+        const main = document.createElement("div");
+        main.className = "settings-mcp-row-main";
+        const title = document.createElement("div");
+        title.className = "settings-mcp-row-title";
+        title.textContent = tool.name;
+        const sub = document.createElement("div");
+        sub.className = "settings-mcp-row-sub";
+        sub.textContent = tool.description;
+        main.appendChild(title);
+        main.appendChild(sub);
+        row.appendChild(main);
+        mcpToolsList.appendChild(row);
+      }
+    }
+
+    if (mcpClientsList) {
+      mcpClientsList.innerHTML = "";
+      const allClients = mcpStatus?.detectedClients || [];
+      for (const client of allClients) {
+        const row = document.createElement("div");
+        row.className = "settings-mcp-row";
+        const main = document.createElement("div");
+        main.className = "settings-mcp-row-main";
+        const title = document.createElement("div");
+        title.className = "settings-mcp-row-title";
+        title.textContent = client.label;
+        const sub = document.createElement("div");
+        sub.className = "settings-mcp-row-sub";
+        sub.textContent = client.configPath;
+        main.appendChild(title);
+        main.appendChild(sub);
+
+        const badge = document.createElement("span");
+        badge.className = `settings-mcp-badge${client.registered ? " registered" : client.installed ? " detected" : ""}`;
+        badge.textContent = client.registered
+          ? uiStrings.mcpBadgeRegistered || "Registered"
+          : client.installed
+            ? uiStrings.mcpBadgeDetected || "Detected"
+            : uiStrings.mcpBadgeNotDetected || "Not detected";
+        row.appendChild(main);
+        row.appendChild(badge);
+        mcpClientsList.appendChild(row);
+      }
+    }
+  }
+
+  function renderMcpVerifyResult(result) {
+    if (!mcpVerifyResult) {
+      return;
+    }
+    mcpVerifyResult.classList.remove("hidden");
+    const broken = Array.isArray(result.brokenClients) ? result.brokenClients : [];
+    const registeredCount = result.status?.registeredClients?.length ?? 0;
+    const probe = result.probe;
+
+    if (broken.length > 0) {
+      mcpVerifyResult.classList.add("error");
+      const detail = broken.map((b) => `${b.label}: ${b.reason}`).join("; ");
+      mcpVerifyResult.textContent = (uiStrings.mcpVerifyBrokenClients || "Broken client configs: {0}").replace("{0}", detail);
+      return;
+    }
+
+    if (!probe || !probe.ok) {
+      mcpVerifyResult.classList.add("error");
+      mcpVerifyResult.textContent = (uiStrings.mcpVerifyFailed || "MCP handshake check failed: {0}").replace(
+        "{0}",
+        probe?.error || "MCP runtime not found"
+      );
+      return;
+    }
+
+    mcpVerifyResult.classList.remove("error");
+    const toolsCount = Array.isArray(probe.tools) ? probe.tools.length : 0;
+    if (registeredCount > 0) {
+      mcpVerifyResult.textContent = (
+        uiStrings.mcpVerifySuccessRegistered ||
+        "Verified: {0} client(s) registered · stdio handshake OK ({1} tools, {2}ms)"
+      )
+        .replace("{0}", String(registeredCount))
+        .replace("{1}", String(toolsCount))
+        .replace("{2}", String(probe.durationMs ?? 0));
+    } else {
+      mcpVerifyResult.textContent = (
+        uiStrings.mcpVerifySuccessNotRegistered ||
+        "Runtime handshake OK ({0} tools, {1}ms), but no client is registered yet."
+      )
+        .replace("{0}", String(toolsCount))
+        .replace("{1}", String(probe.durationMs ?? 0));
+    }
   }
 
   function renderSection(sectionId) {
@@ -313,7 +495,16 @@
     llmActions.classList.add("hidden");
     projectMenuActions.classList.add("hidden");
     sessionMenuActions.classList.add("hidden");
+    mcpActions?.classList.add("hidden");
     testResult.classList.add("hidden");
+
+    if (sectionId === "mcp") {
+      sectionTitle.textContent = uiStrings.mcpTitle || "Local MCP Server";
+      sectionDescription.textContent = uiStrings.mcpDescription || "";
+      mcpActions?.classList.remove("hidden");
+      renderMcpStatus();
+      return;
+    }
 
     if (sectionId === "projectMenu") {
       sectionTitle.textContent = uiStrings.projectMenuTitle || "Project Menu";
@@ -951,6 +1142,34 @@
     const sessionHint = document.querySelector("#session-menu-actions .settings-hint");
     if (sessionHint) {
       sessionHint.textContent = uiStrings.hintSessionMenu || sessionHint.textContent;
+    }
+    const mcpHint = document.getElementById("mcp-hint");
+    if (mcpHint) {
+      mcpHint.textContent = uiStrings.mcpHint || "";
+    }
+    if (configureMcpBtn) {
+      configureMcpBtn.textContent = uiStrings.mcpButtonConfigure || "Configure Local MCP Server…";
+    }
+    if (verifyMcpBtn) {
+      verifyMcpBtn.textContent = uiStrings.mcpButtonVerify || "Verify MCP Registration";
+    }
+    if (copyMcpPromptBtn) {
+      copyMcpPromptBtn.textContent = uiStrings.mcpButtonCopyPrompt || "Copy Agent Install Prompt";
+    }
+    if (openMcpGuideBtn) {
+      openMcpGuideBtn.textContent = uiStrings.mcpButtonGuide || "MCP Guide";
+    }
+    const mcpToolsTitle = document.getElementById("mcp-tools-title");
+    if (mcpToolsTitle) {
+      mcpToolsTitle.textContent = uiStrings.mcpToolsSectionTitle || "Included MCP Services (Tools)";
+    }
+    const mcpToolsDesc = document.getElementById("mcp-tools-desc");
+    if (mcpToolsDesc) {
+      mcpToolsDesc.textContent = uiStrings.mcpToolsSectionDescription || "";
+    }
+    const mcpClientsTitle = document.getElementById("mcp-clients-title");
+    if (mcpClientsTitle) {
+      mcpClientsTitle.textContent = uiStrings.mcpClientsSectionTitle || "Supported Agents & Clients";
     }
     if (sectionTitle && sectionTitle.textContent.trim() === "Loading...") {
       sectionTitle.textContent = uiStrings.loading || sectionTitle.textContent;

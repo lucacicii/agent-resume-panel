@@ -64,6 +64,17 @@ export {
 export type { AgentProvider, AgentSession, CatalogSessionRow } from "./catalog/types";
 export { toAgentSession } from "./catalog/types";
 export {
+  queryCatalogSessions,
+  getCatalogSessionDetail,
+  readSessionTranscriptText
+} from "./catalog/queries";
+export type {
+  CatalogSessionWithMeta,
+  CatalogSessionQueryOptions,
+  CatalogSessionQueryResult,
+  CatalogSessionDetail
+} from "./catalog/queries";
+export {
   ensureExtensionCatalogSchema,
   resetCatalogSchemaCache
 } from "./catalog/db";

@@ -50,6 +50,26 @@
             <button id="reset-session-menu" type="button" class="settings-btn">Reset to Defaults</button>
           </div>
         </section>
+        <section id="mcp-actions" class="settings-mcp-actions hidden">
+          <p id="mcp-hint" class="settings-hint"></p>
+          <div id="mcp-status-card" class="settings-mcp-status"></div>
+          <div class="settings-mcp-buttons">
+            <button id="configure-mcp-btn" type="button" class="settings-btn settings-btn-primary">Configure Local MCP Server…</button>
+            <button id="verify-mcp-btn" type="button" class="settings-btn">Verify MCP Registration</button>
+            <button id="copy-mcp-prompt-btn" type="button" class="settings-btn">Copy Agent Install Prompt</button>
+            <button id="open-mcp-guide-btn" type="button" class="settings-btn">MCP Guide</button>
+          </div>
+          <div id="mcp-verify-result" class="settings-test-result hidden"></div>
+          <div class="settings-mcp-subsection">
+            <h3 id="mcp-tools-title" class="settings-mcp-subtitle">Included MCP Services (Tools)</h3>
+            <p id="mcp-tools-desc" class="settings-hint"></p>
+            <div id="mcp-tools-list" class="settings-mcp-list"></div>
+          </div>
+          <div class="settings-mcp-subsection">
+            <h3 id="mcp-clients-title" class="settings-mcp-subtitle">Supported Agents & Clients</h3>
+            <div id="mcp-clients-list" class="settings-mcp-list"></div>
+          </div>
+        </section>
         <footer id="settings-footer" class="settings-footer">
           <p id="settings-footer-hint" class="settings-footer-hint"></p>
           <div class="settings-footer-links">

@@ -42,6 +42,7 @@ Extension version: **2.17.0** · [Changelog](../../apps/extension/CHANGELOG.md)
 | [GTD](gtd.md) | `@inbox` / `@next` / `@waiting` / `@someday` / `@reference` / `@done` |
 | [Notes](notes.md) | Markdown notes per session or project, attachments |
 | [LLM Assist](llm-assist.md) | Summarize, Auto Rename, Handoff Brief |
+| [Local MCP Server](mcp.md) | Query notes, tasks, and sessions from Claude Code, Codex, Cursor, VS Code, Antigravity |
 | [Settings & data](settings-and-data.md) | Panel home, settings, backup, upgrade tips |
 | [Changelog](../../apps/extension/CHANGELOG.md) | Extension release notes |
 
@@ -89,6 +90,7 @@ Extension version: **2.17.0** · [Changelog](../../apps/extension/CHANGELOG.md)
 | [GTD](gtd.md) | `@inbox` / `@next` / `@waiting` / `@someday` / `@reference` / `@done` |
 | [Notes](notes.md) | 会话 / 项目 Markdown 笔记与附件 |
 | [LLM 辅助](llm-assist.md) | 摘要、自动重命名、Handoff Brief |
+| [本地 MCP 服务](mcp.md) | 让 Claude Code、Codex、Cursor、VS Code、Antigravity 查询本地笔记与会话 |
 | [设置与数据](settings-and-data.md) | 数据目录、设置、备份、升级提示 |
 | [更新日志](../../apps/extension/CHANGELOG.md) | 扩展版本变更 |
 

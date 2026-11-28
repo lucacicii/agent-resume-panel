@@ -27,6 +27,9 @@ try {
   const coreEntry = path.join(extRoot, "node_modules", "@agent-resume", "core", "dist", "extension.js");
   assert.ok(fs.existsSync(coreEntry), `VSIX must contain ${coreEntry}`);
 
+  const mcpBundle = path.join(extRoot, "out", "mcp-server.cjs");
+  assert.ok(fs.existsSync(mcpBundle), `VSIX must contain ${mcpBundle}`);
+
   const corePkgPath = path.join(extRoot, "node_modules", "@agent-resume", "core", "package.json");
   const corePkg = JSON.parse(fs.readFileSync(corePkgPath, "utf8"));
   assert.ok(corePkg.exports?.["./extension"], "vendored @agent-resume/core must expose ./extension in exports");

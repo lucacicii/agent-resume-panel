@@ -143,6 +143,7 @@ import { loadSectionOrder } from "./tree/sectionOrder";
 import { SessionTreeDragDrop } from "./tree/sessionTreeDragDrop";
 import { projectUri, sessionQuickPickLabel, SessionTreeProvider } from "./tree/sessionTree";
 import { PANEL_DOC_ISSUES, PANEL_DOC_README } from "./constants/docLinks";
+import { configureMcpCommand, syncBundledMcpIfInstalled } from "./mcp/configureMcpCommand";
 import { promptReloadIfContributionsStale } from "./upgrade/contributionSync";
 
 type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
@@ -240,6 +241,7 @@ function normalizePathForMatch(dir?: string): string {
 export function activate(context: vscode.ExtensionContext): AgentResumePanelApi {
   extensionContext = context;
   void promptReloadIfContributionsStale(context);
+  syncBundledMcpIfInstalled(context);
   const tree = new SessionTreeProvider(context.extensionUri);
   const acpTree = new AcpChatTreeProvider(context.extensionUri);
   const catalogDbPath = loadCatalogSettings().dbPath;
@@ -572,6 +574,7 @@ export function activate(context: vscode.ExtensionContext): AgentResumePanelApi 
     ),
     vscode.commands.registerCommand("agentResume.openSettings", () => openSettingsPanel(context)),
     vscode.commands.registerCommand("agentResume.openAcpSettings", () => openSettingsPanelToAcp(context)),
+    vscode.commands.registerCommand("agentResume.configureMcp", () => configureMcpCommand(context)),
     vscode.commands.registerCommand("agentResume.openDocumentation", () =>
       vscode.env.openExternal(vscode.Uri.parse(PANEL_DOC_README))
     ),
