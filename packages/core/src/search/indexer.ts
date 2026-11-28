@@ -129,7 +129,17 @@ async function performSyncSearchIndex(
     const acpProvider = isAcp ? (row.acp_provider ?? "").trim() : "";
 
     const refs = parseTranscriptRefsJson(row.transcript_refs);
-    const metaSig = `${displayTitle}\0${summary}\0${projectPath}\0${projectId}\0${branch}\0${gtdStatus}\0${acpProvider}\0${row.archived ? 1 : 0}\0${row.updated_at_ms}`;
+    const metaSig = JSON.stringify([
+      displayTitle,
+      summary,
+      projectPath,
+      projectId,
+      branch,
+      gtdStatus,
+      acpProvider,
+      row.archived ? 1 : 0,
+      row.updated_at_ms
+    ]);
 
     let fileSig = "";
     let agyLogs: string[] = [];
@@ -154,7 +164,7 @@ async function performSyncSearchIndex(
       fileSig = `meta-only`;
     }
 
-    const fullSig = `${metaSig}\0${fileSig}`;
+    const fullSig = JSON.stringify([metaSig, fileSig]);
     if (existingSigs.get(docKey) === fullSig) {
       skippedDocs++;
       return;
@@ -267,7 +277,17 @@ async function performSyncSearchIndex(
 
     const absPath = path.join(options.panelHome, note.rel_md_path);
     const fileSig = await statSignature([absPath]);
-    const fullSig = `${title}\0${summary}\0${resolvedProjectPath}\0${resolvedProjectId}\0${projectsText}\0${gtdStatus}\0${note.updated_at_ms}\0${note.archived_at_ms ?? ""}\0${fileSig}`;
+    const fullSig = JSON.stringify([
+      title,
+      summary,
+      resolvedProjectPath,
+      resolvedProjectId,
+      projectsText,
+      gtdStatus,
+      note.updated_at_ms,
+      note.archived_at_ms ?? "",
+      fileSig
+    ]);
 
     if (existingSigs.get(docKey) === fullSig) {
       skippedDocs++;
