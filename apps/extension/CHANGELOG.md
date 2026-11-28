@@ -8,6 +8,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.23.0]
+
+#### 新增
+
+- **Alma 会话与客户端集成**：支持只读同步 Alma 本地数据库（`chat_threads.db`）的会话记录与全文检索索引，并通过设置开关按需显示无痕对话（`showIncognitoAlma`）、子代理对话（`showSubagentAlma`）和临时工作区（`showTempWorkspaceAlma`）。
+- **预览、导出与原生重命名**：支持 Alma 对话正文与 `reasoning` 思考过程预览、JSON Transcript 导出，以及优先通过 Alma API（`PUT /api/threads/:id` + `skipUpdatedAt: true`）或离线 SQLite 回退保持时间排序不变的原生重命名。
+- **无 UI 模拟恢复、新建与 Handoff**：通过 Alma REST API（`POST /api/refs/open` 直跳 `alma://thread/<id>`、`/api/workspaces` + `POST /api/threads` 新建绑定项目工作区的对话、`/api/threads/:id/send` 投递 Handoff Brief）完成恢复、新建会话与双向 Handoff，同时支持在「本地 MCP」中一键向 `~/.config/alma/mcp.json` 注册 `agent-resume` MCP 服务并配备官方图标。
+
 ### [2.22.0]
 
 #### 新增
@@ -647,6 +655,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.23.0]
+
+#### Added
+
+- **Alma Session Provider & Search**: Added read-only sync of Alma `chat_threads.db` into the catalog and SQLite FTS5 unified search index, with settings toggles for incognito threads (`showIncognitoAlma`), subagent threads (`showSubagentAlma`), and temporary workspaces (`showTempWorkspaceAlma`), plus configurable `almaHome`.
+- **Preview, Export & Native Rename**: Added Alma transcript preview (including `reasoning` thinking blocks), `alma-thread-*.json` export, and timestamp-preserving rename via `PUT /api/threads/:id` (`skipUpdatedAt: true`) with offline SQLite fallback.
+- **API-Driven Resume, New Chat & Handoff**: Added UI-simulation-free Alma resume (`POST /api/refs/open` with `alma://thread/<id>`), workspace-bound new chat creation (`POST /api/workspaces` + `POST /api/threads`), bidirectional Handoff delivery (`POST /api/threads/:id/send`), official Alma icon, and `~/.config/alma/mcp.json` registration in Local MCP setup.
 
 ### [2.22.0]
 

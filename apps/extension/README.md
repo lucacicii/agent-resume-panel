@@ -2,14 +2,14 @@
 
 Languages: [English](#english) | [简体中文](#简体中文)
 
-Browse, search, and resume **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi / Prime Agent / OMP / Cursor CLI** sessions from a VS Code / VSCodium sidebar — with **ACP Chat**, **GTD** tagging, **multi-note Markdown** files, and Summarize / Rename / Handoff assist. **Cursor IDE** composer sessions are indexed as metadata and open their recorded project in Cursor.
+Browse, search, and resume **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi / Prime Agent / OMP / Cursor CLI / Alma** sessions from a VS Code / VSCodium sidebar — with **ACP Chat**, **GTD** tagging, **multi-note Markdown** files, and Summarize / Rename / Handoff assist. **Cursor IDE** composer sessions are indexed as metadata and open their recorded project in Cursor.
 
 | | Link |
 |---|---|
 | **Install** | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) |
 | **Docs** | [docs/panel](https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/panel/README.md) |
 
-Extension version: **2.22.0** · [Changelog](https://github.com/lucacicii/agent-resume-panel/blob/develop/apps/extension/CHANGELOG.md)
+Extension version: **2.23.0** · [Changelog](https://github.com/lucacicii/agent-resume-panel/blob/develop/apps/extension/CHANGELOG.md)
 
 > **No cloud · Local-first**  
 > Session index, notes, and ACP chats are stored on your machine under **`~/.agent-resume-panel`**.  
@@ -35,6 +35,7 @@ Extension version: **2.22.0** · [Changelog](https://github.com/lucacicii/agent-
 | **OMP** | OMP CLI sync (`~/.omp/agent/sessions`), preview, `omp -r` terminal resume, and ACP Chat via `omp acp` |
 | **Antigravity** | Antigravity CLI sync, preview, terminal resume, and compliant thin-client ACP Chat via unmodified `agy acp` (see [ACP Chat docs](https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/panel/acp-chat.md#antigravity-acp-policy--compliance)) |
 | **Cursor** | Cursor CLI sync, preview, terminal resume, and copied `cursor-agent` command; Cursor IDE composer headers open the recorded project (command resume is not available) |
+| **Alma** | Alma SQLite sync (`chat_threads.db`), full-text search, preview (with reasoning), native rename, REST API thread open & Handoff, and `~/.config/alma/mcp.json` MCP setup |
 
 ### Quick start
 
@@ -57,14 +58,14 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 
 ## 简体中文
 
-在 VS Code / VSCodium 侧边栏中统一浏览、搜索、恢复 **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi / Prime Agent / OMP / Cursor CLI** 历史会话；支持 **ACP Chat**、**GTD**、**多条 Markdown 笔记**，以及摘要 / 重命名 / Handoff。**Cursor IDE** Composer 会话仅索引元数据，点击后在 Cursor 中打开其记录的项目。
+在 VS Code / VSCodium 侧边栏中统一浏览、搜索、恢复 **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi / Prime Agent / OMP / Cursor CLI / Alma** 历史会话；支持 **ACP Chat**、**GTD**、**多条 Markdown 笔记**，以及摘要 / 重命名 / Handoff。**Cursor IDE** Composer 会话仅索引元数据，点击后在 Cursor 中打开其记录的项目。
 
 | | 链接 |
 |---|---|
 | **安装** | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) |
 | **文档** | [docs/panel](https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/panel/README.md) |
 
-扩展版本：**2.22.0** · [更新日志](https://github.com/lucacicii/agent-resume-panel/blob/develop/apps/extension/CHANGELOG.md)
+扩展版本：**2.23.0** · [更新日志](https://github.com/lucacicii/agent-resume-panel/blob/develop/apps/extension/CHANGELOG.md)
 
 > **无云端 · 纯本机存储**  
 > 数据默认保存在 **`~/.agent-resume-panel`**。可选 LLM Assist 需自行配置 API。
@@ -85,6 +86,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 | **OMP** | OMP CLI 同步（`~/.omp/agent/sessions`）、预览、`omp -r` 终端恢复，以及 `omp acp` ACP 聊天 |
 | **Antigravity** | Antigravity CLI 同步、预览、终端恢复，以及基于未修改官方 `agy acp` 的合规薄客户端 ACP 聊天（详见 [ACP Chat 文档](https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/panel/acp-chat.md#antigravity-acp-政策与合规说明)） |
 | **Cursor** | Cursor CLI 支持同步、预览、终端恢复与复制 `cursor-agent` 命令；Cursor IDE Composer 仅打开记录的项目，不支持命令恢复 |
+| **Alma** | Alma SQLite 同步（`chat_threads.db`）、全文搜索、预览（含思考过程）、原生重命名、REST API 线程直跳与 Handoff，以及 `~/.config/alma/mcp.json` 一键 MCP 配置 |
 
 ### 快速开始
 
